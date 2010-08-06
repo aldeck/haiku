@@ -46,8 +46,8 @@ All rights reserved.
 #include <string.h>
 
 #include "Commands.h"
-#include "ContainerWindow.h"
 #include "PoseView.h"
+#include "PoseViewController.h"
 #include "Utilities.h"
 
 #define APP_SERVER_CLEARS_BACKGROUND 1
@@ -97,14 +97,18 @@ _DrawOutline(BView *view, BRect where)
 //	#pragma mark -
 
 
-BTitleView::BTitleView(BRect frame, BPoseView *view)
-	: BView(frame, "TitleView", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW),
-	fPoseView(view),
+BTitleView::BTitleView(BPoseView *poseView)
+	: 
+	BView("TitleView", B_WILL_DRAW),
+	fPoseView(poseView),
 	fTitleList(10, true),
 	fHorizontalResizeCursor(B_CURSOR_ID_RESIZE_EAST_WEST),
 	fPreviouslyClickedColumnTitle(0),
 	fTrackingState(NULL)
 {
+	SetExplicitMaxSize(BSize(B_SIZE_UNSET, 16));
+	SetExplicitMinSize(BSize(B_SIZE_UNSET, 16));
+	
 	sTitleBackground = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.88f); // 216 -> 220
 	sDarkTitleBackground = tint_color(sTitleBackground, B_DARKEN_1_TINT);
 	sShineColor = tint_color(sTitleBackground, B_LIGHTEN_MAX_TINT);
@@ -310,14 +314,12 @@ BTitleView::MouseDown(BPoint where)
 	// if so, display the attribute menu:
 
 	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
-		BContainerWindow *window = dynamic_cast<BContainerWindow *>
-			(Window());
 		BPopUpMenu *menu = new BPopUpMenu("Attributes", false, false);
 		menu->SetFont(be_plain_font);
-		window->NewAttributeMenu(menu);
-		window->AddMimeTypesToMenu(menu);
-		window->MarkAttributeMenu(menu);
-		menu->SetTargetForItems(window->PoseView());
+		fPoseView->Controller()->NewAttributeMenu(menu);
+		fPoseView->Controller()->AddMimeTypesToMenu(menu);
+		fPoseView->Controller()->MarkAttributeMenu(menu);
+		menu->SetTargetForItems(fPoseView);
 		menu->Go(ConvertToScreen(where), true, false);
 		return;
 	}

@@ -47,6 +47,7 @@ All rights reserved.
 #include "Commands.h"
 #include "FSUtils.h"
 #include "PoseList.h"
+#include "PoseViewController.h"
 #include "Tracker.h"
 #include "TrackerSettings.h"
 #include "TrackerString.h"
@@ -55,12 +56,41 @@ All rights reserved.
 //	#pragma mark -
 
 
-DesktopPoseView::DesktopPoseView(Model *model, BRect frame, uint32 viewMode,
-	uint32 resizeMask)
+DesktopPoseView::DesktopPoseView(Model *model, uint32 viewMode)
 	:
-	BPoseView(model, frame, viewMode, resizeMask)
+	BPoseView(model, viewMode)
 {
 	SetFlags(Flags() | B_DRAW_ON_CHILDREN);
+	_AddShortcuts();
+}
+
+
+void
+DesktopPoseView::_AddShortcuts()
+{
+	AutoLock<BWindow> lock(Window());
+	if (!lock)
+		return;
+
+	Window()->AddShortcut('X', B_COMMAND_KEY | B_SHIFT_KEY, new BMessage(kCutMoreSelectionToClipboard), Window());
+	Window()->AddShortcut('C', B_COMMAND_KEY | B_SHIFT_KEY, new BMessage(kCopyMoreSelectionToClipboard), Window());
+	Window()->AddShortcut('F', B_COMMAND_KEY, new BMessage(kFindButton), this);
+	Window()->AddShortcut('N', B_COMMAND_KEY, new BMessage(kNewFolder), this);
+	Window()->AddShortcut('O', B_COMMAND_KEY, new BMessage(kOpenSelection), this);
+	Window()->AddShortcut('I', B_COMMAND_KEY, new BMessage(kGetInfo), this);
+	Window()->AddShortcut('E', B_COMMAND_KEY, new BMessage(kEditItem), this);
+	Window()->AddShortcut('D', B_COMMAND_KEY, new BMessage(kDuplicateSelection), this);
+	Window()->AddShortcut('T', B_COMMAND_KEY, new BMessage(kMoveToTrash), this);
+	Window()->AddShortcut('K', B_COMMAND_KEY, new BMessage(kCleanup), this);
+	Window()->AddShortcut('A', B_COMMAND_KEY, new BMessage(B_SELECT_ALL), this);
+	Window()->AddShortcut('S', B_COMMAND_KEY, new BMessage(kInvertSelection), this);
+	Window()->AddShortcut('A', B_COMMAND_KEY | B_SHIFT_KEY, new BMessage(kShowSelectionWindow), this);
+	Window()->AddShortcut('G', B_COMMAND_KEY, new BMessage(kEditQuery), this);
+		// it is ok to add a global Edit query shortcut here, PoseView will
+		// filter out cases where selected pose is not a query
+	Window()->AddShortcut('U', B_COMMAND_KEY, new BMessage(kUnmountVolume), this);
+	Window()->AddShortcut(B_UP_ARROW, B_COMMAND_KEY, new BMessage(kOpenParentDir), this);
+	Window()->AddShortcut('O', B_COMMAND_KEY | B_CONTROL_KEY, new BMessage(kOpenSelectionWith), this);
 }
 
 
@@ -97,7 +127,7 @@ DesktopPoseView::InitDesktopDirentIterator(BPoseView *nodeMonitoringTarget,
 	if (result->Rewind() != B_OK) {
 		delete result;
 		if (nodeMonitoringTarget)
-			nodeMonitoringTarget->HideBarberPole();
+			nodeMonitoringTarget->Controller()->SlowOperationEnded();
 
 		return NULL;
 	}
@@ -155,6 +185,8 @@ DesktopPoseView::AddPosesCompleted()
 {
 	_inherited::AddPosesCompleted();
 	CreateTrashPose();
+	
+	CheckPoseVisibility();
 }
 
 

@@ -35,9 +35,11 @@ All rights reserved.
 #include "Attributes.h"
 #include "AutoLock.h"
 #include "Commands.h"
+#include "CountView.h"
 #include "FSUtils.h"
 #include "IconMenuItem.h"
 #include "OpenWithWindow.h"
+#include "PoseViewController.h"
 #include "MimeTypes.h"
 #include "StopWatch.h"
 #include "Tracker.h"
@@ -45,6 +47,7 @@ All rights reserved.
 #include <Alert.h>
 #include <Button.h>
 #include <Catalog.h>
+#include <GroupLayoutBuilder.h>
 #include <Locale.h>
 #include <Mime.h>
 #include <NodeInfo.h>
@@ -79,96 +82,16 @@ const rgb_color kOpenWithDefaultColor = { 0xFF, 0xFF, 0xCC, 255};
 OpenWithContainerWindow::OpenWithContainerWindow(BMessage *entriesToOpen,
 		LockingList<BWindow> *windowList, window_look look, window_feel feel,
 		uint32 flags, uint32 workspace)
-	: BContainerWindow(windowList, 0, look, feel, flags, workspace),
+	:
+	BContainerWindow(NULL, windowList, 0, look, feel, flags, workspace),
 	fEntriesToOpen(entriesToOpen)
-{
-	AutoLock<BWindow> lock(this);
-
-	BRect windowRect(85, 50, 510, 296);
-	MoveTo(windowRect.LeftTop());
-	ResizeTo(windowRect.Width(), windowRect.Height());
-
-	// add a background view; use the standard BackgroundView here, the same
-	// as the file panel is using
-	BRect rect(Bounds());
-	BackgroundView *backgroundView = new BackgroundView(rect);
-	AddChild(backgroundView);
-
-	rect = Bounds();
-
-	// add buttons
-
-	fLaunchButton = new BButton(rect, "ok",	B_TRANSLATE("Open"),
-		new BMessage(kDefaultButton), B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	fLaunchButton->ResizeToPreferred();
-	fLaunchButton->MoveTo(rect.right - 10 - kDocumentKnobWidth
-		- fLaunchButton->Bounds().Width(),
-		rect.bottom - 10 - fLaunchButton->Bounds().Height());
-	backgroundView->AddChild(fLaunchButton);
-
-	BRect buttonRect = fLaunchButton->Frame();
-	fLaunchAndMakeDefaultButton = new BButton(buttonRect, "make default",
-		B_TRANSLATE("Open and make preferred"),	new BMessage(kOpenAndMakeDefault),
-		B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	// wide button, have to resize to fit text
-	fLaunchAndMakeDefaultButton->ResizeToPreferred();
-	fLaunchAndMakeDefaultButton->MoveBy(
-		- 10 - fLaunchAndMakeDefaultButton->Bounds().Width(), 0);
-	backgroundView->AddChild(fLaunchAndMakeDefaultButton);
-	fLaunchAndMakeDefaultButton->SetEnabled(false);
-
-	buttonRect = fLaunchAndMakeDefaultButton->Frame();
-	BButton *button = new BButton(buttonRect, "cancel",	B_TRANSLATE("Cancel"),
-		new BMessage(kCancelButton), B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	button->ResizeToPreferred();
-	button->MoveBy(- 10 - button->Bounds().Width(), 0);
-	backgroundView->AddChild(button);
-
-	fMinimalWidth = button->Bounds().Width() + fLaunchButton->Bounds().Width()
-		+ fLaunchAndMakeDefaultButton->Bounds().Width() + kDocumentKnobWidth + 40;
-
-	fLaunchButton->MakeDefault(true);
-
-	// add pose view
-
-	rect.OffsetTo(10, 10);
-	rect.bottom = buttonRect.top - 15;
-
-	rect.right -= B_V_SCROLL_BAR_WIDTH + 20;
-	rect.bottom -= B_H_SCROLL_BAR_HEIGHT;
-		// make room for scrollbars and a margin
-	fPoseView = NewPoseView(0, rect, kListMode);
-	backgroundView->AddChild(fPoseView);
-
-	fPoseView->SetFlags(fPoseView->Flags() | B_NAVIGABLE);
-	fPoseView->SetPoseEditing(false);
-
-	// set the window title
-	if (CountRefs(fEntriesToOpen) == 1) {
-		// if opening just one file, use it in the title
-		entry_ref ref;
-		fEntriesToOpen->FindRef("refs", &ref);
-		BString buffer;
-		buffer << "Open " << ref.name << " with:";
-		SetTitle(buffer.String());
-	} else
-		// use generic title
-		SetTitle(B_TRANSLATE("Open selection with:"));
-
-	AddCommonFilter(new BMessageFilter(B_KEY_DOWN, &OpenWithContainerWindow::KeyDownFilter));
+{	
 }
 
 
 OpenWithContainerWindow::~OpenWithContainerWindow()
 {
 	delete fEntriesToOpen;
-}
-
-
-BPoseView *
-OpenWithContainerWindow::NewPoseView(Model *, BRect rect, uint32)
-{
-	return new OpenWithPoseView(rect);
 }
 
 
@@ -351,13 +274,6 @@ OpenWithContainerWindow::KeyDownFilter(BMessage *message, BHandler **,
 }
 
 
-bool
-OpenWithContainerWindow::ShouldAddMenus() const
-{
-	return false;
-}
-
-
 void
 OpenWithContainerWindow::ShowContextMenu(BPoint, const entry_ref *, BView *)
 {
@@ -374,7 +290,7 @@ OpenWithContainerWindow::AddShortcuts()
 void
 OpenWithContainerWindow::NewAttributeMenu(BMenu *menu)
 {
-	_inherited::NewAttributeMenu(menu);
+	// TODO _inherited::NewAttributeMenu(menu);
 	BMessage *message = new BMessage(kAttributeItem);
 	message->AddString("attr_name", kAttrOpenWithRelation);
 	message->AddInt32("attr_type", B_STRING_TYPE);
@@ -419,9 +335,108 @@ OpenWithContainerWindow::SaveState(BMessage &message) const
 
 
 void
-OpenWithContainerWindow::Init(const BMessage *message)
+OpenWithContainerWindow::_Init(const BMessage *message)
 {
-	_inherited::Init(message);
+	printf("(%p) OpenWithContainerWindow::_Init \n", this);
+
+	AutoLock<BWindow> lock(this);
+	if (!lock)
+		return;
+
+	// create controls
+	fPoseView = new OpenWithPoseView();
+	fPoseView->SetFlags(fPoseView->Flags() | B_NAVIGABLE);
+	fPoseView->SetPoseEditing(false);
+
+	fController = new PoseViewController();
+	
+	Controller()->SetPoseView(fPoseView);
+	Controller()->CreateControls(fCreationModel);
+
+	fLaunchButton = new BButton("ok", B_TRANSLATE("Open"),
+		new BMessage(kDefaultButton));
+
+	fLaunchAndMakeDefaultButton = new BButton("make default",
+		B_TRANSLATE("Open and make preferred"),
+		new BMessage(kOpenAndMakeDefault));
+	fLaunchAndMakeDefaultButton->SetEnabled(false);
+
+	BButton *cancelButton = new BButton("cancel", B_TRANSLATE("Cancel"),
+		new BMessage(kCancelButton));	
+	fLaunchButton->MakeDefault(true);
+
+	
+	// layout controls
+	const float kInsetSpacing = 8;
+	const float kElementSpacing = 8;
+	
+	SetLayout(new BGroupLayout(B_HORIZONTAL));
+	AddChild(BGroupLayoutBuilder(B_VERTICAL)
+		.Add(BGroupLayoutBuilder(B_VERTICAL, kElementSpacing)
+			.Add(BGroupLayoutBuilder(B_VERTICAL)
+				.Add(Controller()->TitleView())
+				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+				.Add(Controller()->PoseView())
+				.Add(Controller()->VerticalScrollBar()))
+				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+					.Add(Controller()->CountView())
+					.Add(Controller()->HorizontalScrollBar(), 3.0f)
+					.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
+						// avoid the window's resize handle
+				)
+			)
+			.Add(BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
+				.AddGlue()
+				.Add(cancelButton)				
+				.Add(fLaunchAndMakeDefaultButton)
+				.Add(fLaunchButton)
+				.SetInsets(0, 0, 16, 0)	// avoid the window's resize handle
+			)
+			.SetInsets(kInsetSpacing, kInsetSpacing, kInsetSpacing, kInsetSpacing)
+		)
+	);
+	
+	// deal with new unconfigured folders
+	if (NeedsDefaultStateSetup())
+		SetUpDefaultState();
+		
+	fMoveToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Move to"),
+		kMoveSelectionTo, this));
+	fCopyToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Copy to"),
+		kCopySelectionTo, this));
+	fCreateLinkItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Create link"),
+		kCreateLink, this), new BMessage(kCreateLink));		
+
+	if (message)
+		RestoreState(*message);
+	else
+		RestoreState();
+		
+	//Controller()->AddMenus();
+	//AddContextMenus();
+	//AddCommonShortcuts();
+	
+	CheckScreenIntersect();
+		// check window frame TODO: should be done in restorestate	
+	
+	Controller()->TitleView()->Reset();
+		// TODO check for a more robust way for the titleview to get updates
+	
+	// set the window title
+	if (CountRefs(fEntriesToOpen) == 1) {
+		// if opening just one file, use it in the title
+		entry_ref ref;
+		fEntriesToOpen->FindRef("refs", &ref);
+		BString buffer;
+		buffer << "Open " << ref.name << " with:";
+		SetTitle(buffer.String());
+	} else
+		// use generic title
+		SetTitle(B_TRANSLATE("Open selection with:"));
+	
+	AddCommonFilter(new BMessageFilter(B_KEY_DOWN, &OpenWithContainerWindow::KeyDownFilter));
+
+	Show();
 }
 
 
@@ -430,10 +445,12 @@ OpenWithContainerWindow::RestoreState()
 {
 	BNode defaultingNode;
 	if (DefaultStateSourceNode(kDefaultOpenWithTemplate, &defaultingNode, false)) {
+		printf("OpenWithContainerWindow::RestoreState stream\n");
 		AttributeStreamFileNode streamNodeSource(&defaultingNode);
 		RestoreWindowState(&streamNodeSource);
 		fPoseView->Init(&streamNodeSource);
 	} else {
+		printf("OpenWithContainerWindow::RestoreState none\n");
 		RestoreWindowState(NULL);
 		fPoseView->Init(NULL);
 	}
@@ -443,6 +460,7 @@ OpenWithContainerWindow::RestoreState()
 void
 OpenWithContainerWindow::RestoreState(const BMessage &message)
 {
+	printf("OpenWithContainerWindow::RestoreState msg\n");
 	_inherited::RestoreState(message);
 }
 
@@ -450,7 +468,6 @@ OpenWithContainerWindow::RestoreState(const BMessage &message)
 void
 OpenWithContainerWindow::RestoreWindowState(AttributeStreamNode *node)
 {
-	SetSizeLimits(fMinimalWidth, 10000, 160, 10000);
 	if (!node)
 		return;
 
@@ -515,11 +532,13 @@ OpenWithContainerWindow::SetCanOpen(bool on)
 //	#pragma mark -
 
 
-OpenWithPoseView::OpenWithPoseView(BRect frame, uint32 resizeMask)
-	: BPoseView(0, frame, kListMode, resizeMask),
+OpenWithPoseView::OpenWithPoseView()
+	: 
+	BPoseView(NULL, kListMode),
 	fHaveCommonPreferredApp(false),
 	fIterator(NULL)
 {
+	printf("(%p) OpenWithPoseView::OpenWithPoseView\n", this);
 	fSavePoseLocations = false;
 	fMultipleSelection = false;
 	fDragEnabled = false;
@@ -641,7 +660,7 @@ OpenWithPoseView::InitDirentIterator(const entry_ref *)
 	if (fIterator->Rewind() != B_OK) {
 		delete fIterator;
 		fIterator = NULL;
-		HideBarberPole();
+		Controller()->SlowOperationEnded();
 		return NULL;
 	}
 	return fIterator;
@@ -792,6 +811,8 @@ OpenWithPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 cou
 	BPose **resultingPoses, bool insertionSort,	int32 *lastPoseIndexPtr,
 	BRect *boundsPtr, bool forceDraw)
 {
+	printf("(%p) OpenWithPoseView::CreatePoses\n", this);
+	
 	// overridden to try to select the preferred handling app
 	_inherited::CreatePoses(models, poseInfoArray, count, resultingPoses, insertionSort,
 		lastPoseIndexPtr, boundsPtr, forceDraw);

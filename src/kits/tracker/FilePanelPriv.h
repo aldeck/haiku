@@ -54,6 +54,7 @@ class BDirMenu;
 class AttributeStreamNode;
 class BFilePanelPoseView;
 
+
 class TFilePanel : public BContainerWindow {
 public:
 	TFilePanel(file_panel_mode = B_OPEN_PANEL,
@@ -101,8 +102,6 @@ public:
 	bool TrackingMenu() const;
 
 protected:
-	BPoseView *NewPoseView(Model *model, BRect rect, uint32 viewMode);
-	virtual	void Init(const BMessage *message = NULL);
 	virtual	void SaveState(bool hide = true);
 	virtual	void SaveState(BMessage &) const;
 	virtual void RestoreState();
@@ -127,6 +126,7 @@ protected:
 
 
 private:
+	void Init(BRefFilter *filter, bool multipleSelection);
 	bool SwitchDirToDesktopIfNeeded(entry_ref &ref);
 	bool CanOpenParent() const;
 	void SwitchDirMenuTo(const entry_ref *ref);
@@ -137,7 +137,7 @@ private:
 
 	bool fIsSavePanel;
 	uint32 fNodeFlavors;
-	BackgroundView *fBackView;
+	//BackgroundView *fBackView;	// TODO: disabled during the blayout rewrite
 	BDirMenu *fDirMenu;
 	BMenuField *fDirMenuField;
 	BTextControl *fTextControl;
@@ -157,7 +157,7 @@ friend class BackgroundView;
 
 class BFilePanelPoseView : public BPoseView {
 public:
-	BFilePanelPoseView(Model *, BRect, uint32 resizeMask = B_FOLLOW_ALL);
+	BFilePanelPoseView(Model *);
 
 	virtual bool IsFilePanel() const;
 	virtual bool FSNotification(const BMessage *);

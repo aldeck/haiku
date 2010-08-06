@@ -35,9 +35,14 @@ All rights reserved.
 #include "Commands.h"
 #include "ContainerWindow.h"
 #include "FSUtils.h"
+#include "IconButton.h"
 #include "Model.h"
 #include "Navigator.h"
 #include "Tracker.h"
+
+#include <ControlLook.h>
+#include <GroupLayout.h>
+#include <GroupLayoutBuilder.h>
 #include <Window.h>
 #include <Picture.h>
 #include <TextControl.h>
@@ -48,82 +53,13 @@ static const int32 kMaxHistory = 32;
 
 }
 
-// BPictureButton() will crash when giving zero pointers,
-// although we really want and have to set up the 
-// pictures when we can, e.g. on a AttachedToWindow.
-static BPicture sPicture;
 
-BNavigatorButton::BNavigatorButton(BRect rect, const char *name, BMessage *message, 
-	int32 resIDon, int32 resIDoff, int32 resIDdisabled)
-	:	BPictureButton(rect, name, &sPicture, &sPicture, message),
-		fResIDOn(resIDon),
-		fResIDOff(resIDoff),
-		fResIDDisabled(resIDdisabled)
-{
-	// Clear to background color to 
-	// avoid ugly border on click
-	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-	SetHighColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-	SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-}
-
-BNavigatorButton::~BNavigatorButton()
-{
-}
-
-void
-BNavigatorButton::AttachedToWindow()
-{
-	BBitmap *bmpOn = 0;
-	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE, fResIDOn, &bmpOn);
-	SetPicture(bmpOn, true, true);
-	delete bmpOn;
-	
-	BBitmap *bmpOff = 0;
-	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE, fResIDOff, &bmpOff);
-	SetPicture(bmpOff, true, false);
-	delete bmpOff;
-
-	BBitmap *bmpDisabled = 0;
-	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE, fResIDDisabled, &bmpDisabled);
-	SetPicture(bmpDisabled, false, false);
-	SetPicture(bmpDisabled, false, true);
-	delete bmpDisabled;
-}
-
-void
-BNavigatorButton::SetPicture(BBitmap *bitmap, bool enabled, bool on)
-{
-	if (bitmap) {
-		BPicture picture;
-		BView view(bitmap->Bounds(), "", 0, 0);
-		AddChild(&view);
-		view.BeginPicture(&picture);
-		view.SetHighColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-		view.FillRect(view.Bounds());
-		view.SetDrawingMode(B_OP_OVER);
-		view.DrawBitmap(bitmap, BPoint(0, 0));
-		view.EndPicture();
-		RemoveChild(&view);
-		if (enabled)
-			if (on)
-				SetEnabledOn(&picture);
-			else
-				SetEnabledOff(&picture);
-		else
-			if (on)
-				SetDisabledOn(&picture);
-			else
-				SetDisabledOff(&picture);
-	}	
-}
-
-
-BNavigator::BNavigator(const Model *model, BRect rect, uint32 resizeMask)
-	:	BView(rect, "Navigator", resizeMask, B_WILL_DRAW),
-	fBack(0),
-	fForw(0),
-	fUp(0),
+BNavigator::BNavigator(const Model *model)
+	:	
+	BView("Navigator", B_WILL_DRAW | B_DRAW_ON_CHILDREN),
+	fBackButton(NULL),
+	fForwardButton(NULL),
+	fUpButton(NULL),
 	fBackHistory(8, true),
 	fForwHistory(8, true)
 {
@@ -131,34 +67,38 @@ BNavigator::BNavigator(const Model *model, BRect rect, uint32 resizeMask)
 	model->GetPath(&fPath);
 	
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-
-	float top = 2 + (be_plain_font->Size() - 8) / 2;
-
-	// Set up widgets
-	fBack = new BNavigatorButton(BRect(3, top, 21, top + 17), "Back",
-		new BMessage(kNavigatorCommandBackward), R_ResBackNavActiveSel,
-		R_ResBackNavActive, R_ResBackNavInactive);
-	fBack->SetEnabled(false);
-	AddChild(fBack);
-
-	fForw = new BNavigatorButton(BRect(35, top, 53, top + 17), "Forw",
-		new BMessage(kNavigatorCommandForward), R_ResForwNavActiveSel,
-		R_ResForwNavActive, R_ResForwNavInactive);
-	fForw->SetEnabled(false);
-	AddChild(fForw);
-
-	fUp = new BNavigatorButton(BRect(67, top, 84, top + 17), "Up",
-		new BMessage(kNavigatorCommandUp), R_ResUpNavActiveSel,
-		R_ResUpNavActive, R_ResUpNavInactive);
-	fUp->SetEnabled(false);
-	AddChild(fUp);
-
-	fLocation = new BTextControl(BRect(97, 2, rect.Width() - 2, 21),
-		"Location", "", "", new BMessage(kNavigatorCommandLocation),
-		B_FOLLOW_LEFT_RIGHT);
-	fLocation->SetDivider(0);
-	AddChild(fLocation);
 	
+	// Back, Forward & Up
+	fBackButton = new IconButton("Back", 0, 32, NULL,
+		new BMessage(kNavigatorCommandBackward), this);
+	fBackButton->SetIcon(201);
+	fBackButton->TrimIcon();
+
+	fForwardButton = new IconButton("Forward", 0, 32, NULL,
+		new BMessage(kNavigatorCommandForward), this);
+	fForwardButton->SetIcon(202);
+	fForwardButton->TrimIcon();
+
+	fUpButton = new IconButton("Up", 0, 32, NULL,
+		new BMessage(kNavigatorCommandUp), this);
+	fUpButton->SetIcon(203);
+	fUpButton->TrimIcon();
+
+	fLocation = new BTextControl("Location", "", "",
+		new BMessage(kNavigatorCommandLocation));
+	fLocation->SetDivider(50.0);
+
+	// layout
+	const float kInsetSpacing = 2;
+	
+	SetLayout(new BGroupLayout(B_VERTICAL));
+	AddChild(BGroupLayoutBuilder(B_HORIZONTAL)
+		.Add(fBackButton)
+		.Add(fForwardButton)
+		.Add(fUpButton)
+		.Add(fLocation)
+		.SetInsets(kInsetSpacing, kInsetSpacing, kInsetSpacing,	kInsetSpacing)
+	);
 }
 
 BNavigator::~BNavigator()
@@ -171,27 +111,22 @@ BNavigator::AttachedToWindow()
 	// Inital setup of widget states
 	UpdateLocation(0, kActionSet);
 
-	// All messages should arrive here
-	fBack->SetTarget(this);
-	fForw->SetTarget(this);
-	fUp->SetTarget(this);
 	fLocation->SetTarget(this);
 }
 
 void 
 BNavigator::Draw(BRect)
 {
-	rgb_color bgColor = ui_color(B_PANEL_BACKGROUND_COLOR);
-	rgb_color shineColor = ui_color(B_SHINE_COLOR);
-	rgb_color halfDarkColor = tint_color(bgColor, B_DARKEN_1_TINT);
-	rgb_color darkColor = tint_color(bgColor, B_DARKEN_2_TINT);
-	// Draws a beveled smooth border
-	BeginLineArray(4);
-	AddLine(Bounds().LeftTop(), Bounds().RightTop(), shineColor);
-	AddLine(Bounds().LeftTop(), Bounds().LeftBottom() - BPoint(0, 1), shineColor);
-	AddLine(Bounds().LeftBottom() - BPoint(-1, 1), Bounds().RightBottom() - BPoint(0, 1), halfDarkColor);
-	AddLine(Bounds().LeftBottom(), Bounds().RightBottom(), darkColor);
-	EndLineArray();
+	BRect bounds(Bounds());			
+	if (be_control_look != NULL) {
+		rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
+		SetHighColor(tint_color(base, B_DARKEN_2_TINT));
+		StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
+		bounds.bottom--;
+
+		be_control_look->DrawButtonBackground(this, bounds, bounds, base, 0,
+			BControlLook::B_TOP_BORDER | BControlLook::B_BOTTOM_BORDER);
+	}
 }
 
 void 
@@ -371,22 +306,15 @@ BNavigator::UpdateLocation(const Model *newmodel, int32 action)
 	BEntry entry;
 	if (entry.SetTo(fPath.Path()) == B_OK) {
 		BEntry parentEntry;
-		fUp->SetEnabled(entry.GetParent(&parentEntry) == B_OK && !FSIsDeskDir(&parentEntry));
+		fUpButton->SetEnabled(entry.GetParent(&parentEntry) == B_OK
+			&& !FSIsDeskDir(&parentEntry));
 	}
 
 	// Enable history buttons if history contains something
-	fForw->SetEnabled(fForwHistory.CountItems() > 0);
-	fBack->SetEnabled(fBackHistory.CountItems() > 1);
+	fForwardButton->SetEnabled(fForwHistory.CountItems() > 0);
+	fBackButton->SetEnabled(fBackHistory.CountItems() > 1);
 
 	// Avoid loss of selection and cursor position
 	if (action != kActionLocation)
 		fLocation->SetText(fPath.Path());
-}
-
-float
-BNavigator::CalcNavigatorHeight(void)
-{
-	// Empiric formula from how much space the textview
-	// will take once it is attached (using be_plain_font):
-	return  ceilf(11.0f + be_plain_font->Size()*(1.0f + 7.0f / 30.0f));
 }

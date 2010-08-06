@@ -35,6 +35,7 @@ All rights reserved.
 #include <Catalog.h>
 #include <Debug.h>
 #include <FindDirectory.h>
+#include <GroupLayout.h>
 #include <Locale.h>
 #include <NodeMonitor.h>
 #include <Path.h>
@@ -56,6 +57,7 @@ All rights reserved.
 #include "IconMenuItem.h"
 #include "MountMenu.h"
 #include "PoseView.h"
+#include "PoseViewController.h"
 #include "Tracker.h"
 #include "TemplatesMenu.h"
 
@@ -108,9 +110,9 @@ AddOneShortcut(const Model *model, const char *, uint32 shortcut, bool /*primary
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "libtracker"
 
-BDeskWindow::BDeskWindow(LockingList<BWindow> *windowList)
+BDeskWindow::BDeskWindow(Model* model, LockingList<BWindow> *windowList)
 	:
-	BContainerWindow(windowList, 0, kPrivateDesktopWindowLook,
+	BContainerWindow(model, windowList, 0, kPrivateDesktopWindowLook,
 		kPrivateDesktopWindowFeel, B_NOT_MOVABLE | B_WILL_ACCEPT_FIRST_CLICK
 			| B_NOT_ZOOMABLE | B_NOT_CLOSABLE | B_NOT_MINIMIZABLE
 			| B_ASYNCHRONOUS_CONTROLS, B_ALL_WORKSPACES),
@@ -133,6 +135,8 @@ BDeskWindow::BDeskWindow(LockingList<BWindow> *windowList)
 	message = new BMessage(kIconMode);
 	message->AddInt32("scale", 0);
 	AddShortcut('-', B_COMMAND_KEY, message, PoseView());
+	
+	_Init();
 }
 
 
@@ -145,41 +149,6 @@ BDeskWindow::~BDeskWindow()
 		// prevent double-saving, this would slow down quitting
 	PoseView()->StopSettingsWatch();
 	stop_watching(this);
-}
-
-
-void
-BDeskWindow::Init(const BMessage *)
-{
-	//
-	//	Set the size of the screen before calling the container window's
-	//	Init() because it will add volume poses to this window and
-	// 	they will be clipped otherwise
-	//
-	BScreen screen(this);
-	fOldFrame = screen.Frame();
-
-	PoseView()->SetShowHideSelection(false);
-	ResizeTo(fOldFrame.Width(), fOldFrame.Height());
-
-	entry_ref ref;
-	BPath path;
-	if (!BootedInSafeMode() && FSFindTrackerSettingsDir(&path) == B_OK) {
-		path.Append(kShelfPath);
-		close(open(path.Path(), O_RDONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
-		if (get_ref_for_path(path.Path(), &ref) == B_OK)
-			fDeskShelf = new BShelf(&ref, fPoseView);
-		if (fDeskShelf)
-			fDeskShelf->SetDisplaysZombies(true);
-	}
-
-	// watch add-on directories so that we can track the addons with
-	// corresponding shortcuts
-	WatchAddOnDir(B_BEOS_ADDONS_DIRECTORY, this);
-	WatchAddOnDir(B_USER_ADDONS_DIRECTORY, this);
-	WatchAddOnDir(B_COMMON_ADDONS_DIRECTORY, this);
-
-	_inherited::Init();
 }
 
 
@@ -231,20 +200,26 @@ BDeskWindow::Quit()
 }
 
 
-BPoseView *
-BDeskWindow::NewPoseView(Model *model, BRect rect, uint32 viewMode)
-{
-	return new DesktopPoseView(model, rect, viewMode);
-}
-
-
 void
-BDeskWindow::CreatePoseView(Model *model)
+BDeskWindow::_Init(const BMessage *message)
 {
-	fPoseView = NewPoseView(model, Bounds(), kIconMode);
-	fPoseView->SetIconMapping(false);
-	fPoseView->SetEnsurePosesVisible(true);
-	fPoseView->SetAutoScroll(false);
+	printf("(%p) BDesktopWindow::_Init\n", this);
+	
+	AutoLock<BWindow> lock(this);
+	if (!lock)
+		return;
+		
+	// create controls
+	fPoseView = new DesktopPoseView(fCreationModel, kIconMode);
+	fController = new PoseViewController();
+	
+	Controller()->SetPoseView(fPoseView);
+	Controller()->CreateControls(fCreationModel);
+	// TODO: disable scrollbars
+	
+	// layout controls	
+	SetLayout(new BGroupLayout(B_HORIZONTAL));
+	AddChild(Controller()->PoseView());
 
 	BScreen screen(this);
 	rgb_color desktopColor = screen.DesktopColor();
@@ -260,10 +235,66 @@ BDeskWindow::CreatePoseView(Model *model)
 
 	fPoseView->SetViewColor(desktopColor);
 	fPoseView->SetLowColor(desktopColor);
+	fPoseView->SetIconMapping(false);
+	fPoseView->SetEnsurePosesVisible(true);
+	fPoseView->SetAutoScroll(false);
 
-	AddChild(fPoseView);
+	PoseView()->StartSettingsWatch();	
+	
+	// deal with new unconfigured folders
+	if (NeedsDefaultStateSetup())
+		SetUpDefaultState();
+		
+	fMoveToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Move to"),
+		kMoveSelectionTo, this));
+	fCopyToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Copy to"),
+		kCopySelectionTo, this));
+	fCreateLinkItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Create link"),
+		kCreateLink, this), new BMessage(kCreateLink));
 
-	PoseView()->StartSettingsWatch();
+	if (message)
+		RestoreState(*message);
+	else
+		RestoreState();
+
+	// setup controls
+	Controller()->AddMenus(); // TODO: shouldn't be needed, old code needs it
+	AddContextMenus();	
+	AddCommonShortcuts();	
+	CheckScreenIntersect();
+	
+	//
+	//	Set the size of the screen before calling the container window's
+	//	Init() because it will add volume poses to this window and
+	// 	they will be clipped otherwise
+	//
+	fOldFrame = screen.Frame();
+
+	PoseView()->SetShowHideSelection(false);
+	ResizeTo(fOldFrame.Width(), fOldFrame.Height());
+
+	entry_ref ref;
+	BPath path;
+	if (!BootedInSafeMode() && FSFindTrackerSettingsDir(&path) == B_OK) {
+		path.Append(kShelfPath);
+		close(open(path.Path(), O_RDONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
+		if (get_ref_for_path(path.Path(), &ref) == B_OK)
+			fDeskShelf = new BShelf(&ref, fPoseView);
+		if (fDeskShelf)
+			fDeskShelf->SetDisplaysZombies(true);
+	}
+
+	// watch add-on directories so that we can track the addons with
+	// corresponding shortcuts
+	WatchAddOnDir(B_BEOS_ADDONS_DIRECTORY, this);
+	WatchAddOnDir(B_USER_ADDONS_DIRECTORY, this);
+	WatchAddOnDir(B_COMMON_ADDONS_DIRECTORY, this);
+
+	Show();
+
+	// done showing, turn the B_NO_WORKSPACE_ACTIVATION flag off;
+	// it was on to prevent workspace jerking during boot
+	SetFlags(Flags() & ~B_NO_WORKSPACE_ACTIVATION);
 }
 
 
@@ -411,31 +442,8 @@ BDeskWindow::Show()
 {
 	if (fBackgroundImage)
 		fBackgroundImage->Show(PoseView(), current_workspace());
-
-	PoseView()->CheckPoseVisibility();
-
+	
 	_inherited::Show();
-}
-
-
-bool
-BDeskWindow::ShouldAddScrollBars() const
-{
-	return false;
-}
-
-
-bool
-BDeskWindow::ShouldAddMenus() const
-{
-	return false;
-}
-
-
-bool
-BDeskWindow::ShouldAddContainerView() const
-{
-	return false;
 }
 
 

@@ -126,7 +126,6 @@ class Model {
 			// to be able to get at it's preferred handler which may be different
 			// from the Tracker. Used by the network neighborhood.
 
-		// type getters
 		bool IsFile() const;
 		bool IsDirectory() const;
 		bool IsQuery() const;
@@ -138,6 +137,8 @@ class Model {
 		bool IsTrash() const;
 		bool IsDesktop() const;
 		bool IsVolume() const;
+		bool IsInTrash() const;
+		bool IsPrintersDir() const;
 
 		IconSource IconFrom() const;
 		void SetIconFrom(IconSource);

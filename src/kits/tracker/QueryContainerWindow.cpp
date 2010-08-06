@@ -33,8 +33,11 @@ All rights reserved.
 */
 
 #include <Catalog.h>
+#include <GroupLayout.h>
+#include <GroupLayoutBuilder.h>
 #include <Locale.h>
 #include <Menu.h>
+#include <MenuBar.h>
 #include <MenuItem.h>
 #include <Path.h>
 #include <PopUpMenu.h>
@@ -43,26 +46,22 @@ All rights reserved.
 
 #include "Attributes.h"
 #include "Commands.h"
+#include "CountView.h"
+#include "PoseViewController.h"
 #include "QueryContainerWindow.h"
 #include "QueryPoseView.h"
+
 
 
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "libtracker"
 
-BQueryContainerWindow::BQueryContainerWindow(LockingList<BWindow> *windowList,
+BQueryContainerWindow::BQueryContainerWindow(Model* model, LockingList<BWindow> *windowList,
 	uint32 containerWindowFlags, window_look look,
 	window_feel feel, uint32 flags, uint32 workspace)
-	:	BContainerWindow(windowList, containerWindowFlags, look, feel,
+	:	BContainerWindow(model, windowList, containerWindowFlags, look, feel,
 			flags, workspace)
 {
-}
-
-
-BPoseView *
-BQueryContainerWindow::NewPoseView(Model *model, BRect rect, uint32)
-{
-	return new BQueryPoseView(model, rect);
 }
 
 
@@ -74,14 +73,52 @@ BQueryContainerWindow::PoseView() const
 
 
 void
-BQueryContainerWindow::CreatePoseView(Model *model)
+BQueryContainerWindow::_Init(const BMessage* message)
 {
-	BRect rect(Bounds());
-	rect.right -= B_V_SCROLL_BAR_WIDTH;
-	rect.bottom -= B_H_SCROLL_BAR_HEIGHT;
-	fPoseView = NewPoseView(model, rect, kListMode);
+	printf("(%p) BQueryWindow::Init\n", this);
+	
+	AutoLock<BWindow> lock(this);
+	if (!lock)
+		return;
+	
+	// create controls
+	fPoseView = new BQueryPoseView(fCreationModel);
+	fController = new PoseViewController();
+	
+	Controller()->SetPoseView(fPoseView);
+	Controller()->CreateControls(fCreationModel);
 
-	AddChild(fPoseView);
+	// layout controls
+	SetLayout(new BGroupLayout(B_HORIZONTAL));
+	AddChild(BGroupLayoutBuilder(B_VERTICAL)
+		.Add(Controller()->MenuBar())
+		.Add(Controller()->TitleView())
+		.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+			.Add(Controller()->PoseView())
+			.Add(Controller()->VerticalScrollBar())
+		)
+		.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+			.Add(Controller()->CountView())
+			.Add(Controller()->HorizontalScrollBar(), 3.0f)
+			.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
+				// avoid the window's resize handle
+		)
+	);
+	
+	if (message)
+		RestoreState(*message);
+	else
+		RestoreState();
+		
+	Controller()->AddMenus();
+	AddContextMenus();
+	AddCommonShortcuts();
+
+	CheckScreenIntersect();
+		// check window frame TODO: should be done in restorestate
+	Controller()->TitleView()->Reset();
+		// TODO check for a more robust way for the titleview to get updates
+	Show();
 }
 
 
@@ -137,6 +174,7 @@ BQueryContainerWindow::AddWindowContextMenus(BMenu *menu)
 }
 
 
+// TODO: review
 void 
 BQueryContainerWindow::SetUpDefaultState()
 {

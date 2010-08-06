@@ -56,8 +56,8 @@ const bigtime_t kBarberPoleDelay = 500000;
 #define B_TRANSLATE_CONTEXT "libtracker"
 
 BCountView::BCountView(BRect bounds, BPoseView* view)
-	: BView(bounds, "CountVw", B_FOLLOW_LEFT + B_FOLLOW_BOTTOM,
-			B_PULSE_NEEDED | B_WILL_DRAW),
+	: 
+	BView("CountVw", B_PULSE_NEEDED | B_WILL_DRAW),
 	fLastCount(-1),
 	fPoseView(view),
 	fShowingBarberPole(false),
@@ -70,6 +70,27 @@ BCountView::BCountView(BRect bounds, BPoseView* view)
 {
  	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE,
  		R_BarberPoleBitmap, &fBarberPoleMap);
+}
+
+
+BCountView::BCountView(BPoseView* view)
+	: 
+	BView("CountVw", B_PULSE_NEEDED | B_WILL_DRAW),
+		// TODO rename view name to CountView when dropping backward compat
+	fLastCount(-1),
+	fPoseView(view),
+	fShowingBarberPole(false),
+	fBorderHighlighted(false),
+	fBarberPoleMap(NULL),
+	fLastBarberPoleOffset(5),
+	fStartSpinningAfter(0),
+	fTypeAheadString(""),
+	fFilterString("")
+{
+ 	//SetExplicitMinSize(BSize(B_SIZE_UNSET, B_H_SCROLL_BAR_HEIGHT));
+ 	//SetExplicitMaxSize(BSize(B_SIZE_UNSET, B_H_SCROLL_BAR_HEIGHT));
+ 	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE,
+ 		R_BarberPoleBitmap, &fBarberPoleMap); 	
 }
 
 
@@ -118,7 +139,7 @@ BCountView::WindowActivated(bool active)
 
 
 void
-BCountView::EndBarberPole()
+BCountView::HideBarberPole()
 {
 	if (!fShowingBarberPole)
 		return;
@@ -129,7 +150,7 @@ BCountView::EndBarberPole()
 
 
 void
-BCountView::StartBarberPole()
+BCountView::ShowBarberPole()
 {
 	AutoLock<BWindow> lock(Window());
 	if (fShowingBarberPole)
@@ -186,11 +207,11 @@ BCountView::TextAndBarberPoleRect() const
 
 
 void
-BCountView::CheckCount()
+BCountView::SetCount(int32 count)
 {
 	// invalidate the count text area if necessary
-	if (fLastCount != fPoseView->CountItems()) {
-		fLastCount = fPoseView->CountItems();
+	if (fLastCount != count) {
+		fLastCount = count;
 		Invalidate(TextInvalRect());
 	}
 
@@ -335,8 +356,6 @@ BCountView::AttachedToWindow()
 
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 	SetLowColor(ViewColor());
-
-	CheckCount();
 }
 
 

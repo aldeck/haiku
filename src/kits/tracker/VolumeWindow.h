@@ -44,9 +44,10 @@ class BVolumeWindow : public BContainerWindow {
 	// all mounted volumes. Does not show up unless the corresponding Tracker
 	// setting is enabled
 	public:
-		BVolumeWindow(LockingList<BWindow> *windowList, uint32 containerWindowFlags);
+		BVolumeWindow(Model* model, LockingList<BWindow> *windowList, uint32 containerWindowFlags);
 
 	protected:
+		// le init est celui du BBrowserWindow
 		virtual	void AddFileMenu(BMenu *menu);
 		virtual	void AddWindowContextMenus(BMenu *);
 

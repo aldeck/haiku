@@ -137,8 +137,6 @@ class OpenWithContainerWindow : public BContainerWindow {
 			// <entriesToOpen> eventually get opened by the selected app
 		virtual ~OpenWithContainerWindow();
 
-		virtual void Init(const BMessage *message);
-
 		const BMessage *EntryList() const;
 			// return the list of the entries we are supposed to open
 
@@ -148,9 +146,7 @@ class OpenWithContainerWindow : public BContainerWindow {
 		OpenWithPoseView *PoseView() const;
 
 	protected:
-		virtual BPoseView *NewPoseView(Model *model, BRect rect, uint32 viewMode);
-
-		virtual	bool ShouldAddMenus() const;
+		virtual	void _Init(const BMessage *message);
 		virtual	void ShowContextMenu(BPoint, const entry_ref *, BView *);
 		virtual void AddShortcuts();
 		virtual void NewAttributeMenu(BMenu *);
@@ -187,7 +183,7 @@ class OpenWithContainerWindow : public BContainerWindow {
 
 class OpenWithPoseView : public BPoseView {
 	public:
-		OpenWithPoseView(BRect, uint32 resizeMask = B_FOLLOW_ALL);
+		OpenWithPoseView();
 
 		virtual void OpenSelection(BPose *, int32 *);
 			// open entries with the selected app

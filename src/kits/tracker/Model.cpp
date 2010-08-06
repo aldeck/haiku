@@ -551,6 +551,23 @@ Model::SetupBaseType()
 }
 
 
+bool
+Model::IsInTrash() const
+{
+	return FSInTrashDir(&fEntryRef);
+}
+
+
+bool
+Model::IsPrintersDir() const
+{
+	BEntry entry(&fEntryRef);
+	if (entry.InitCheck() != B_OK)
+		return false;
+	return FSIsPrintersDir(&entry);
+}
+
+
 static bool
 HasVectorIconHint(BNode *node)
 {

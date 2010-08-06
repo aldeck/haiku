@@ -39,10 +39,14 @@ All rights reserved.
 #include <PictureButton.h>
 #include <View.h>
 
+#include "ContainerWindow.h"
+
 class BTextControl;
 class BEntry;
+class IconButton;
 
 namespace BPrivate {
+
 
 enum NavigationAction
 {
@@ -59,33 +63,13 @@ enum NavigationAction
 	kNavigatorCommandLocation = 'NVLC'
 };
 
-// Custom BPictureButton which takes
-// bitmap resource IDs as arguments
-class BNavigatorButton : public BPictureButton {
-public:
-	BNavigatorButton(BRect rect, const char *name, BMessage *message, int32 resIDon,
-		int32 resIDoff, int32 resIDdisabled);
-					 
-	~BNavigatorButton();
-	
-	virtual	void AttachedToWindow();
-
-	void SetPicture(BBitmap *, bool enabled, bool on);
-
-private:
-	int32 fResIDOn;
-	int32 fResIDOff;
-	int32 fResIDDisabled;
-};
 
 class BNavigator : public BView {
 public:
-	BNavigator(const Model *model, BRect rect, uint32 resizeMask = B_FOLLOW_LEFT_RIGHT);
+	BNavigator(const Model *model);
 	~BNavigator();
 			
 	void UpdateLocation(const Model *newmodel, int32 action);
-
-	static float CalcNavigatorHeight(void);
 
 	BContainerWindow *Window() const;
 
@@ -103,17 +87,18 @@ protected:
 
 private:
 
-	BPath fPath;
-	BNavigatorButton *fBack;
-	BNavigatorButton *fForw;
-	BNavigatorButton *fUp;
-	BTextControl *fLocation;
+	BPath 				fPath;
+	IconButton*			fBackButton;
+	IconButton*			fForwardButton;
+	IconButton*			fUpButton;
+	BTextControl*		fLocation;
 
-	BObjectList<BPath> fBackHistory;
-	BObjectList<BPath> fForwHistory;
+	BObjectList<BPath>	fBackHistory;
+	BObjectList<BPath>	fForwHistory;
 
 	typedef BView _inherited;
 };
+
 
 inline
 BContainerWindow *

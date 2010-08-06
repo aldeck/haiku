@@ -846,9 +846,11 @@ TTracker::OpenContainerWindow(Model *model, BMessage *originalRefsList,
 {
 	AutoLock<WindowList> lock(&fWindowList);
 	BContainerWindow *window = NULL;
-	if (checkAlreadyOpen && openSelector != kRunOpenWithWindow)
+	// TODO: windows might not have their poseview yet, since they are created after
+	// the restorestate message has been received by the window
+	/*if (checkAlreadyOpen && openSelector != kRunOpenWithWindow)
 		// find out if window already open
-		window = FindContainerWindow(model->NodeRef());
+		window = FindContainerWindow(model->NodeRef());*/
 
 	bool someWindowActivated = false;
 
@@ -882,24 +884,24 @@ TTracker::OpenContainerWindow(Model *model, BMessage *originalRefsList,
 			refList->AddRef("refs", model->EntryRef());
 			delete model;
 			model = NULL;
-		} else
+		} else {
 			// clone the message, window adopts it for it's own use
 			refList = new BMessage(*originalRefsList);
+		}
 		window = new OpenWithContainerWindow(refList, &fWindowList);
 	} else if (model->IsRoot()) {
-		// window will adopt the model
-		window = new BVolumeWindow(&fWindowList, openFlags);
+		window = new BVolumeWindow(model, &fWindowList, openFlags);
 	} else if (model->IsQuery()) {
-		// window will adopt the model
-		window = new BQueryContainerWindow(&fWindowList, openFlags);
-	} else
-		// window will adopt the model
-		window = new BContainerWindow(&fWindowList, openFlags);
-
-	if (model)
-		window->CreatePoseView(model);
-
+		window = new BQueryContainerWindow(model, &fWindowList, openFlags);
+	} else {
+		window = new BContainerWindow(model, &fWindowList, openFlags);
+		
+		//TODO window = new BContainerWindow(stateMessage, &fWindowList, openFlags);
+		// also pass model->EntryRef in the stateMessage
+	}
+	
 	BMessage restoreStateMessage(kRestoreState);
+		// This is indirectly a call to Poseview::Init
 
 	if (stateMessage)
 		restoreStateMessage.AddMessage("state", stateMessage);
@@ -1241,6 +1243,11 @@ TTracker::_OpenPreviouslyOpenedWindows(const char* pathFilter)
 		free(buffer);
 		return;
 	}
+	
+	printf("TTracker::_OpenPreviouslyOpenedWindows msg:\n");
+	printf("---------------------------------------------------------\n");
+	message.PrintToStream();
+	printf("---------------------------------------------------------\n");
 
 	free(buffer);
 
@@ -1323,10 +1330,7 @@ TTracker::ReadyToRun()
 		Model *model = new Model(&entry, true);
 		if (model->InitCheck() == B_OK) {
 			AutoLock<WindowList> lock(&fWindowList);
-			deskWindow = new BDeskWindow(&fWindowList);
-			AutoLock<BWindow> windowLock(deskWindow);
-			deskWindow->CreatePoseView(model);
-			deskWindow->Init();
+			deskWindow = new BDeskWindow(model, &fWindowList);
 
 			if (TrackerSettings().ShowDisksIcon()) {
 				// create model for root of everything

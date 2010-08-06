@@ -49,6 +49,7 @@ All rights reserved.
 #include <Dragger.h>
 #include <fs_attr.h>
 #include <fs_info.h>
+#include <GroupLayout.h>
 #include <Screen.h>
 #include <Query.h>
 #include <List.h>
@@ -84,6 +85,7 @@ All rights reserved.
 #include "NavMenu.h"
 #include "Pose.h"
 #include "PoseView.h"
+#include "PoseViewController.h"
 #include "InfoWindow.h"
 #include "Utilities.h"
 #include "Tests.h"
@@ -177,11 +179,11 @@ PoseCompareAddWidget(const BPose *p1, const BPose *p2, BPoseView *view);
 // #pragma mark -
 
 
-BPoseView::BPoseView(Model *model, BRect bounds, uint32 viewMode, uint32 resizeMask)
-	: BView(bounds, "PoseView", resizeMask, B_WILL_DRAW | B_PULSE_NEEDED),
+BPoseView::BPoseView(Model *model, uint32 viewMode)
+	:
+	BView("PoseView", B_WILL_DRAW | B_PULSE_NEEDED),
 	fIsDrawingSelectionRect(false),
-	fHScrollBar(NULL),
-	fVScrollBar(NULL),
+	fController(NULL),
 	fModel(model),
 	fActivePose(NULL),
 	fExtent(LONG_MAX, LONG_MAX, LONG_MIN, LONG_MIN),
@@ -196,7 +198,6 @@ BPoseView::BPoseView(Model *model, BRect bounds, uint32 viewMode, uint32 resizeM
 	fMimeTypeListIsDirty(false),
 	fViewState(new BViewState),
 	fStateNeedsSaving(false),
-	fCountView(NULL),
 	fDropTarget(NULL),
 	fAlreadySelectedDropTarget(NULL),
 	fSelectionHandler(be_app),
@@ -204,7 +205,6 @@ BPoseView::BPoseView(Model *model, BRect bounds, uint32 viewMode, uint32 resizeM
 	fLastClickTime(0),
 	fLastClickedPose(NULL),
 	fLastExtent(LONG_MAX, LONG_MAX, LONG_MIN, LONG_MIN),
-	fTitleView(NULL),
 	fRefFilter(NULL),
 	fAutoScrollInc(20),
 	fAutoScrollState(kAutoScrollOff),
@@ -244,6 +244,23 @@ BPoseView::BPoseView(Model *model, BRect bounds, uint32 viewMode, uint32 resizeM
 }
 
 
+void BPoseView::SetController(PoseViewController* controller)
+{
+	//printf("BPoseView::SetController %p\n", controller);
+	if (fController == NULL)
+		fController = controller;
+	else
+		printf("Error! BPoseView::SetController(%p). Poseview already has a controller\n", controller);
+}
+
+
+PoseViewController*
+BPoseView::Controller()
+{
+	return fController;	
+}
+
+
 BPoseView::~BPoseView()
 {
 	delete fPoseList;
@@ -265,7 +282,7 @@ void
 BPoseView::Init(AttributeStreamNode *node)
 {
 	RestoreState(node);
-	InitCommon();
+	_InitCommon();
 }
 
 
@@ -273,33 +290,14 @@ void
 BPoseView::Init(const BMessage &message)
 {
 	RestoreState(message);
-	InitCommon();
+	_InitCommon();
 }
 
 
 void
-BPoseView::InitCommon()
+BPoseView::_InitCommon()
 {
-	BContainerWindow *window = ContainerWindow();
-
-	// create title view for window
-	BRect rect(Frame());
-	rect.bottom = rect.top + kTitleViewHeight;
-	fTitleView = new BTitleView(rect, this);
-	if (ViewMode() == kListMode) {
-		// resize and move poseview
-		MoveBy(0, kTitleViewHeight + 1);
-		ResizeBy(0, -(kTitleViewHeight + 1));
-
-		if (Parent())
-			Parent()->AddChild(fTitleView);
-		else
-			Window()->AddChild(fTitleView);
-	}
-
-	if (fHScrollBar)
-		fHScrollBar->SetTitleView(fTitleView);
-
+	printf("(%p) BPoseView::_InitCommon() model=%p\n", this, TargetModel());
 	BPoint origin;
 	if (ViewMode() == kListMode)
 		origin = fViewState->ListOrigin();
@@ -314,25 +312,15 @@ BPoseView::InitCommon()
 	GetLayoutInfo(ViewMode(), &fGrid, &fOffset);
 	ResetPosePlacementHint();
 
-	DisableScrollBars();
-	ScrollTo(origin);
-	UpdateScrollRange();
-	SetScrollBarsTo(origin);
-	EnableScrollBars();
-
 	StartWatching();
 		// turn on volume node monitor, metamime monitor, etc.
 
-	if (window && window->ShouldAddCountView())
-		AddCountView();
-
 	// populate the window
-	if (window && window->IsTrash())
+	if (TargetModel() != NULL && TargetModel()->IsTrash())
 		AddTrashPoses();
 	else
 		AddPoses(TargetModel());
-
-	UpdateScrollRange();
+			// note, TargetModel() is NULL for an OpenWithPoseView
 }
 
 
@@ -523,6 +511,7 @@ BPoseView::RestoreState(const BMessage &message)
 		fViewState = viewstate;
 	}
 
+	// What about fixing it?
 	if (IsDesktopWindow() && ViewMode() == kListMode) {
 		// recover if desktop window view state set wrong
 		fViewState->SetViewMode(kIconMode);
@@ -827,9 +816,6 @@ BPoseView::StopWatching()
 void
 BPoseView::DetachedFromWindow()
 {
-	if (fTitleView && !fTitleView->Window())
-		delete fTitleView;
-
 	if (TTracker *app = dynamic_cast<TTracker*>(be_app)) {
 		app->Lock();
 		app->StopWatching(this, kShowSelectionWhenInactiveChanged);
@@ -858,19 +844,20 @@ BPoseView::Pulse()
 		// make sure task loop gets pulsed properly, if installed
 
 	// update item count view in window if necessary
-	UpdateCount();
+	Controller()->ItemCountChanged(CountItems());
 
-	if (fAutoScrollState != kAutoScrollOff)
-		HandleAutoScroll();
+	//if (fAutoScrollState != kAutoScrollOff)
+	//	HandleAutoScroll();
 
 	// do we need to update scrollbars?
+	// TODO: send a ExtentChanged "event" to the controllerView instead of polling
 	BRect extent = Extent();
 	if ((fLastExtent != extent) || (fLastLeftTop != LeftTop())) {
 		uint32 button;
 		BPoint mouse;
 		GetMouse(&mouse, &button);
 		if (!button) {
-			UpdateScrollRange();
+			Controller()->UpdateScrollRange();
 			fLastExtent = extent;
 			fLastLeftTop = LeftTop();
 		}
@@ -881,8 +868,8 @@ BPoseView::Pulse()
 void
 BPoseView::MoveBy(float x, float y)
 {
-	if (fTitleView && fTitleView->Window())
-		fTitleView->MoveBy(x, y);
+	if (Controller()->TitleView() && Controller()->TitleView()->Window())
+		Controller()->TitleView()->MoveBy(x, y);
 
 	_inherited::MoveBy(x, y);
 }
@@ -892,7 +879,6 @@ void
 BPoseView::ScrollTo(BPoint point)
 {
 	_inherited::ScrollTo(point);
-
 	//keep the view state in sync.
 	if (ViewMode() == kListMode)
 		fViewState->SetListOrigin(LeftTop());
@@ -1058,7 +1044,7 @@ BPoseView::InitDirentIterator(const entry_ref *ref)
 
 	if (result->Rewind() != B_OK) {
 		delete result;
-		HideBarberPole();
+		Controller()->SlowOperationEnded();
 		return NULL;
 	}
 
@@ -1117,20 +1103,23 @@ BPoseView::IsValidAddPosesThread(thread_id currentThread) const
 void
 BPoseView::AddPoses(Model *model)
 {
+	printf("BPoseView::AddPoses model = %p\n", model);
 	// if model is zero, PoseView has other means of iterating through all
 	// the entries that it adds
+	// TODO: move up in Init()
 	if (model) {
 		TrackerSettings settings;
 		if (model->IsRoot()) {
 			AddRootPoses(true, settings.MountSharedVolumesOntoDesktop());
 			return;
-		} else if (IsDesktopView()
+		} else if (IsDesktopView()	// TODO: review expression
 			&& (settings.MountVolumesOntoDesktop() || settings.ShowDisksIcon()
-				|| (IsFilePanel() && settings.DesktopFilePanelRoot())))
+				|| (IsFilePanel() && settings.DesktopFilePanelRoot()))) {
 			AddRootPoses(true, settings.MountSharedVolumesOntoDesktop());
+		}
 	}
 
-	ShowBarberPole();
+	Controller()->SlowOperationStarted();
 
 	AddPosesParams *params = new AddPosesParams();
 	BMessenger tmp(this);
@@ -1259,7 +1248,7 @@ BPoseView::AddPosesTask(void *castToParams)
 	// other than standard directory iterations
 	EntryListBase *container = view->InitDirentIterator(&ref);
 	if (!container) {
-		view->HideBarberPole();
+		view->Controller()->SlowOperationEnded();
 		return B_ERROR;
 	}
 
@@ -1329,7 +1318,7 @@ BPoseView::AddPosesTask(void *castToParams)
 				// switched and and old AddPosesTask needs to die.
 				// we might no longer be the current async thread
 				// for this view - if not then we're done
-				view->HideBarberPole();
+				view->Controller()->SlowOperationEnded();
 
 				// for now use the same cleanup as failToLock does
 				posesResult->fCount = modelChunkIndex + 1;
@@ -1474,7 +1463,7 @@ BPoseView::AddRootPoses(bool watchIndividually, bool mountShared)
 	}
 
 	SortPoses();
-	UpdateCount();
+	Controller()->ItemCountChanged(CountItems());
 	Invalidate();
 }
 
@@ -1499,7 +1488,7 @@ BPoseView::RemoveRootPoses()
 	}
 
 	SortPoses();
-	UpdateCount();
+	Controller()->ItemCountChanged(CountItems());
 	Invalidate();
 }
 
@@ -1531,16 +1520,14 @@ BPoseView::AddTrashPoses()
 void
 BPoseView::AddPosesCompleted()
 {
-	BContainerWindow *containerWindow = ContainerWindow();
-	if (containerWindow)
-		containerWindow->AddMimeTypesToMenu();
+	Controller()->AddMimeTypesToMenu();	// TODO: Controller()->AddPosesCompleted() // NewPosesAdded()
 
 	// if we're not in icon mode then we need to check for poses that
 	// were "auto" placed to see if they overlap with other icons
 	if (ViewMode() != kListMode)
 		CheckAutoPlacedPoses();
 
-	HideBarberPole();
+	Controller()->SlowOperationEnded();
 
 	// make sure that the last item in the list is not placed
 	// above the top of the view (leaving you with an empty window)
@@ -1645,7 +1632,7 @@ BPoseView::FinishPendingScroll(float &listViewScrollBy, BRect srcRect)
 bool
 BPoseView::AddPosesThreadValid(const entry_ref *ref) const
 {
-	return *(TargetModel()->EntryRef()) == *ref || ContainerWindow()->IsTrash();
+	return *(TargetModel()->EntryRef()) == *ref || TargetModel()->IsTrash();
 }
 
 
@@ -1829,6 +1816,7 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 
 				poseBounds = pose->CalcRect(this);
 
+				/* TODO: have a second look, also done in DeskView::AddPosesCompleted				
 				if (fEnsurePosesVisible && !viewBounds.Intersects(poseBounds)) {
 					viewBounds.InsetBy(20, 20);
 					RemoveFromVSList(pose);
@@ -1839,7 +1827,7 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 					AddToVSList(pose);
 					poseBounds = pose->CalcRect(this);
 					viewBounds.InsetBy(-20, -20);
-				}
+				}*/
 
 	 			if (forceDraw && viewBounds.Intersects(poseBounds))
 					Invalidate(poseBounds);
@@ -1849,7 +1837,7 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 					fExtent = poseBounds;
 				else
 					AddToExtent(poseBounds);
-
+					
 				break;
 		}
 		if (model->IsSymLink())
@@ -1965,91 +1953,6 @@ BPoseView::InsertPoseAfter(BPose *pose, int32 *index, int32 orientation,
 	// this is the invalid rectangle
 	srcRect.bottom = destRect.top;
 	*invalidRect = srcRect;
-}
-
-
-void
-BPoseView::DisableScrollBars()
-{
-	if (fHScrollBar)
-		fHScrollBar->SetTarget((BView *)NULL);
-	if (fVScrollBar)
-		fVScrollBar->SetTarget((BView *)NULL);
-}
-
-
-void
-BPoseView::EnableScrollBars()
-{
-	if (fHScrollBar)
-		fHScrollBar->SetTarget(this);
-	if (fVScrollBar)
-		fVScrollBar->SetTarget(this);
-}
-
-
-void
-BPoseView::AddScrollBars()
-{
-	AutoLock<BWindow> lock(Window());
-	if (!lock)
-		return;
-
-	BRect bounds(Frame());
-
-	// horizontal
-	BRect rect(bounds);
-	rect.top = rect.bottom + 1;
-	rect.bottom = rect.top + (float)B_H_SCROLL_BAR_HEIGHT;
-	rect.right++;
-	fHScrollBar = new BHScrollBar(rect, "HScrollBar", this);
-	if (Parent())
-		Parent()->AddChild(fHScrollBar);
-	else
-		Window()->AddChild(fHScrollBar);
-
-	// vertical
-	rect = bounds;
-	rect.left = rect.right + 1;
-	rect.right = rect.left + (float)B_V_SCROLL_BAR_WIDTH;
-	rect.bottom++;
-	fVScrollBar = new BScrollBar(rect, "VScrollBar", this, 0, 100, B_VERTICAL);
-	if (Parent())
-		Parent()->AddChild(fVScrollBar);
-	else
-		Window()->AddChild(fVScrollBar);
-}
-
-
-void
-BPoseView::UpdateCount()
-{
-	if (fCountView)
-		fCountView->CheckCount();
-}
-
-
-void
-BPoseView::AddCountView()
-{
-	AutoLock<BWindow> lock(Window());
-	if (!lock)
-		return;
-
-	BRect rect(Frame());
-	rect.right = rect.left + kCountViewWidth;
-	rect.top = rect.bottom + 1;
-	rect.bottom = rect.top + (float)B_H_SCROLL_BAR_HEIGHT - 1;
-	fCountView = new BCountView(rect, this);
-	if (Parent())
-		Parent()->AddChild(fCountView);
-	else
-		Window()->AddChild(fCountView);
-
-	if (fHScrollBar) {
-		fHScrollBar->MoveBy(kCountViewWidth + 1, 0);
-		fHScrollBar->ResizeBy(-kCountViewWidth - 1, 0);
-	}
 }
 
 
@@ -2238,7 +2141,7 @@ BPoseView::MessageReceived(BMessage *message)
 			break;
 
 		case kDelete:
-			if (ContainerWindow()->IsTrash())
+			if (TargetModel()->IsTrash())
 				// if trash delete instantly
 				DeleteSelection(true, false);
 			else
@@ -2418,7 +2321,7 @@ BPoseView::MessageReceived(BMessage *message)
 			bigtime_t doubleClickSpeed;
 			get_click_speed(&doubleClickSpeed);
 			if (system_time() - fLastKeyTime > (doubleClickSpeed * 2)) {
-				fCountView->SetTypeAhead("");
+				Controller()->CountView()->SetTypeAhead("");
 				delete fKeyRunner;
 				fKeyRunner = NULL;
 			}
@@ -2525,7 +2428,7 @@ BPoseView::RemoveColumn(BColumn *columnToRemove, bool runAlert)
 	for (int32 index = 0; index < count; index++)
 		fPoseList->ItemAt(index)->RemoveWidget(this, columnToRemove);
 	fColumnList->RemoveItem(columnToRemove, false);
-	fTitleView->RemoveTitle(columnToRemove);
+	Controller()->TitleView()->RemoveTitle(columnToRemove);
 
 	float attrWidth = columnToRemove->Width();
 	delete columnToRemove;
@@ -2540,7 +2443,7 @@ BPoseView::RemoveColumn(BColumn *columnToRemove, bool runAlert)
 	rect.left = offset;
 	Invalidate(rect);
 
-	ContainerWindow()->MarkAttributeMenu();
+	Controller()->MarkAttributeMenu();
 
 	if (IsWatchingDateFormatChange()) {
 		int32 columnCount = CountColumns();
@@ -2585,7 +2488,7 @@ BPoseView::AddColumn(BColumn *newColumn, const BColumn *after)
 
 	// add the new column
 	fColumnList->AddItem(newColumn, afterColumnIndex + 1);
-	fTitleView->AddTitle(newColumn);
+	Controller()->TitleView()->AddTitle(newColumn);
 
 	BRect rect(Bounds());
 
@@ -2619,7 +2522,7 @@ BPoseView::AddColumn(BColumn *newColumn, const BColumn *after)
 
 	rect.left = offset;
 	Invalidate(rect);
-	ContainerWindow()->MarkAttributeMenu();
+	Controller()->MarkAttributeMenu();
 
 	// Check if this is a time attribute and if so,
 	// start watching for changed in time/date format:
@@ -2858,31 +2761,17 @@ BPoseView::SetViewMode(uint32 newMode)
 	}
 
 	// toggle view layout between listmode and non-listmode, if necessary
-	BContainerWindow *window = ContainerWindow();
 	if (oldMode == kListMode) {
 		if (fFiltering)
 			ClearFilter();
 
-		fTitleView->RemoveSelf();
-
-		if (window)
-			window->HideAttributeMenu();
-
-		MoveBy(0, -(kTitleViewHeight + 1));
-		ResizeBy(0, kTitleViewHeight + 1);
+		Controller()->TitleView()->Hide();
+		Controller()->HideAttributeMenu();
+			
 	} else if (newMode == kListMode) {
-		MoveBy(0, kTitleViewHeight + 1);
-		ResizeBy(0, -(kTitleViewHeight + 1));
-
-		if (window)
-			window->ShowAttributeMenu();
-
-		fTitleView->ResizeTo(Frame().Width(), fTitleView->Frame().Height());
-		fTitleView->MoveTo(Frame().left, Frame().top - (kTitleViewHeight + 1));
-		if (Parent())
-			Parent()->AddChild(fTitleView);
-		else
-			Window()->AddChild(fTitleView);
+		
+		Controller()->ShowAttributeMenu();
+		Controller()->TitleView()->Show();
 	}
 
 	CommitActivePose();
@@ -2942,7 +2831,7 @@ BPoseView::SetViewMode(uint32 newMode)
 
 	PinPointToValidRange(newOrigin);
 
-	DisableScrollBars();
+	Controller()->SetScrollBarsEnabled(false);
 	ScrollTo(newOrigin);
 
 	// reset hint and arrange poses which DO NOT have a location yet
@@ -2960,9 +2849,9 @@ BPoseView::SetViewMode(uint32 newMode)
 	else
 		RecalcExtent();
 
-	UpdateScrollRange();
-	SetScrollBarsTo(newOrigin);
-	EnableScrollBars();
+	Controller()->UpdateScrollRange();
+	Controller()->SetScrollBarsTo(newOrigin);
+	Controller()->SetScrollBarsEnabled(true);
 	ContainerWindow()->ViewModeChanged(oldMode, newMode);
 }
 
@@ -3213,7 +3102,7 @@ BPoseView::NewFileFromTemplate(const BMessage *message)
 		destEntryRef.name, &index);
 
 	if (pose) {
-		UpdateScrollRange();
+		Controller()->UpdateScrollRange();
 		CommitActivePose();
 		SelectPose(pose, index);
 		pose->EditFirstWidget(BPoint(0, index * fListElemHeight), this);
@@ -3237,7 +3126,7 @@ BPoseView::NewFolder(const BMessage *message)
 		int32 index;
 		BPose *pose = EntryCreated(TargetModel()->NodeRef(), &nodeRef, ref.name, &index);
 		if (pose) {
-			UpdateScrollRange();
+			Controller()->UpdateScrollRange();
 			CommitActivePose();
 			SelectPose(pose, index);
 			pose->EditFirstWidget(BPoint(0, index * fListElemHeight), this);
@@ -3261,12 +3150,12 @@ BPoseView::Cleanup(bool doAll)
 		// sort by sort field
 		SortPoses();
 
-		DisableScrollBars();
+		Controller()->SetScrollBarsEnabled(false);
 		ClearExtent();
 		ClearSelection();
 		ScrollTo(B_ORIGIN);
-		UpdateScrollRange();
-		SetScrollBarsTo(B_ORIGIN);
+		Controller()->UpdateScrollRange();
+		Controller()->SetScrollBarsTo(B_ORIGIN);
 		ResetPosePlacementHint();
 
 		BRect viewBounds(Bounds());
@@ -3283,17 +3172,18 @@ BPoseView::Cleanup(bool doAll)
 		RecalcExtent();
 
 		// scroll icons into view so that leftmost icon is "fOffset" from left
-		UpdateScrollRange();
-		EnableScrollBars();
+		Controller()->UpdateScrollRange();
+		Controller()->SetScrollBarsEnabled(true);
 
-		if (HScrollBar()) {
+		// TODO
+		/*if (HScrollBar()) {
 			float min;
 			float max;
 			HScrollBar()->GetRange(&min, &max);
 			HScrollBar()->SetValue(min);
-		}
+		}*/
 
-		UpdateScrollRange();
+		Controller()->UpdateScrollRange();
 		Invalidate(viewBounds);
 
 	} else {
@@ -3748,7 +3638,7 @@ BPoseView::ScrollIntoView(BRect poseRect)
 	}
 
 	if (!Bounds().Contains(poseRect))
-		SetScrollBarsTo(poseRect.LeftTop());
+		Controller()->SetScrollBarsTo(poseRect.LeftTop());
 }
 
 
@@ -5064,7 +4954,7 @@ BPoseView::FSNotification(const BMessage *message)
 					BVolume volume(device);
 					if (volume.InitCheck() == B_OK)
 						CreateVolumePose(&volume, false);
-				} else if (ContainerWindow()->IsTrash()) {
+				} else if (TargetModel()->IsTrash()) {
 					// add trash items from newly mounted volume
 
 					BDirectory trashDir;
@@ -5233,7 +5123,7 @@ BPoseView::EntryMoved(const BMessage *message)
 	ASSERT(TargetModel());
 
 	node_ref thisDirNode;
-	if (ContainerWindow()->IsTrash()) {
+	if (TargetModel()->IsTrash()) {
 
 		BDirectory trashDir;
 		if (FSGetTrashDir(&trashDir, itemNode.device) != B_OK)
@@ -6055,8 +5945,8 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 				} else
 					SelectPose(poseList->FirstItem(), 0);
 
-			} else if (fVScrollBar)
-				fVScrollBar->SetValue(0);
+			} /*TODO else if (fVScrollBar)
+				fVScrollBar->SetValue(0);*/
 			break;
 
 		case B_END:
@@ -6082,27 +5972,27 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 				} else
 					SelectPose(poseList->LastItem(), poseList->CountItems() - 1);
 
-			} else if (fVScrollBar) {
+			} /* TODO else if (fVScrollBar) {
 				float max, min;
 				fVScrollBar->GetRange(&min, &max);
 				fVScrollBar->SetValue(max);
-			}
+			}*/
 			break;
 
 		case B_PAGE_UP:
-			if (fVScrollBar) {
+			/*TODO if (fVScrollBar) {
 				float max, min;
 				fVScrollBar->GetSteps(&min, &max);
 				fVScrollBar->SetValue(fVScrollBar->Value() - max);
-			}
+			}*/
 			break;
 
 		case B_PAGE_DOWN:
-			if (fVScrollBar) {
+			/*TODO if (fVScrollBar) {
 				float max, min;
 				fVScrollBar->GetSteps(&min, &max);
 				fVScrollBar->SetValue(fVScrollBar->Value() + max);
-			}
+			}*/
 			break;
 
 		case B_TAB:
@@ -6168,7 +6058,7 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 				} else
 					lastString->TruncateChars(lastString->CountChars() - 1);
 
-				fCountView->RemoveFilterCharacter();
+				Controller()->CountView()->RemoveFilterCharacter();
 				FilterChanged();
 				break;
 			}
@@ -6181,7 +6071,7 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 
 			fLastKeyTime = system_time();
 
-			fCountView->SetTypeAhead(sMatchString.String());
+			Controller()->CountView()->SetTypeAhead(sMatchString.String());
 
 			// select our new string
 			int32 index;
@@ -6193,7 +6083,6 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 			break;
 		}
 
-		case B_FUNCTION_KEY:
 		case B_INSERT:
 			break;
 
@@ -6208,12 +6097,12 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 						break;
 
 					fFilterStrings.AddItem(new BString());
-					fCountView->AddFilterCharacter("|");
+					Controller()->CountView()->AddFilterCharacter("|");
 					break;
 				}
 
 				fFilterStrings.LastItem()->AppendChars(bytes, 1);
-				fCountView->AddFilterCharacter(bytes);
+				Controller()->CountView()->AddFilterCharacter(bytes);
 				FilterChanged();
 				break;
 			}
@@ -6243,7 +6132,7 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 
 			fLastKeyTime = eventTime;
 
-			fCountView->SetTypeAhead(sMatchString.String());
+			Controller()->CountView()->SetTypeAhead(sMatchString.String());
 
 			int32 index;
 			BPose *pose = FindBestMatch(&index);
@@ -7001,7 +6890,7 @@ BPoseView::DragSelectionRect(BPoint startPoint, bool shouldExtend)
 
 			fIsDrawingSelectionRect = true;
 
-			CheckAutoScroll(newMousePoint, true, true);
+			//CheckAutoScroll(newMousePoint, true, true);
 
 			// use current selection rectangle to scan poses
 			if (ViewMode() == kListMode)
@@ -7425,8 +7314,8 @@ BPoseView::DeletePose(const node_ref *itemNode, BPose *pose, int32 index)
 				RemoveFromExtent(invalidRect);
 
 			Invalidate(invalidRect);
-			UpdateCount();
-			UpdateScrollRange();
+			Controller()->ItemCountChanged(CountItems());
+			Controller()->UpdateScrollRange();
 			ResetPosePlacementHint();
 
 			if (ViewMode() == kListMode) {
@@ -7665,11 +7554,11 @@ BPoseView::ClearPoses()
 	fRealPivotPose = NULL;
 	fMimeTypesInSelectionCache.MakeEmpty();
 
-	DisableScrollBars();
+	Controller()->SetScrollBarsEnabled(false);
 	ScrollTo(BPoint(0, 0));
-	UpdateScrollRange();
-	SetScrollBarsTo(BPoint(0, 0));
-	EnableScrollBars();
+	Controller()->UpdateScrollRange();
+	Controller()->SetScrollBarsTo(BPoint(0, 0));
+	Controller()->SetScrollBarsEnabled(true);
 	ResetPosePlacementHint();
 	ClearExtent();
 
@@ -7682,7 +7571,7 @@ void
 BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 {
 	ASSERT(TargetModel());
-	if (*newDirRef == *TargetModel()->EntryRef())
+	if (TargetModel() && *newDirRef == *TargetModel()->EntryRef())
 		// no change
 		return;
 
@@ -7704,11 +7593,6 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 	delete fModel;
 	fModel = model;
 
-	// check if model is a trash dir, if so
-	// update ContainerWindow's fIsTrash, etc.
-	// variables to indicate new state
-	ContainerWindow()->UpdateIfTrash(model);
-
 	StopWatching();
 	ClearPoses();
 
@@ -7722,33 +7606,17 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 	}
 
 	// Make sure fTitleView is rebuilt, as fColumnList might have changed
-	fTitleView->Reset();
+	Controller()->TitleView()->Reset();
 
 	if (viewStateRestored) {
 		if (ViewMode() == kListMode && oldMode != kListMode) {
-
-			MoveBy(0, kTitleViewHeight + 1);
-			ResizeBy(0, -(kTitleViewHeight + 1));
-
-			if (ContainerWindow())
-				ContainerWindow()->ShowAttributeMenu();
-
-			fTitleView->ResizeTo(Frame().Width(), fTitleView->Frame().Height());
-			fTitleView->MoveTo(Frame().left, Frame().top - (kTitleViewHeight + 1));
-			if (Parent())
-				Parent()->AddChild(fTitleView);
-			else
-				Window()->AddChild(fTitleView);
-		} else if (ViewMode() != kListMode && oldMode == kListMode) {
-			fTitleView->RemoveSelf();
-
-			if (ContainerWindow())
-				ContainerWindow()->HideAttributeMenu();
-
-			MoveBy(0, -(kTitleViewHeight + 1));
-			ResizeBy(0, kTitleViewHeight + 1);
-		} else if (ViewMode() == kListMode && oldMode == kListMode && fTitleView != NULL)
-			fTitleView->Invalidate();
+			Controller()->ShowAttributeMenu();
+			Controller()->SetControlVisible(Controller()->TitleView(), true);
+		} else if (ViewMode() != kListMode && oldMode == kListMode) {					
+			Controller()->SetControlVisible(Controller()->TitleView(), false);
+			Controller()->HideAttributeMenu();
+		} else if (ViewMode() == kListMode && oldMode == kListMode)		
+			Controller()->TitleView()->Invalidate();
 
 		BPoint origin;
 		if (ViewMode() == kListMode)
@@ -7761,12 +7629,12 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 		SetIconPoseHeight();
 		GetLayoutInfo(ViewMode(), &fGrid, &fOffset);
 		ResetPosePlacementHint();
-
-		DisableScrollBars();
+	
+		Controller()->SetScrollBarsEnabled(false);
 		ScrollTo(origin);
-		UpdateScrollRange();
-		SetScrollBarsTo(origin);
-		EnableScrollBars();
+		Controller()->UpdateScrollRange();
+		Controller()->SetScrollBarsTo(origin);
+		Controller()->SetScrollBarsEnabled(true);
 	} else {
 		ResetOrigin();
 		ResetPosePlacementHint();
@@ -7777,7 +7645,7 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 	// be sure this happens after origin is set and window is sized
 	// properly for proper icon caching!
 
-	if (ContainerWindow()->IsTrash())
+	if (TargetModel()->IsTrash())
 		AddTrashPoses();
 	else
 		AddPoses(TargetModel());
@@ -7817,11 +7685,11 @@ BPoseView::Refresh()
 void
 BPoseView::ResetOrigin()
 {
-	DisableScrollBars();
+	Controller()->SetScrollBarsEnabled(false);
 	ScrollTo(B_ORIGIN);
-	UpdateScrollRange();
-	SetScrollBarsTo(B_ORIGIN);
-	EnableScrollBars();
+	Controller()->UpdateScrollRange();
+	Controller()->SetScrollBarsTo(B_ORIGIN);
+	Controller()->SetScrollBarsEnabled(true);
 }
 
 
@@ -8174,26 +8042,6 @@ BPoseView::Extent() const
 
 
 void
-BPoseView::SetScrollBarsTo(BPoint point)
-{
-	if (fHScrollBar && fVScrollBar) {
-		fHScrollBar->SetValue(point.x);
-		fVScrollBar->SetValue(point.y);
-	} else {
-		// TODO: I don't know what this was supposed to work around
-		// (ie why it wasn't calling ScrollTo(point) simply). Although
-		// it cannot have been tested, since it was broken before, I am
-		// still leaving this, since I know there can be a subtle change in
-		// behaviour (BView<->BScrollBar feedback effects) when scrolling
-		// both directions at once versus separately.
-		BPoint origin = LeftTop();
-		ScrollTo(BPoint(origin.x, point.y));
-		ScrollTo(point);
-	}
-}
-
-
-void
 BPoseView::PinPointToValidRange(BPoint& origin)
 {
 	// !NaN and valid range
@@ -8207,73 +8055,6 @@ BPoseView::PinPointToValidRange(BPoint& origin)
 		origin.y = 0;
 	else if (origin.y < -40000.0 || origin.y > 40000.0)
 		origin.y = 0;
-}
-
-
-void
-BPoseView::UpdateScrollRange()
-{
-	// TODO: some calls to UpdateScrollRange don't do the right thing because
-	// Extent doesn't return the right value (too early in PoseView lifetime??)
-	//
-	// This happened most with file panels, when opening a parent - added
-	// an extra call to UpdateScrollRange in SelectChildInParent to work
-	// around this
-
-	AutoLock<BWindow> lock(Window());
-	if (!lock)
-		return;
-
-	BRect bounds(Bounds());
-
-	BPoint origin(LeftTop());
-	BRect extent(Extent());
-
-	lock.Unlock();
-
-	BPoint minVal(std::min(extent.left, origin.x), std::min(extent.top, origin.y));
-
-	BPoint maxVal((extent.right - bounds.right) + origin.x,
-		(extent.bottom - bounds.bottom) + origin.y);
-
-	maxVal.x = std::max(maxVal.x, origin.x);
-	maxVal.y = std::max(maxVal.y, origin.y);
-
-	if (fHScrollBar) {
-		float scrollMin;
-		float scrollMax;
-		fHScrollBar->GetRange(&scrollMin, &scrollMax);
-		if (minVal.x != scrollMin || maxVal.x != scrollMax) {
-			fHScrollBar->SetRange(minVal.x, maxVal.x);
-			fHScrollBar->SetSteps(kSmallStep, bounds.Width());
-		}
-	}
-
-	if (fVScrollBar) {
-		float scrollMin;
-		float scrollMax;
-		fVScrollBar->GetRange(&scrollMin, &scrollMax);
-
-		if (minVal.y != scrollMin || maxVal.y != scrollMax) {
-			fVScrollBar->SetRange(minVal.y, maxVal.y);
-			fVScrollBar->SetSteps(kSmallStep, bounds.Height());
-		}
-	}
-
-	// set proportions for bars
-	BRect totalExtent(extent | bounds);
-
-	if (fHScrollBar && totalExtent.Width() != 0.0) {
-		float proportion = bounds.Width() / totalExtent.Width();
-		if (fHScrollBar->Proportion() != proportion)
-			fHScrollBar->SetProportion(proportion);
-	}
-
-	if (fVScrollBar && totalExtent.Height() != 0.0) {
-		float proportion = bounds.Height() / totalExtent.Height();
-		if (fVScrollBar->Proportion() != proportion)
-			fVScrollBar->SetProportion(proportion);
-	}
 }
 
 
@@ -9235,7 +9016,8 @@ BPoseView::HiliteDropTarget(bool hiliteState)
 }
 
 
-bool
+// TODO
+/*bool
 BPoseView::CheckAutoScroll(BPoint mouseLoc, bool shouldScroll,
 	bool selectionScrolling)
 {
@@ -9408,7 +9190,7 @@ BPoseView::HandleAutoScroll()
 			CheckAutoScroll(mouseLoc, true);
 			break;
 	}
-}
+}*/
 
 
 BRect
@@ -9449,30 +9231,6 @@ bool
 BPoseView::Represents(const entry_ref *ref) const
 {
 	return *fModel->EntryRef() == *ref;
-}
-
-
-void
-BPoseView::ShowBarberPole()
-{
-	if (fCountView) {
-		AutoLock<BWindow> lock(Window());
-		if (!lock)
-			return;
-		fCountView->StartBarberPole();
-	}
-}
-
-
-void
-BPoseView::HideBarberPole()
-{
-	if (fCountView) {
-		AutoLock<BWindow> lock(Window());
-		if (!lock)
-			return;
-		fCountView->EndBarberPole();
-	}
 }
 
 
@@ -9656,7 +9414,7 @@ BPoseView::FilterChanged()
 void
 BPoseView::UpdateAfterFilterChange()
 {
-	UpdateCount();
+	Controller()->ItemCountChanged(CountItems());
 
 	BPose *pose = fFilteredPoseList->LastItem();
 	if (pose == NULL)
@@ -9668,7 +9426,7 @@ BPoseView::UpdateAfterFilterChange()
 			BView::ScrollTo(0, max_c(height - bounds.Height(), 0));
 	}
 
-	UpdateScrollRange();
+	Controller()->UpdateScrollRange();
 }
 
 
@@ -9746,7 +9504,7 @@ BPoseView::ClearFilter()
 	if (!fFiltering)
 		return;
 
-	fCountView->CancelFilter();
+	Controller()->CountView()->CancelFilter();
 
 	int32 stringCount = fFilterStrings.CountItems();
 	for (int32 i = stringCount - 1; i > 0; i--)
@@ -9764,25 +9522,6 @@ BPoseView::ClearFilter()
 
 
 //	#pragma mark -
-
-
-BHScrollBar::BHScrollBar(BRect bounds, const char *name, BView *target)
-	:	BScrollBar(bounds, name, target, 0, 1, B_HORIZONTAL),
-		fTitleView(0)
-{
-}
-
-
-void
-BHScrollBar::ValueChanged(float value)
-{
-	if (fTitleView) {
-		BPoint origin = fTitleView->LeftTop();
-		fTitleView->ScrollTo(BPoint(value, origin.y));
-	}
-
-	_inherited::ValueChanged(value);
-}
 
 
 TPoseViewFilter::TPoseViewFilter(BPoseView *pose)

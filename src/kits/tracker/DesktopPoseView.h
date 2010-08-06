@@ -46,7 +46,7 @@ namespace BPrivate {
 class DesktopPoseView : public BPoseView {
 	// overrides BPoseView to add desktop-view specific code
 public:
-	DesktopPoseView(Model *, BRect, uint32 viewMode, uint32 resizeMask = B_FOLLOW_ALL);
+	DesktopPoseView(Model *, uint32 viewMode);
 
 	static EntryListBase *InitDesktopDirentIterator(BPoseView *, const entry_ref *);
 
@@ -59,6 +59,8 @@ public:
 	virtual void AddPosesCompleted();
 		
 protected:
+	void _AddShortcuts();
+
 	virtual EntryListBase *InitDirentIterator(const entry_ref *);
 	virtual bool FSNotification(const BMessage *);
 

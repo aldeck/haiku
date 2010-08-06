@@ -47,6 +47,7 @@ class BCountView : public BView {
 
 public:
 	BCountView(BRect, BPoseView *);
+	BCountView(BPoseView *);
 	~BCountView();
 
 	virtual	void Draw(BRect);
@@ -55,9 +56,9 @@ public:
 	virtual void Pulse();
 	virtual void WindowActivated(bool active);
 
-	void CheckCount();
-	void StartBarberPole();
-	void EndBarberPole();
+	void ShowBarberPole();
+	void HideBarberPole();
+	void SetCount(int32 count);
 
 	void SetTypeAhead(const char *);
 	const char *TypeAhead() const;

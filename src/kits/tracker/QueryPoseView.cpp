@@ -69,12 +69,14 @@ using std::nothrow;
 // query results and add/remove appropriately. Right now only moving to
 // Trash is supported
 
-BQueryPoseView::BQueryPoseView(Model *model, BRect frame, uint32 resizeMask)
-	:	BPoseView(model, frame, kListMode, resizeMask),
-		fShowResultsFromTrash(false),
-		fQueryList(NULL),
-		fQueryListContainer(NULL),
-		fCreateOldPoseList(false)
+
+BQueryPoseView::BQueryPoseView(Model *model)
+	:	
+	BPoseView(model, kListMode),
+	fShowResultsFromTrash(false),
+	fQueryList(NULL),
+	fQueryListContainer(NULL),
+	fCreateOldPoseList(false)
 {
 }
 

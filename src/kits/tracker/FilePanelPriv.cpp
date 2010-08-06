@@ -37,6 +37,7 @@ All rights reserved.
 #include "AttributeStream.h"
 #include "AutoLock.h"
 #include "Commands.h"
+#include "CountView.h"
 #include "DesktopPoseView.h"
 #include "DirMenu.h"
 #include "FavoritesMenu.h"
@@ -47,6 +48,7 @@ All rights reserved.
 #include "MimeTypes.h"
 #include "NavMenu.h"
 #include "PoseView.h"
+#include "PoseViewController.h"
 #include "Tracker.h"
 #include "tracker_private.h"
 
@@ -57,6 +59,7 @@ All rights reserved.
 #include <Debug.h>
 #include <Directory.h>
 #include <FindDirectory.h>
+#include <GroupLayoutBuilder.h>
 #include <Locale.h>
 #include <MenuBar.h>
 #include <MenuField.h>
@@ -68,6 +71,7 @@ All rights reserved.
 #include <Roster.h>
 #include <SymLink.h>
 #include <ScrollView.h>
+#include <SpaceLayoutItem.h>
 #include <String.h>
 #include <StopWatch.h>
 #include <TextControl.h>
@@ -142,7 +146,9 @@ TFilePanel::TFilePanel(file_panel_mode mode, BMessenger *target,
 		const BEntry *startDir, uint32 nodeFlavors, bool multipleSelection,
 		BMessage *message, BRefFilter *filter, uint32 containerWindowFlags,
 		window_look look, window_feel feel, bool hideWhenDone)
-	: BContainerWindow(0, containerWindowFlags, look, feel, 0, B_CURRENT_WORKSPACE),
+	:
+	BContainerWindow(NULL, 0, containerWindowFlags, look, feel, 0,
+		B_CURRENT_WORKSPACE),
 	fDirMenu(NULL),
 	fDirMenuField(NULL),
 	fTextControl(NULL),
@@ -210,14 +216,9 @@ TFilePanel::TFilePanel(file_panel_mode mode, BMessenger *target,
 
 	fTaskLoop = new PiggybackTaskLoop;
 
+	fCreationModel = model;	// TODO: temporary until the persistency rewrite
+		
 	AutoLock<BWindow> lock(this);
-	CreatePoseView(model);
-	fPoseView->SetRefFilter(filter);
-	if (!fIsSavePanel)
-		fPoseView->SetMultipleSelection(multipleSelection);
-
-	fPoseView->SetFlags(fPoseView->Flags() | B_NAVIGABLE);
-	fPoseView->SetPoseEditing(false);
 	AddCommonFilter(new BMessageFilter(B_KEY_DOWN, key_down_filter));
 	AddCommonFilter(new BMessageFilter(B_SIMPLE_DATA, TFilePanel::MessageDropFilter));
 	AddCommonFilter(new BMessageFilter(B_NODE_MONITOR, TFilePanel::FSFilter));
@@ -226,7 +227,7 @@ TFilePanel::TFilePanel(file_panel_mode mode, BMessenger *target,
 	BMessenger tracker(kTrackerSignature);
 	BHandler::StartWatching(tracker, kDesktopFilePanelRootChanged);
 
-	Init();
+	Init(filter, multipleSelection);
 }
 
 
@@ -447,7 +448,7 @@ TFilePanel::SetRefFilter(BRefFilter *filter)
 	fPoseView->CommitActivePose();
 	fPoseView->Refresh();
 	FavoritesMenu* menu = dynamic_cast<FavoritesMenu *>
-		(fMenuBar->FindItem(B_TRANSLATE("Favorites"))->Submenu());
+		(Controller()->MenuBar()->FindItem(B_TRANSLATE("Favorites"))->Submenu());
 	if (menu)
 		menu->SetRefFilter(filter);
 }
@@ -581,27 +582,133 @@ TFilePanel::GetNextEntryRef(entry_ref *ref)
 }
 
 
-BPoseView *
-TFilePanel::NewPoseView(Model *model, BRect rect, uint32)
-{
-	return new BFilePanelPoseView(model, rect);
-}
-
-
 void
-TFilePanel::Init(const BMessage *)
+TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 {
-	BRect windRect(Bounds());
-	AddChild(fBackView = new BackgroundView(windRect));
+	printf("(%p) TFilePanel::Init \n", this);
+	
+	AutoLock<BWindow> lock(this);
+	if (!lock)
+		return;
 
-	// add poseview menu bar
-	fMenuBar = new BMenuBar(BRect(0, 0, windRect.Width(), 1), "MenuBar");
-	fMenuBar->SetBorder(B_BORDER_FRAME);
-	fBackView->AddChild(fMenuBar);
+	// create controls
+	fPoseView = new BFilePanelPoseView(fCreationModel);
+	PoseView()->SetDragEnabled(false);
+	PoseView()->SetDropEnabled(false);
+	PoseView()->SetSelectionHandler(this);
+	PoseView()->SetSelectionChangedHook(true);
+	PoseView()->DisableSaveLocation();
+	fPoseView->SetRefFilter(filter);
+	if (!fIsSavePanel)
+		fPoseView->SetMultipleSelection(multipleSelection);
+	fPoseView->SetFlags(fPoseView->Flags() | B_NAVIGABLE);
+	fPoseView->SetPoseEditing(false);
+	
+	fController = new PoseViewController();
+	
+	Controller()->SetPoseView(fPoseView);
+	Controller()->CreateControls(fCreationModel);
 
-	AddMenus();
+	// add file name text view
+	fTextControl = new BTextControl("text view", "",
+			"", NULL);
+	DisallowMetaKeys(fTextControl->TextView());
+	DisallowFilenameKeys(fTextControl->TextView());
+	fTextControl->SetDivider(0.0f);
+	fTextControl->TextView()->SetMaxBytes(B_FILE_NAME_LENGTH - 1);
+	
+	if (fIsSavePanel)
+		fButtonText.SetTo(B_TRANSLATE("Save"));
+	else {		
+		fButtonText.SetTo(B_TRANSLATE("Open"));		
+	}	
+	
+	// add directory menu and menufield
+	fDirMenu = new BDirMenu(0, kSwitchDirectory, "refs");
+	fDirMenuField = new BMenuField("DirMenuField", "", fDirMenu);
+	fDirMenuField->MenuBar()->SetFont(be_plain_font);
+	fDirMenuField->SetDivider(0);
+
+	fDirMenuField->MenuBar()->RemoveItem((int32)0);
+	fDirMenu->SetMenuBar(fDirMenuField->MenuBar());
+		// the above is a weird call from BDirMenu
+		// ToDo: clean up
+
+	BEntry entry(TargetModel()->EntryRef());
+	if (entry.InitCheck() == B_OK)
+		fDirMenu->Populate(&entry, 0, true, true, false, true);
+	else
+		fDirMenu->Populate(0, 0, true, true, false, true);
+
+	// add buttons
+	BButton* defaultButton = new BButton("default button", fButtonText.String(),
+		new BMessage(kDefaultButton));
+
+	BButton* cancelButton = new BButton("cancel button",
+		B_TRANSLATE("Cancel"), new BMessage(kCancelButton));
+		
+	if (!fIsSavePanel)
+		defaultButton->SetEnabled(false);
+
+	defaultButton->MakeDefault(true);
+
+	// layout
+	const float kInsetSpacing = 8;
+	const float kElementSpacing = 8;
+	
+	// TODO: find a more elegant way for this conditional layout
+	BView* buttonsGroup = NULL;
+	if (fIsSavePanel) {		
+		buttonsGroup = BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
+			.Add(fTextControl)
+			.Add(cancelButton)
+			.Add(defaultButton)
+			.SetInsets(0, 0, 14, 0);		
+	} else {
+		buttonsGroup = BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
+			.AddGlue()
+			.Add(cancelButton)
+			.Add(defaultButton)
+			.SetInsets(0, 0, 14, 0);
+	}
+	
+	SetLayout(new BGroupLayout(B_HORIZONTAL));
+	AddChild(BGroupLayoutBuilder(B_VERTICAL)
+		.Add(Controller()->MenuBar())
+		.Add(BGroupLayoutBuilder(B_VERTICAL, kElementSpacing)
+			.Add(BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
+				.Add(fDirMenuField)
+				.AddGlue()
+				.AddGlue()
+			)			
+			.Add(BGroupLayoutBuilder(B_VERTICAL)
+				.Add(Controller()->TitleView())		
+				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+				.Add(Controller()->PoseView())
+				.Add(Controller()->VerticalScrollBar()))
+				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+					.Add(Controller()->CountView())
+					.Add(Controller()->HorizontalScrollBar(), 3.0f)
+					.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
+						// avoid the window's resize handle
+				)
+			)
+			.Add(buttonsGroup)
+			.SetInsets(kInsetSpacing, kInsetSpacing, kInsetSpacing, kInsetSpacing)
+		)
+	);
+	
+	RestoreState();
+	CheckScreenIntersect();
+	
+	Controller()->AddMenus();
 	AddContextMenus();
-
+	AddCommonShortcuts();
+	
+	Controller()->TitleView()->Reset();
+		// TODO check for a more robust way for the titleview to get updates
+	
+		// configure/customize menus
 	FavoritesMenu* favorites = new FavoritesMenu(B_TRANSLATE("Favorites"),
 		new BMessage(kSwitchDirectory), new BMessage(B_REFS_RECEIVED),
 		BMessenger(this), IsSavePanel(), fPoseView->RefFilter());
@@ -611,16 +718,15 @@ TFilePanel::Init(const BMessage *)
 		B_TRANSLATE("Edit favorites"B_UTF8_ELLIPSIS),
 		new BMessage(kEditFavorites)));
 
-	fMenuBar->AddItem(favorites);
+	Controller()->MenuBar()->AddItem(favorites);
 
-	// configure menus
-	BMenuItem* item = fMenuBar->FindItem(B_TRANSLATE("Window"));
+	BMenuItem* item = Controller()->MenuBar()->FindItem(B_TRANSLATE("Window"));
 	if (item) {
-		fMenuBar->RemoveItem(item);
+		Controller()->MenuBar()->RemoveItem(item);
 		delete item;
 	}
 
-	item = fMenuBar->FindItem(B_TRANSLATE("File"));
+	item = Controller()->MenuBar()->FindItem(B_TRANSLATE("File"));
 	if (item) {
 		BMenu *menu = item->Submenu();
 		if (menu) {
@@ -650,84 +756,8 @@ TFilePanel::Init(const BMessage *)
 			}
 		}
 	}
-
-	// add directory menu and menufield
-	fDirMenu = new BDirMenu(0, kSwitchDirectory, "refs");
-
-	font_height ht;
-	be_plain_font->GetHeight(&ht);
-	float f_height = ht.ascent + ht.descent + ht.leading;
-
-	BRect rect;
-	rect.top = fMenuBar->Bounds().Height() + 8;
-	rect.left = windRect.left + 8;
-	rect.right = rect.left + 300;
-	rect.bottom = rect.top + (f_height > 22 ? f_height : 22);
-
-	fDirMenuField = new BMenuField(rect, "DirMenuField", "", fDirMenu);
-	fDirMenuField->MenuBar()->SetFont(be_plain_font);
-	fDirMenuField->SetDivider(0);
-
-	fDirMenuField->MenuBar()->RemoveItem((int32)0);
-	fDirMenu->SetMenuBar(fDirMenuField->MenuBar());
-		// the above is a weird call from BDirMenu
-		// ToDo: clean up
-
-	BEntry entry(TargetModel()->EntryRef());
-	if (entry.InitCheck() == B_OK)
-		fDirMenu->Populate(&entry, 0, true, true, false, true);
-	else
-		fDirMenu->Populate(0, 0, true, true, false, true);
-
-	fBackView->AddChild(fDirMenuField);
-
-	// add file name text view
-	if (fIsSavePanel) {
-		BRect rect(windRect);
-		rect.top = rect.bottom - 35;
-		rect.left = 8;
-		rect.right = rect.left + 170;
-		rect.bottom = rect.top + 13;
-
-		fTextControl = new BTextControl(rect, "text view",
-			B_TRANSLATE("save text"), "", NULL,
-			B_FOLLOW_LEFT | B_FOLLOW_BOTTOM);
-		DisallowMetaKeys(fTextControl->TextView());
-		DisallowFilenameKeys(fTextControl->TextView());
-		fBackView->AddChild(fTextControl);
-		fTextControl->SetDivider(0.0f);
-		fTextControl->TextView()->SetMaxBytes(B_FILE_NAME_LENGTH - 1);
-
-		fButtonText.SetTo(B_TRANSLATE("Save"));
-	} else
-		fButtonText.SetTo(B_TRANSLATE("Open"));
-
-	rect = windRect;
-	rect.OffsetTo(10, fDirMenuField->Frame().bottom + 10);
-	rect.bottom = windRect.bottom - 60;
-	rect.right -= B_V_SCROLL_BAR_WIDTH + 20;
-
-	// re-parent the poseview to our backview
-	// ToDo:
-	// This is terrible, fix it up
-	PoseView()->RemoveSelf();
-	if (fIsSavePanel)
-		fBackView->AddChild(PoseView(), fTextControl);
-	else
-		fBackView->AddChild(PoseView());
-
-	PoseView()->MoveTo(rect.LeftTop());
-	PoseView()->ResizeTo(rect.Width(), rect.Height());
-	PoseView()->AddScrollBars();
-	PoseView()->SetDragEnabled(false);
-	PoseView()->SetDropEnabled(false);
-	PoseView()->SetSelectionHandler(this);
-	PoseView()->SetSelectionChangedHook(true);
-	PoseView()->DisableSaveLocation();
-	PoseView()->VScrollBar()->MoveBy(0, -1);
-	PoseView()->VScrollBar()->ResizeBy(0, 1);
-
-
+	
+	// add shortcuts
 	AddShortcut('W', B_COMMAND_KEY, new BMessage(kCancelButton));
 	AddShortcut('H', B_COMMAND_KEY, new BMessage(kSwitchToHome));
 	AddShortcut(B_DOWN_ARROW, B_COMMAND_KEY, new BMessage(kOpenDir));
@@ -735,36 +765,9 @@ TFilePanel::Init(const BMessage *)
 	AddShortcut(B_UP_ARROW, B_COMMAND_KEY, new BMessage(kOpenParentDir));
 	AddShortcut(B_UP_ARROW, B_COMMAND_KEY | B_OPTION_KEY, new BMessage(kOpenParentDir));
 
-	// New code to make buttons font sensitive
-	rect = windRect;
-	rect.top = rect.bottom - 35;
-	rect.bottom -= 10;
-	rect.right -= 25;
-	float default_width = be_plain_font->StringWidth(fButtonText.String()) + 20;
-	rect.left = (default_width > 75) ? (rect.right - default_width) : (rect.right - 75);
-
-	BButton *default_button = new BButton(rect, "default button", fButtonText.String(),
-		new BMessage(kDefaultButton), B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
-	fBackView->AddChild(default_button);
-
-	rect.right = rect.left -= 10;
-	float cancel_width = be_plain_font->StringWidth(B_TRANSLATE("Cancel")) + 20;
-	rect.left = (cancel_width > 75) ? (rect.right - cancel_width) : (rect.right - 75);
-
-	BButton* cancel_button = new BButton(rect, "cancel button",
-		B_TRANSLATE("Cancel"), new BMessage(kCancelButton),
-		B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
-	fBackView->AddChild(cancel_button);
-
-	if (!fIsSavePanel)
-		default_button->SetEnabled(false);
-
-	default_button->MakeDefault(true);
-
-	RestoreState();
-
+	
 	PoseView()->ScrollTo(B_ORIGIN);
-	PoseView()->UpdateScrollRange();
+	Controller()->UpdateScrollRange();
 	PoseView()->ScrollTo(B_ORIGIN);
 
 	if (fTextControl) {
@@ -781,8 +784,6 @@ TFilePanel::Init(const BMessage *)
 	title << fButtonText;	// Open or Save
 
 	SetTitle(title.String());
-
-	SetSizeLimits(370, 10000, 200, 10000);
 }
 
 
@@ -824,7 +825,6 @@ TFilePanel::SaveState(BMessage &message) const
 void
 TFilePanel::RestoreWindowState(AttributeStreamNode *node)
 {
-	SetSizeLimits(360, 10000, 200, 10000);
 	if (!node)
 		return;
 
@@ -940,14 +940,14 @@ TFilePanel::MenusBeginning()
 {
 	int32 count = PoseView()->SelectionList()->CountItems();
 
-	EnableNamedMenuItem(fMenuBar, kNewFolder, !TargetModel()->IsRoot());
-	EnableNamedMenuItem(fMenuBar, kMoveToTrash, !TargetModel()->IsRoot() && count);
-	EnableNamedMenuItem(fMenuBar, kGetInfo, count != 0);
-	EnableNamedMenuItem(fMenuBar, kEditItem, count == 1);
+	EnableNamedMenuItem(Controller()->MenuBar(), kNewFolder, !TargetModel()->IsRoot());
+	EnableNamedMenuItem(Controller()->MenuBar(), kMoveToTrash, !TargetModel()->IsRoot() && count);
+	EnableNamedMenuItem(Controller()->MenuBar(), kGetInfo, count != 0);
+	EnableNamedMenuItem(Controller()->MenuBar(), kEditItem, count == 1);
 
-	SetCutItem(fMenuBar);
-	SetCopyItem(fMenuBar);
-	SetPasteItem(fMenuBar);
+	SetCutItem(Controller()->MenuBar());
+	SetCopyItem(Controller()->MenuBar());
+	SetPasteItem(Controller()->MenuBar());
 
 	fIsTrackingMenu = true;
 }
@@ -1328,7 +1328,7 @@ TFilePanel::SelectChildInParent(const entry_ref *, const node_ref *child)
 	if (!pose)
 		return false;
 
-	PoseView()->UpdateScrollRange();
+	Controller()->UpdateScrollRange();
 		// ToDo: Scroll range should be updated by now, for some
 		//	reason sometimes it is not right, force it here
 	PoseView()->SelectPose(pose, index, true);
@@ -1524,7 +1524,8 @@ void
 TFilePanel::WindowActivated(bool active)
 {
 	// force focus to update properly
-	fBackView->Invalidate();
+	// TODO: temporarily disabled
+	//fBackView->Invalidate();
 	_inherited::WindowActivated(active);
 }
 
@@ -1532,8 +1533,9 @@ TFilePanel::WindowActivated(bool active)
 //	#pragma mark -
 
 
-BFilePanelPoseView::BFilePanelPoseView(Model *model, BRect frame, uint32 resizeMask)
-	: BPoseView(model, frame, kListMode, resizeMask),
+BFilePanelPoseView::BFilePanelPoseView(Model *model)
+	: 
+	BPoseView(model, kListMode),
 	fIsDesktop(model->IsDesktop())
 {
 }

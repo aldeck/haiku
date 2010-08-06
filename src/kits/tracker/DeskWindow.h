@@ -47,20 +47,12 @@ namespace BPrivate {
 
 class BDeskWindow : public BContainerWindow {
 public:
-	BDeskWindow(LockingList<BWindow> *windowList);
+	BDeskWindow(Model* model, LockingList<BWindow> *windowList);
 	virtual ~BDeskWindow();
-
-	virtual	void Init(const BMessage *message = NULL);
 
 	virtual	void Show();
 	virtual	void Quit();
 	virtual	void ScreenChanged(BRect, color_space);
-
-	virtual	void CreatePoseView(Model *);
-
-	virtual	bool ShouldAddMenus() const;
-	virtual	bool ShouldAddScrollBars() const;
-	virtual	bool ShouldAddContainerView() const;
 
 	DesktopPoseView *PoseView() const;
 
@@ -70,8 +62,8 @@ public:
 	void SaveDesktopPoseLocations();
 	
 protected:
+	virtual	void _Init(const BMessage *message = NULL);
 	virtual	void AddWindowContextMenus(BMenu *);
-	virtual BPoseView *NewPoseView(Model *, BRect, uint32);
 
 	virtual void WorkspaceActivated(int32, bool);
 	virtual	void MenusBeginning();

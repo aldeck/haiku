@@ -46,6 +46,7 @@ All rights reserved.
 #include "Commands.h"
 #include "VolumeWindow.h"
 #include "PoseView.h"
+#include "PoseViewController.h"
 #include "MountMenu.h"
 
 
@@ -53,9 +54,10 @@ All rights reserved.
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "libtracker"
 
-BVolumeWindow::BVolumeWindow(LockingList<BWindow> *windowList, uint32 openFlags)
-	:	BContainerWindow(windowList, openFlags)
+BVolumeWindow::BVolumeWindow(Model* model, LockingList<BWindow> *windowList, uint32 openFlags)
+	:	BContainerWindow(model, windowList, openFlags)
 {
+	printf("BVolumeWindow::BVolumeWindow\n");
 }
 
 
@@ -64,7 +66,7 @@ BVolumeWindow::MenusBeginning()
 {
 	_inherited::MenusBeginning();
 
-	if (!fMenuBar)
+	if (!Controller()->MenuBar())
 		return;
 
 	BVolume boot;
@@ -85,7 +87,7 @@ BVolumeWindow::MenusBeginning()
 		}
 	}
 
-	BMenuItem* item = fMenuBar->FindItem(B_TRANSLATE("Unmount"));
+	BMenuItem* item = Controller()->MenuBar()->FindItem(B_TRANSLATE("Unmount"));
 	if (item)
 		item->SetEnabled(ejectableVolumeSelected);
 }

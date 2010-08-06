@@ -87,10 +87,9 @@ typedef std::hash_set<node_ref, std::hash<node_ref> > NodeSet;
 
 namespace BPrivate {
 
-class BCountView;
 class BContainerWindow;
-class BHScrollBar;
 class EntryListBase;
+class PoseViewController;
 
 
 const int32 kSmallStep = 10;
@@ -104,13 +103,13 @@ const uint32 kCheckTypeahead = 'Tcty';
 
 class BPoseView : public BView {
 	public:
-		BPoseView(Model *, BRect, uint32 viewMode, uint32 resizeMask = B_FOLLOW_ALL);
+		BPoseView(Model *model, uint32 viewMode);
 		virtual ~BPoseView();
-
+	
 		// setup, teardown
 		virtual void Init(AttributeStreamNode *);
 		virtual void Init(const BMessage &);
-		void InitCommon();
+	
 		virtual	void DetachedFromWindow();
 
 		// Returns true if for instance, node ref is a remote desktop directory and
@@ -188,16 +187,9 @@ class BPoseView : public BView {
 		// file change notification handler
 		virtual bool FSNotification(const BMessage *);
 
-		// scrollbars
-		virtual void UpdateScrollRange();
-		virtual	void SetScrollBarsTo(BPoint);
-		virtual void AddScrollBars();
-		BHScrollBar* HScrollBar() const;
-		BScrollBar* VScrollBar() const ;
-		BCountView* CountView() const;
-		void DisableScrollBars();
-		void EnableScrollBars();
-
+		void SetController(PoseViewController* controller);
+		PoseViewController* Controller();
+		
 		// sorting
 		virtual void SortPoses();
 		void SetPrimarySort(uint32 attrHash);
@@ -227,7 +219,6 @@ class BPoseView : public BView {
 		void GetLayoutInfo(uint32 viewMode, BPoint *grid, BPoint *offset) const;
 
 		int32 CountItems() const;
-		void UpdateCount();
 
 		rgb_color DeskTextColor() const;
 		rgb_color DeskTextBackColor() const;
@@ -387,10 +378,6 @@ class BPoseView : public BView {
 			// easy to have the right StringWidth picked up by
 			// template instantiation, as used by WidgetAttributeText
 
-		// show/hide barberpole while a background task is filling up the view, etc.
-		void ShowBarberPole();
-		void HideBarberPole();
-
 		bool fShowSelectionWhenInactive;
 		bool fTransparentSelection;
 		bool fIsDrawingSelectionRect;
@@ -404,6 +391,8 @@ class BPoseView : public BView {
 		virtual void AdaptToDesktopIntegrationChange(BMessage *);
 
 	protected:
+		void _InitCommon();
+
 		// view setup
 		virtual void SetUpDefaultColumnsIfNeeded();
 
@@ -585,8 +574,8 @@ class BPoseView : public BView {
 		void SynchronousUpdate(BRect, bool clip = false);
 
 		// scrolling
-		void HandleAutoScroll();
-		bool CheckAutoScroll(BPoint mouseLoc, bool shouldScroll, bool selectionScrolling = false);
+		//void HandleAutoScroll();
+		//bool CheckAutoScroll(BPoint mouseLoc, bool shouldScroll, bool selectionScrolling = false);
 
 		// view extent handling
 		void RecalcExtent();
@@ -595,7 +584,6 @@ class BPoseView : public BView {
 		void RemoveFromExtent(const BRect &);
 
 		virtual void EditQueries();
-		virtual void AddCountView();
 
 		void HandleAttrMenuItemSelected(BMessage *);
 		void TryUpdatingBrokenLinks();
@@ -635,14 +623,13 @@ class BPoseView : public BView {
 		void Delete(const entry_ref &ref, bool selectNext, bool askUser);
 		void RestoreItemsFromTrash(BObjectList<entry_ref> *, bool selectNext);
 
-	private:
+	private:		
 		void DrawOpenAnimation(BRect);
 
 		void MoveSelectionOrEntryToTrash(const entry_ref *ref, bool selectNext);
 
 	protected:
-		BHScrollBar *fHScrollBar;
-		BScrollBar *fVScrollBar;
+		PoseViewController* fController;
 		Model *fModel;
 		BPose *fActivePose;
 		BRect fExtent;
@@ -661,7 +648,6 @@ class BPoseView : public BView {
 	  	bool fMimeTypeListIsDirty;
 		BViewState *fViewState;
 		bool fStateNeedsSaving;
-		BCountView *fCountView;
 		float fListElemHeight;
 		float fIconPoseHeight;
 		BPose *fDropTarget;
@@ -672,7 +658,6 @@ class BPoseView : public BView {
 		const BPose *fLastClickedPose;
 		BPoint fLastLeftTop;
 		BRect fLastExtent;
-		BTitleView *fTitleView;
 		BRefFilter *fRefFilter;
 		BPoint fGrid;
 		BPoint fOffset;
@@ -724,21 +709,6 @@ class BPoseView : public BView {
 		static OffscreenBitmap *sOffscreen;
 
 		typedef BView _inherited;
-};
-
-
-class BHScrollBar : public BScrollBar {
-	public:
-		BHScrollBar(BRect, const char *, BView *);
-		void SetTitleView(BView *);
-
-		// BScrollBar overrides
-		virtual	void ValueChanged(float);
-
-	private:
-		BView *fTitleView;
-
-		typedef BScrollBar _inherited;
 };
 
 
@@ -809,24 +779,6 @@ BPoseView::MimeTypesInSelection()
 	return &fMimeTypesInSelectionCache;
 }
 
-inline BHScrollBar*
-BPoseView::HScrollBar() const
-{
-	return fHScrollBar;
-}
-
-inline BScrollBar*
-BPoseView::VScrollBar() const
-{
-	return fVScrollBar;
-}
-
-inline BCountView*
-BPoseView::CountView() const
-{
-	return fCountView;
-}
-
 inline bool
 BPoseView::StateNeedsSaving()
 {
@@ -870,7 +822,7 @@ BPoseView::IsFilePanel() const
 }
 
 inline bool
-BPoseView::IsDesktopWindow() const
+BPoseView::IsDesktopWindow() const // why window? view is not enough?
 {
 	return fIsDesktopWindow;
 }
@@ -1054,12 +1006,6 @@ inline BRefFilter *
 BPoseView::RefFilter() const
 {
 	return fRefFilter;
-}
-
-inline void
-BHScrollBar::SetTitleView(BView *view)
-{
-	fTitleView = view;
 }
 
 inline BPose *

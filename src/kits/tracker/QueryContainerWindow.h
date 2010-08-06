@@ -43,13 +43,12 @@ namespace BPrivate {
 // Adds query window specific menus
 
 
-#define kQueryTemplates "DefaultQueryTemplates"
-
 class BQueryPoseView;
 
 class BQueryContainerWindow : public BContainerWindow {
 public:
-	BQueryContainerWindow(LockingList<BWindow> *windowList,
+	BQueryContainerWindow(Model* model, 
+		LockingList<BWindow> *windowList,
 		uint32 containerWindowFlags,
 		window_look look = B_DOCUMENT_WINDOW_LOOK,
 		window_feel feel = B_NORMAL_WINDOW_FEEL, 
@@ -60,8 +59,7 @@ public:
 	bool ActiveOnDevice(dev_t) const;
 
 protected:
-	virtual	void CreatePoseView(Model *);
-	virtual BPoseView *NewPoseView(Model *model, BRect rect, uint32 viewMode);
+	virtual	void _Init(const BMessage*);
 	virtual	void AddWindowMenu(BMenu *menu);
 	virtual	void AddWindowContextMenus(BMenu *menu);
 

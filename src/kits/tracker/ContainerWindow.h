@@ -47,16 +47,17 @@ class BMenuBar;
 
 namespace BPrivate {
 
-class BNavigator;
 class BPoseView;
 class ModelMenuItem;
 class AttributeStreamNode;
 class BackgroundImage;
+class PoseViewController;
 class Model;
 class ModelNodeLazyOpener;
 class SelectionWindow;
 
 #define kDefaultFolderTemplate "DefaultFolderTemplate"
+#define kQueryTemplates "DefaultQueryTemplates"
 
 extern const char *kAddOnsMenuName;
 
@@ -74,7 +75,8 @@ enum {
 
 class BContainerWindow : public BWindow {
 	public:
-		BContainerWindow(LockingList<BWindow> *windowList,
+		BContainerWindow(Model* model,
+			LockingList<BWindow> *windowList,
 			uint32 containerWindowFlags,
 			window_look look = B_DOCUMENT_WINDOW_LOOK,
 			window_feel feel = B_NORMAL_WINDOW_FEEL,
@@ -83,17 +85,11 @@ class BContainerWindow : public BWindow {
 
 		virtual ~BContainerWindow();
 
-		virtual void Init(const BMessage *message = NULL);
-
 		static BRect InitialWindowRect(window_feel);
 
 		virtual void Minimize(bool minimize);
 		virtual void Quit();
 		virtual bool QuitRequested();
-
-		virtual void UpdateIfTrash(Model *);
-
-		virtual	void CreatePoseView(Model *);
 
 		virtual	void ShowContextMenu(BPoint, const entry_ref *, BView *);
 		virtual	uint32 ShowDropContextMenu(BPoint);
@@ -105,16 +101,7 @@ class BContainerWindow : public BWindow {
 		virtual	void Zoom(BPoint, float, float);
 		virtual void WorkspacesChanged(uint32, uint32);
 
-		// virtuals that control setup of window
-		virtual	bool ShouldAddMenus() const;
-		virtual	bool ShouldAddScrollBars() const;
-		virtual	bool ShouldAddCountView() const;
-
 		virtual	void CheckScreenIntersect();
-
-		bool IsTrash() const;
-		bool InTrash() const;
-		bool IsPrintersDir() const;
 
 		virtual bool IsShowing(const node_ref *) const;
 		virtual bool IsShowing(const entry_ref *) const;
@@ -123,7 +110,6 @@ class BContainerWindow : public BWindow {
 
 		Model *TargetModel() const;
 		BPoseView *PoseView() const;
-		BNavigator *Navigator() const;
 
 		virtual	void SelectionChanged();
 		virtual void ViewModeChanged(uint32 oldMode, uint32 newMode);
@@ -146,19 +132,6 @@ class BContainerWindow : public BWindow {
 			// calls for inheriting window size, attribute layout, etc.
 			// deprecated
 
-		virtual	void AddMimeTypesToMenu(BMenu *);
-		void AddMimeTypesToMenu();
-		virtual	void MarkAttributeMenu(BMenu *);
-		void MarkAttributeMenu();
-		BMenuItem *NewAttributeMenuItem(const char *label, const char *name,
-			int32 type, float width, int32 align, bool editable, bool statField);
-		BMenuItem *NewAttributeMenuItem(const char *label, const char *name,
-			int32 type, const char* displayAs, float width, int32 align,
-			bool editable, bool statField);
-		virtual	void NewAttributeMenu(BMenu *);
-
-		void HideAttributeMenu();
-		void ShowAttributeMenu();
 		PiggybackTaskLoop *DelayedTaskLoop();
 			// use for RunLater queueing
 		void PulseTaskLoop();
@@ -187,9 +160,13 @@ class BContainerWindow : public BWindow {
 		bool IsPathWatchingEnabled(void) const;
 
 	protected:
-		virtual BPoseView *NewPoseView(Model *, BRect, uint32);
-			// instantiate a different flavor of BPoseView for different
-			// ContainerWindows
+		virtual	void _Init(const BMessage *message = NULL);
+
+		PoseViewController* Controller();
+		Model*				fCreationModel;
+			// TODO: not very happy with that, model should be passed
+			// in the init message. (after the persistency mechanism 
+			// has been reworked)
 
 		virtual void RestoreWindowState(AttributeStreamNode *);
 		virtual void RestoreWindowState(const BMessage &);
@@ -201,12 +178,7 @@ class BContainerWindow : public BWindow {
 			// these two virtuals control setting up a new folder that
 			// does not have any state settings yet with the default
 
-		virtual	void AddMenus();
-		virtual void AddShortcuts();
-			// add equivalents of the menu shortcuts to the menuless desktop window
-		virtual	void AddFileMenu(BMenu *menu);
-		virtual	void AddWindowMenu(BMenu *menu);
-
+		virtual void AddCommonShortcuts();
 		virtual void AddContextMenus();
 
 		virtual	void AddFileContextMenus(BMenu *);
@@ -261,21 +233,15 @@ class BContainerWindow : public BWindow {
 		BMenuItem *fCreateLinkItem;
 		BMenuItem *fOpenWithItem;
 		ModelMenuItem *fNavigationItem;
-		BMenuBar *fMenuBar;
-		BNavigator *fNavigator;
-		BPoseView *fPoseView;
+	
+		PoseViewController* fController;
+		BPoseView *fPoseView;		
+		
 		LockingList<BWindow> *fWindowList;
-		BMenu *fAttrMenu;
-		BMenu *fWindowMenu;
-		BMenu *fFileMenu;
 
 		SelectionWindow *fSelectionWindow;
 
 		PiggybackTaskLoop *fTaskLoop;
-
-		bool fIsTrash;
-		bool fInTrash;
-		bool fIsPrinters;
 
 		uint32 fContainerWindowFlags;
 		BackgroundImage *fBackgroundImage;
@@ -347,34 +313,16 @@ int CompareLabels(const BMenuItem *, const BMenuItem *);
 
 // inlines ---------
 
-inline BNavigator *
-BContainerWindow::Navigator() const
+inline PoseViewController*
+BContainerWindow::Controller()
 {
-	return fNavigator;
+	return fController;
 }
 
 inline BPoseView *
 BContainerWindow::PoseView() const
 {
 	return fPoseView;
-}
-
-inline bool
-BContainerWindow::IsTrash() const
-{
-	return fIsTrash;
-}
-
-inline bool
-BContainerWindow::InTrash() const
-{
-	return fInTrash;
-}
-
-inline bool
-BContainerWindow::IsPrintersDir() const
-{
-	return fIsPrinters;
 }
 
 inline void

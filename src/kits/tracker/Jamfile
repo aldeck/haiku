@@ -44,6 +44,7 @@ SharedLibrary libtracker.so :
 	FilePermissionsView.cpp
 	FindPanel.cpp
 	GroupedMenu.cpp
+	IconButton.cpp
 	IconCache.cpp
 	IconMenuItem.cpp
 	InfoWindow.cpp
@@ -61,6 +62,7 @@ SharedLibrary libtracker.so :
 	Pose.cpp
 	PoseList.cpp
 	PoseView.cpp
+	PoseViewController.cpp
 	PoseViewScripting.cpp
 	QueryContainerWindow.cpp
 	QueryPoseView.cpp
@@ -100,6 +102,7 @@ DoCatalogs libtracker.so :
 	Tracker.cpp
 	AutoMounterSettings.cpp
 	ContainerWindow.cpp
+	PoseViewController.cpp	
 	CountView.cpp
 	DeskWindow.cpp
 	DirMenu.cpp
