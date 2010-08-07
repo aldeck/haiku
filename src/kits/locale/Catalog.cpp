@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright 2003-2004, Axel Dörfler, axeld@pinc-software.de
  * Copyright 2003-2004, Oliver Tappe, zooey@hirschkaefer.de
  * Distributed under the terms of the MIT License.
@@ -10,9 +10,12 @@
 
 #include <Application.h>
 #include <Locale.h>
-#include <LocaleRoster.h>
+#include <MutableLocaleRoster.h>
 #include <Node.h>
 #include <Roster.h>
+
+
+using BPrivate::gMutableLocaleRoster;
 
 
 //#pragma mark - BCatalog
@@ -26,13 +29,14 @@ BCatalog::BCatalog()
 BCatalog::BCatalog(const char *signature, const char *language,
 	uint32 fingerprint)
 {
-	fCatalog = be_locale_roster->LoadCatalog(signature, language, fingerprint);
+	fCatalog
+		= gMutableLocaleRoster->LoadCatalog(signature, language, fingerprint);
 }
 
 
 BCatalog::~BCatalog()
 {
-	be_locale_roster->UnloadCatalog(fCatalog);
+	gMutableLocaleRoster->UnloadCatalog(fCatalog);
 }
 
 
@@ -96,13 +100,10 @@ BCatalog::GetData(uint32 id, BMessage *msg)
 status_t
 BCatalog::SetCatalog(const char* signature, uint32 fingerprint)
 {
-	// TODO: The previous fCatalog is leaked here. (The whole chain, it
-	// looks like.) We should take care that internal members are always
-	// properly maintained.
-	// No other method should touch fCatalog directly, either (constructor for
-	// example)
-	fCatalog
-		= be_locale_roster->LoadCatalog(signature, NULL, fingerprint);
+	// This is not thread safe. It is used only in ReadOnlyBootPrompt and should
+	// not do harm there, but not sure what to do about it…
+	gMutableLocaleRoster->UnloadCatalog(fCatalog);
+	fCatalog = gMutableLocaleRoster->LoadCatalog(signature, NULL, fingerprint);
 
 	return B_OK;
 }
@@ -255,12 +256,19 @@ BCatalogAddOn::CountItems() const
 }
 
 
+void
+BCatalogAddOn::SetNext(BCatalogAddOn *next)
+{
+	fNext = next;
+}
+
+
 //#pragma mark - EditableCatalog
 namespace BPrivate {
 EditableCatalog::EditableCatalog(const char *type, const char *signature,
 	const char *language)
 {
-	fCatalog = be_locale_roster->CreateCatalog(type, signature, language);
+	fCatalog = gMutableLocaleRoster->CreateCatalog(type, signature, language);
 }
 
 

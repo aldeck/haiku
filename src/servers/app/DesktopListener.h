@@ -5,9 +5,9 @@
  * Authors:
  *		Clemens Zeidler <haiku@clemens-zeidler.de>
  */
-
 #ifndef DESKTOP_LISTENER_H
 #define DESKTOP_LISTENER_H
+
 
 #include <util/DoublyLinkedList.h>
 
@@ -15,13 +15,16 @@
 
 
 class BMessage;
+class Desktop;
 class Window;
 
 
-class DesktopListener : public DoublyLinkedListLinkImpl<DesktopListener>
-{
-	public:
+class DesktopListener : public DoublyLinkedListLinkImpl<DesktopListener> {
+public:
 	virtual						~DesktopListener();
+
+	virtual	void				ListenerRegistered(Desktop* desktop) = 0;
+	virtual	void				ListenerUnregistered() = 0;
 
 	virtual void				AddWindow(Window* window) = 0;
 	virtual void				RemoveWindow(Window* window) = 0;
@@ -55,16 +58,17 @@ class DesktopListener : public DoublyLinkedListLinkImpl<DesktopListener>
 };
 
 
-typedef DoublyLinkedList<DesktopListener> DesktopListenerList;
+typedef DoublyLinkedList<DesktopListener> DesktopListenerDLList;
 
 
-class DesktopObservable
-{
-	public:
+class DesktopObservable {
+public:
 							DesktopObservable();
 
-		void				RegisterListener(DesktopListener* listener);
+		void				RegisterListener(DesktopListener* listener,
+								Desktop* desktop);
 		void				UnregisterListener(DesktopListener* listener);
+	const DesktopListenerDLList&	GetDesktopListenerList();
 
 		void				InvokeAddWindow(Window* window);
 		void				InvokeRemoveWindow(Window* window);
@@ -95,8 +99,8 @@ class DesktopObservable
 		void				InvokeGetDecoratorSettings(Window* window,
 								BMessage& settings);
 
-	private:
-		class InvokeGuard{
+private:
+		class InvokeGuard {
 			public:
 				InvokeGuard(bool& invoking);
 				~InvokeGuard();
@@ -104,10 +108,10 @@ class DesktopObservable
 				bool&	fInvoking;
 		};
 
-		DesktopListenerList	fDesktopListenerList;
+		DesktopListenerDLList	fDesktopListenerList;
 		
 		// prevent recursive invokes
-		bool				fWeAreInvoking;
+		bool					fWeAreInvoking;
 };
 
 #endif

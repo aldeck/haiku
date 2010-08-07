@@ -56,6 +56,7 @@
 #include "Desktop.h"
 #include "DirectWindowInfo.h"
 #include "DrawingEngine.h"
+#include "DrawState.h"
 #include "HWInterface.h"
 #include "Overlay.h"
 #include "ProfileMessageSupport.h"
@@ -2785,14 +2786,14 @@ ServerWindow::_DispatchViewDrawingMessage(int32 code,
 					// Setting the drawing origin outside of the
 					// state makes sure that everything the picture
 					// does is relative to the global picture offset.
-					BPoint origin = fCurrentView->DrawingOrigin();
+					fCurrentView->PushState();
 					fCurrentView->SetDrawingOrigin(where);
 
 					fCurrentView->PushState();
 					picture->Play(fCurrentView);
 					fCurrentView->PopState();
 
-					fCurrentView->SetDrawingOrigin(origin);
+					fCurrentView->PopState();
 
 					picture->ReleaseReference();
 				}

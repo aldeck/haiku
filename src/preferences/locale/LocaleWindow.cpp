@@ -26,7 +26,7 @@
 #include <TabView.h>
 #include <UnicodeChar.h>
 
-#include "TimeFormatSettingsView.h"
+#include "FormatSettingsView.h"
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -47,10 +47,24 @@ static const uint32 kMsgPreferredLanguagesChanged = 'lang';
 static int
 compare_typed_list_items(const BListItem* _a, const BListItem* _b)
 {
-	// TODO: sort them using collators.
+	static BCollator collator;
+
 	LanguageListItem* a = (LanguageListItem*)_a;
 	LanguageListItem* b = (LanguageListItem*)_b;
-	return strcasecmp(a->Text(), b->Text());
+
+	return collator.Compare(a->Text(), b->Text());
+}
+
+
+static int
+compare_void_list_items(const void* _a, const void* _b)
+{
+	static BCollator collator;
+
+	LanguageListItem* a = *(LanguageListItem**)_a;
+	LanguageListItem* b = *(LanguageListItem**)_b;
+
+	return collator.Compare(a->Text(), b->Text());
 }
 
 
@@ -62,8 +76,8 @@ LocaleWindow::LocaleWindow()
 	BWindow(BRect(0, 0, 0, 0), "Locale", B_TITLED_WINDOW, B_QUIT_ON_WINDOW_CLOSE
 		| B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS)
 {
-	BCountry* defaultCountry;
-	be_locale_roster->GetDefaultCountry(&defaultCountry);
+	BLocale defaultLocale;
+	be_locale_roster->GetDefaultLocale(&defaultLocale);
 
 	SetLayout(new BGroupLayout(B_HORIZONTAL));
 
@@ -173,26 +187,31 @@ LocaleWindow::LocaleWindow()
 	be_locale_roster->GetInstalledLanguages(&countryList);
 	BString countryCode;
 
+	LanguageListItem* currentItem = NULL;
 	for (int i = 0; countryList.FindString("langs", i, &countryCode) == B_OK;
 			i++) {
-		BCountry country(countryCode);
+		BLocale locale(countryCode);
 		BString countryName;
 
-		country.LocaleName(countryName);
+		locale.GetName(countryName);
 
 		LanguageListItem* item
 			= new LanguageListItem(countryName, countryCode,
 				NULL);
 		listView->AddItem(item);
-		if (!strcmp(countryCode, defaultCountry->Code()))
-			listView->Select(listView->CountItems() - 1);
+		if (!strcmp(countryCode, defaultLocale.Code()))
+			currentItem = item;
 	}
+
+	listView->SortItems(compare_void_list_items);
+	if (currentItem != NULL)
+		listView->Select(listView->IndexOf(currentItem));
 
 	// TODO: find a real solution intead of this hack
 	listView->SetExplicitMinSize(
 		BSize(25 * be_plain_font->Size(), B_SIZE_UNSET));
 
-	fFormatView = new FormatView(defaultCountry);
+	fFormatView = new FormatView(defaultLocale);
 
 	countryTab->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
 		.AddGroup(B_VERTICAL, 3)
@@ -341,8 +360,8 @@ LocaleWindow::MessageReceived(BMessage* message)
 			be_app_messenger.SendMessage(&newMessage);
 			SettingsChanged();
 
-			BCountry* country = new BCountry(item->ID());
-			fFormatView->SetCountry(country);
+			BLocale locale(item->ID());
+			fFormatView->SetLocale(locale);
 			break;
 		}
 

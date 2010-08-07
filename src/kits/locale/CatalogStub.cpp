@@ -21,6 +21,14 @@ BLocaleRoster::GetCatalog()
 		asm volatile(".hidden _ZN13BLocaleRoster10GetCatalogEv");
 	#endif
 
-	return GetCatalog(&sCatalog, &sCatalogInitOnce);
+	return _GetCatalog(&sCatalog, &sCatalogInitOnce);
+}
+
+
+namespace BPrivate{
+	void ForceUnloadCatalog()
+	{
+		sCatalogInitOnce = false;
+	}
 }
 

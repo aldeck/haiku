@@ -7,11 +7,11 @@
 #include <SupportDefs.h>
 #include <KernelExport.h>
 
+#include <real_time_clock.h>
+
 #include <ctype.h>
 #include <string.h>
 #include <time.h>
-
-#include "rtc_info.h"
 
 #include "dosfs.h"
 #include "fat.h"
@@ -69,16 +69,10 @@ dump_directory(uint8 *buffer)
 static void
 get_tzoffset()
 {
-	rtc_info info;
-
 	if (tzoffset != -1)
 		return;
 
-	if (get_rtc_info(&info) < 0) {
-		dprintf("error getting rtc info\n");
-	} else {
-		tzoffset = info.tz_minuteswest;
-	}
+	tzoffset = get_timezone_offset() / 60;
 }
 
 

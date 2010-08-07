@@ -4,14 +4,18 @@
  *
  * Authors:
  *		Marc Flerackers (mflerackers@androme.be)
- *		Stefano Ceccherini (burton666@libero.it)
+ *		Stefano Ceccherini (stefano.ceccherini@gmail.com)
  *		Marcus Overhagen <marcus@overhagen.de>
  */
 
-
 #include "ServerPicture.h"
 
+#include <new>
+#include <stdio.h>
+#include <stack>
+
 #include "DrawingEngine.h"
+#include "DrawState.h"
 #include "ServerApp.h"
 #include "ServerBitmap.h"
 #include "ServerFont.h"
@@ -31,10 +35,6 @@
 #include <Debug.h>
 #include <List.h>
 #include <Shape.h>
-
-#include <new>
-#include <stdio.h>
-#include <stack>
 
 
 using std::stack;
@@ -515,11 +515,14 @@ draw_picture(View* view, BPoint where, int32 token)
 	ServerPicture* picture
 		= view->Window()->ServerWindow()->App()->GetPicture(token);
 	if (picture != NULL) {
+		view->PushState();
 		view->SetDrawingOrigin(where);
+
 		view->PushState();
 		picture->Play(view);
 		view->PopState();
 
+		view->PopState();
 		picture->ReleaseReference();
 	}
 }

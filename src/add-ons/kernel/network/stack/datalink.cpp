@@ -8,9 +8,8 @@
  */
 
 
-#include "datalink.h"
-
 #include <net/if.h>
+#include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/route.h>
 #include <new>
@@ -21,6 +20,7 @@
 
 #include <KernelExport.h>
 
+#include <net_datalink.h>
 #include <net_device.h>
 #include <NetUtilities.h>
 
@@ -111,9 +111,9 @@ option_to_string(int32 option)
 		CODE(SIOCSIFGENERIC)	/* generic IF set op */
 		CODE(SIOCGIFGENERIC)	/* generic IF get op */
 
-		CODE(SIOC_IF_ALIAS_SET)	/* set interface alias, ifaliasreq */
-		CODE(SIOC_IF_ALIAS_GET)	/* get interface alias, ifaliasreq */
-		CODE(SIOC_IF_ALIAS_COUNT) /* count interface aliases */
+		CODE(B_SOCKET_SET_ALIAS)		/* set interface alias, ifaliasreq */
+		CODE(B_SOCKET_GET_ALIAS)		/* get interface alias, ifaliasreq */
+		CODE(B_SOCKET_COUNT_ALIASES)	/* count interface aliases */
 
 		default:
 			static char buffer[24];
@@ -143,7 +143,7 @@ get_interface_name_or_index(net_domain* domain, int32 option, void* value,
 	if (user_memcpy(&request, value, expected) < B_OK)
 		return B_BAD_ADDRESS;
 
-	net_interface* interface = NULL;
+	Interface* interface = NULL;
 	if (option == SIOCGIFINDEX)
 		interface = get_interface(domain, request.ifr_name);
 	else
@@ -158,6 +158,7 @@ get_interface_name_or_index(net_domain* domain, int32 option, void* value,
 		strlcpy(request.ifr_name, interface->name, IF_NAMESIZE);
 
 	*_length = sizeof(ifreq);
+	interface->ReleaseReference();
 
 	return user_memcpy(value, &request, sizeof(ifreq));
 }
@@ -183,7 +184,7 @@ fill_address(const sockaddr* from, sockaddr* to, size_t maxLength)
 //	#pragma mark - datalink module
 
 
-status_t
+static status_t
 datalink_control(net_domain* _domain, int32 option, void* value,
 	size_t* _length)
 {
@@ -201,14 +202,14 @@ datalink_control(net_domain* _domain, int32 option, void* value,
 		case SIOCGIFNAME:
 			return get_interface_name_or_index(domain, option, value, _length);
 
-		case SIOCAIFADDR:	/* same as SIOC_IF_ALIAS_ADD */
+		case SIOCAIFADDR:	/* same as B_SOCKET_ADD_ALIAS */
 		{
 			// add new interface address
 			if (*_length < sizeof(struct ifaliasreq))
 				return B_BAD_VALUE;
 
 			struct ifaliasreq request;
-			if (user_memcpy(&request, value, sizeof(struct ifaliasreq)) < B_OK)
+			if (user_memcpy(&request, value, sizeof(struct ifaliasreq)) != B_OK)
 				return B_BAD_ADDRESS;
 
 			Interface* interface = get_interface(domain, request.ifra_name);
@@ -217,6 +218,8 @@ datalink_control(net_domain* _domain, int32 option, void* value,
 				status_t status = add_interface_address(interface, domain,
 					request);
 				notify_interface_changed(interface);
+				interface->ReleaseReference();
+
 				return status;
 			}
 
@@ -233,26 +236,25 @@ datalink_control(net_domain* _domain, int32 option, void* value,
 			return status;
 		}
 
-		case SIOCDIFADDR:	/* same as SIOC_IF_ALIAS_REMOVE */
+		case SIOCDIFADDR:	/* same as B_SOCKET_REMOVE_ALIAS */
 		{
 			// remove interface (address)
 			struct ifreq request;
-			if (user_memcpy(&request, value, sizeof(struct ifreq)) < B_OK)
+			if (user_memcpy(&request, value, sizeof(struct ifreq)) != B_OK)
 				return B_BAD_ADDRESS;
 
 			Interface* interface = get_interface(domain, request.ifr_name);
 			if (interface == NULL)
 				return B_BAD_VALUE;
 
-			status_t status;
+			status_t status = B_OK;
 
 			if (request.ifr_addr.sa_family != AF_UNSPEC
-				|| request.ifr_addr.sa_len != 0) {
-				// TODO: remove interface if this was the last address?
+				&& request.ifr_addr.sa_len != 0) {
 				status = interface->Control(domain, SIOCDIFADDR, request,
 					(ifreq*)value, *_length);
 			} else
-				status = remove_interface(interface);
+				remove_interface(interface);
 
 			interface->ReleaseReference();
 
@@ -330,8 +332,8 @@ datalink_control(net_domain* _domain, int32 option, void* value,
 }
 
 
-status_t
-datalink_send_data(struct net_route* route, net_buffer* buffer)
+static status_t
+datalink_send_routed_data(struct net_route* route, net_buffer* buffer)
 {
 	TRACE("%s(route %p, buffer %p)\n", __FUNCTION__, route, buffer);
 
@@ -375,8 +377,12 @@ datalink_send_data(struct net_route* route, net_buffer* buffer)
 }
 
 
-status_t
-datalink_send_datagram(net_protocol* protocol, net_domain* domain,
+/*!	Finds a route for the given \a buffer in the given \a domain, and calls
+	net_protocol_info::send_routed_data() on either the \a protocol (if
+	non-NULL), or the domain.
+*/
+static status_t
+datalink_send_data(net_protocol* protocol, net_domain* domain,
 	net_buffer* buffer)
 {
 	TRACE("%s(%p, domain %p, buffer %p)\n", __FUNCTION__, protocol, domain,
@@ -417,7 +423,7 @@ datalink_send_datagram(net_protocol* protocol, net_domain* domain,
 		if non-NULL.
 	\param _matchedType will be set to either zero or MSG_BCAST if non-NULL.
 */
-bool
+static bool
 datalink_is_local_address(net_domain* domain, const struct sockaddr* address,
 	net_interface_address** _interfaceAddress, uint32* _matchedType)
 {
@@ -465,17 +471,26 @@ datalink_is_local_address(net_domain* domain, const struct sockaddr* address,
 	\param _interfaceAddress will be set to the first address of the interface
 		and domain belonging to that address if non-NULL.
 */
-bool
+static bool
 datalink_is_local_link_address(net_domain* domain, bool unconfiguredOnly,
 	const struct sockaddr* address, net_interface_address** _interfaceAddress)
 {
 	if (domain == NULL || address == NULL || address->sa_family != AF_LINK)
 		return false;
 
+#ifdef TRACE_DATALINK
+	uint8* data = LLADDR((sockaddr_dl*)address);
+	TRACE("%s(domain %p, unconfiguredOnly %d, address %02x:%02x:%02x:%02x:%02x"
+		":%02x)\n", __FUNCTION__, domain, unconfiguredOnly, data[0], data[1],
+		data[2], data[3], data[4], data[5]);
+#endif
+
 	InterfaceAddress* interfaceAddress = get_interface_address_for_link(domain,
 		address, unconfiguredOnly);
-	if (interfaceAddress == NULL)
+	if (interfaceAddress == NULL) {
+		TRACE("  no\n");
 		return false;
+	}
 
 	if (_interfaceAddress != NULL)
 		*_interfaceAddress = interfaceAddress;
@@ -486,14 +501,14 @@ datalink_is_local_link_address(net_domain* domain, bool unconfiguredOnly,
 }
 
 
-net_interface*
+static net_interface*
 datalink_get_interface(net_domain* domain, uint32 index)
 {
 	return get_interface(domain, index);
 }
 
 
-net_interface*
+static net_interface*
 datalink_get_interface_with_address(const sockaddr* address)
 {
 	InterfaceAddress* interfaceAddress = get_interface_address(address);
@@ -519,7 +534,7 @@ datalink_put_interface(net_interface* interface)
 }
 
 
-net_interface_address*
+static net_interface_address*
 datalink_get_interface_address(const struct sockaddr* address)
 {
 	return get_interface_address(address);
@@ -540,7 +555,7 @@ datalink_get_interface_address(const struct sockaddr* address)
 
 	\return \c true if an address reference was returned, \c false if not.
 */
-bool
+static bool
 datalink_get_next_interface_address(net_interface* _interface,
 	net_interface_address** _address)
 {
@@ -554,7 +569,7 @@ datalink_get_next_interface_address(net_interface* _interface,
 }
 
 
-void
+static void
 datalink_put_interface_address(net_interface_address* address)
 {
 	if (address == NULL)
@@ -564,7 +579,7 @@ datalink_put_interface_address(net_interface_address* address)
 }
 
 
-status_t
+static status_t
 datalink_join_multicast(net_interface* _interface, net_domain* domain,
 	const struct sockaddr* address)
 {
@@ -576,7 +591,7 @@ datalink_join_multicast(net_interface* _interface, net_domain* domain,
 }
 
 
-status_t
+static status_t
 datalink_leave_multicast(net_interface* _interface, net_domain* domain,
 	const struct sockaddr* address)
 {
@@ -605,7 +620,7 @@ datalink_std_ops(int32 op, ...)
 //	#pragma mark - net_datalink_protocol
 
 
-status_t
+static status_t
 interface_protocol_init(net_interface* interface, net_domain* domain,
 	net_datalink_protocol** _protocol)
 {
@@ -624,7 +639,7 @@ interface_protocol_init(net_interface* interface, net_domain* domain,
 }
 
 
-status_t
+static status_t
 interface_protocol_uninit(net_datalink_protocol* protocol)
 {
 	TRACE("%s(%p)\n", __FUNCTION__, protocol);
@@ -634,7 +649,7 @@ interface_protocol_uninit(net_datalink_protocol* protocol)
 }
 
 
-status_t
+static status_t
 interface_protocol_send_data(net_datalink_protocol* _protocol,
 	net_buffer* buffer)
 {
@@ -643,24 +658,14 @@ interface_protocol_send_data(net_datalink_protocol* _protocol,
 	interface_protocol* protocol = (interface_protocol*)_protocol;
 	Interface* interface = (Interface*)protocol->interface;
 
-	// TODO: Need to think about this locking. We can't obtain the
-	//       RX Lock here (nor would it make sense) as the ARP
-	//       module calls send_data() with it's lock held (similiar
-	//       to the domain lock, which would violate the locking
-	//       protocol).
-
-	DeviceMonitorList::Iterator iterator =
-		interface->DeviceInterface()->monitor_funcs.GetIterator();
-	while (iterator.HasNext()) {
-		net_device_monitor* monitor = iterator.Next();
-		monitor->receive(monitor, buffer);
-	}
+	if (atomic_get(&interface->DeviceInterface()->monitor_count) > 0)
+		device_interface_monitor_receive(interface->DeviceInterface(), buffer);
 
 	return protocol->device_module->send_data(protocol->device, buffer);
 }
 
 
-status_t
+static status_t
 interface_protocol_up(net_datalink_protocol* protocol)
 {
 	TRACE("%s(%p)\n", __FUNCTION__, protocol);
@@ -668,7 +673,7 @@ interface_protocol_up(net_datalink_protocol* protocol)
 }
 
 
-void
+static void
 interface_protocol_down(net_datalink_protocol* _protocol)
 {
 	TRACE("%s(%p)\n", __FUNCTION__, _protocol);
@@ -682,7 +687,7 @@ interface_protocol_down(net_datalink_protocol* _protocol)
 
 	deviceInterface->up_count--;
 
-	interface_went_down(interface);
+	interface->WentDown();
 
 	if (deviceInterface->up_count > 0)
 		return;
@@ -691,7 +696,7 @@ interface_protocol_down(net_datalink_protocol* _protocol)
 }
 
 
-status_t
+static status_t
 interface_protocol_change_address(net_datalink_protocol* protocol,
 	net_interface_address* interfaceAddress, int32 option,
 	const struct sockaddr* oldAddress, const struct sockaddr* newAddress)
@@ -714,7 +719,7 @@ interface_protocol_change_address(net_datalink_protocol* protocol,
 }
 
 
-status_t
+static status_t
 interface_protocol_control(net_datalink_protocol* _protocol, int32 option,
 	void* argument, size_t length)
 {
@@ -752,7 +757,7 @@ interface_protocol_control(net_datalink_protocol* _protocol, int32 option,
 				&((struct ifreq*)argument)->ifr_addr, maxLength);
 		}
 
-		case SIOC_IF_ALIAS_COUNT:
+		case B_SOCKET_COUNT_ALIASES:
 		{
 			ifreq request;
 			request.ifr_count = interface->CountAddresses();
@@ -761,7 +766,7 @@ interface_protocol_control(net_datalink_protocol* _protocol, int32 option,
 				&request.ifr_count, sizeof(request.ifr_count));
 		}
 
-		case SIOC_IF_ALIAS_GET:
+		case B_SOCKET_GET_ALIAS:
 		{
 			ifaliasreq request;
 			if (user_memcpy(&request, argument, sizeof(ifaliasreq)) != B_OK)
@@ -928,8 +933,8 @@ net_datalink_module_info gNetDatalinkModule = {
 	},
 
 	datalink_control,
+	datalink_send_routed_data,
 	datalink_send_data,
-	datalink_send_datagram,
 
 	datalink_is_local_address,
 	datalink_is_local_link_address,

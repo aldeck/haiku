@@ -7,7 +7,6 @@
  *		Stephan Aßmus <superstippi@gmx.de>
  *		Clemens Zeidler <haiku@clemens-zeidler.de>
  */
-
 #ifndef DEFAULT_DECORATOR_H
 #define DEFAULT_DECORATOR_H
 
@@ -76,6 +75,7 @@ protected:
 
 	virtual	void				_GetFootprint(BRegion *region);
 
+
 private:
 			void				_UpdateFont(DesktopSettings& settings);
  			void				_DrawButtonBitmap(ServerBitmap* bitmap,
@@ -87,11 +87,11 @@ private:
 									float* inset) const;
 			void				_LayoutTabItems(const BRect& tabRect);
 			void 				_InvalidateBitmaps();
-
 	static	ServerBitmap*		_GetBitmapForButton(int32 item, bool down,
 									bool focus, int32 width, int32 height,
 									DefaultDecorator* object);
 
+protected:
 			rgb_color			fButtonHighColor;
 			rgb_color			fButtonLowColor;
 			rgb_color			fTabColor;
@@ -131,6 +131,7 @@ private:
 			BString				fTruncatedTitle;
 			int32				fTruncatedTitleLength;
 
+private:
 			bigtime_t			fLastClicked;
 			bool				fWasDoubleClick;
 };

@@ -2,14 +2,24 @@
  Copyright 2009, Haiku.
  Distributed under the terms of the MIT License.
 */
-
-
 #ifndef _MAC_DECORATOR_H_
 #define _MAC_DECORATOR_H_
 
 
-#include "Decorator.h"
+#include "DecorManager.h"
 #include "RGBColor.h"
+
+
+class MacDecorAddOn : public DecorAddOn
+{
+public:
+								MacDecorAddOn(image_id id, const char* name);
+
+		float					Version();
+protected:
+	virtual Decorator*			_AllocateDecorator(DesktopSettings& settings,
+									BRect rect, window_look look, uint32 flags);
+};
 
 
 class MacDecorator: public Decorator {
@@ -19,10 +29,10 @@ public:
 									uint32 flags);
 	virtual						~MacDecorator();
 
-			void 				Draw(BRect updateRect);
-			void 				Draw();
+			void				Draw(BRect updateRect);
+			void				Draw();
 
-	click_type 					Clicked(BPoint pt, int32 buttons,
+	click_type					Clicked(BPoint pt, int32 buttons,
 									int32 modifiers);
 
 protected:
@@ -41,16 +51,16 @@ protected:
 
 			void				_FontsChanged(DesktopSettings& settings,
 									BRegion* updateRegion);
-	 		void				_SetLook(DesktopSettings& settings,
+			void				_SetLook(DesktopSettings& settings,
 									window_look look,
 									BRegion* updateRegion = NULL);
-	 		void				_SetFlags(uint32 flags,
+			void				_SetFlags(uint32 flags,
 									BRegion* updateRegion = NULL);
 	
 			void				_SetColors();
 
 			void				_MoveBy(BPoint offset);
-			void 				_ResizeBy(BPoint offset, BRegion* dirty);
+			void				_ResizeBy(BPoint offset, BRegion* dirty);
 
 			void				_GetFootprint(BRegion *region);
 

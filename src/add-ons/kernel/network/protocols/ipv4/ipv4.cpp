@@ -11,7 +11,6 @@
 #include "ipv4_address.h"
 #include "multicast.h"
 
-#include <icmp.h>
 #include <net_datalink.h>
 #include <net_datalink_protocol.h>
 #include <net_device.h>
@@ -430,7 +429,7 @@ FragmentPacket::StaleTimer(struct net_timer* timer, void* data)
 	if (!packet->fFragments.IsEmpty()) {
 		// Send error: fragment reassembly time exceeded
 		sDomain->module->error_reply(NULL, packet->fFragments.First(),
-			icmp_encode(ICMP_TYPE_TIME_EXCEEDED, ICMP_CODE_TIMEEX_FRAG), NULL);
+			B_NET_ERROR_REASSEMBLY_TIME_EXCEEDED, NULL);
 	}
 
 	delete packet;
@@ -645,7 +644,7 @@ send_fragments(ipv4_protocol* protocol, struct net_route* route,
 
 		// send fragment
 		if (status == B_OK)
-			status = sDatalinkModule->send_data(route, fragmentBuffer);
+			status = sDatalinkModule->send_routed_data(route, fragmentBuffer);
 
 		if (lastFragment) {
 			// we don't own the last buffer, so we don't have to free it
@@ -745,7 +744,7 @@ raw_receive_data(net_buffer* buffer)
 		RawSocket* raw = iterator.Next();
 
 		if (raw->Socket()->protocol == buffer->protocol) {
-			raw->SocketEnqueue(buffer);
+			raw->EnqueueClone(buffer);
 			count++;
 		}
 	}
@@ -1034,6 +1033,10 @@ ipv4_open(net_protocol* _protocol)
 {
 	ipv4_protocol* protocol = (ipv4_protocol*)_protocol;
 
+	// Only root may open raw sockets
+	if (geteuid() != 0)
+		return B_NOT_ALLOWED;
+
 	RawSocket* raw = new (std::nothrow) RawSocket(protocol->socket);
 	if (raw == NULL)
 		return B_NO_MEMORY;
@@ -1090,7 +1093,7 @@ ipv4_connect(net_protocol* protocol, const struct sockaddr* address)
 status_t
 ipv4_accept(net_protocol* protocol, struct net_socket** _acceptedSocket)
 {
-	return EOPNOTSUPP;
+	return B_NOT_SUPPORTED;
 }
 
 
@@ -1143,7 +1146,7 @@ ipv4_getsockopt(net_protocol* _protocol, int level, int option, void* value,
 			// RFC 3678, Section 4.1:
 			// ``An error of EOPNOTSUPP is returned if these options are
 			// used with getsockopt().''
-			return EOPNOTSUPP;
+			return B_NOT_SUPPORTED;
 		}
 
 		dprintf("IPv4::getsockopt(): get unknown option: %d\n", option);
@@ -1325,14 +1328,14 @@ ipv4_unbind(net_protocol* protocol, struct sockaddr* address)
 status_t
 ipv4_listen(net_protocol* protocol, int count)
 {
-	return EOPNOTSUPP;
+	return B_NOT_SUPPORTED;
 }
 
 
 status_t
 ipv4_shutdown(net_protocol* protocol, int direction)
 {
-	return EOPNOTSUPP;
+	return B_NOT_SUPPORTED;
 }
 
 
@@ -1441,7 +1444,7 @@ ipv4_send_routed_data(net_protocol* _protocol, struct net_route* route,
 		return send_fragments(protocol, route, buffer, mtu);
 	}
 
-	return sDatalinkModule->send_data(route, buffer);
+	return sDatalinkModule->send_routed_data(route, buffer);
 }
 
 
@@ -1484,10 +1487,10 @@ ipv4_send_data(net_protocol* _protocol, net_buffer* buffer)
 		if (route == NULL)
 			return ENETUNREACH;
 
-		return sDatalinkModule->send_data(route, buffer);
+		return sDatalinkModule->send_routed_data(route, buffer);
 	}
 
-	return sDatalinkModule->send_datagram(protocol, sDomain, buffer);
+	return sDatalinkModule->send_data(protocol, sDomain, buffer);
 }
 
 
@@ -1509,7 +1512,7 @@ ipv4_read_data(net_protocol* _protocol, size_t numBytes, uint32 flags,
 
 	TRACE_SK(protocol, "ReadData(%lu, 0x%lx)", numBytes, flags);
 
-	return raw->SocketDequeue(flags, _buffer);
+	return raw->Dequeue(flags, _buffer);
 }
 
 
@@ -1598,8 +1601,8 @@ ipv4_receive_data(net_buffer* buffer)
 				ntohl(header.source), ntohl(header.destination));
 	
 			// Send ICMP error: Host unreachable
-			sDomain->module->error_reply(NULL, buffer,
-				icmp_encode(ICMP_TYPE_UNREACH, ICMP_CODE_HOST_UNREACH), NULL);
+			sDomain->module->error_reply(NULL, buffer, B_NET_ERROR_UNREACH_HOST,
+				NULL);
 			return B_ERROR;
 		}
 
@@ -1654,7 +1657,7 @@ ipv4_receive_data(net_buffer* buffer)
 		// no handler for this packet
 		if (!rawDelivered) {
 			sDomain->module->error_reply(NULL, buffer,
-				icmp_encode(ICMP_TYPE_UNREACH, ICMP_CODE_PROTO_UNREACH), NULL);
+				B_NET_ERROR_UNREACH_PROTOCOL, NULL);
 		}
 		return EAFNOSUPPORT;
 	}
@@ -1681,15 +1684,15 @@ ipv4_deliver_data(net_protocol* _protocol, net_buffer* buffer)
 	if (protocol->raw == NULL)
 		return B_ERROR;
 
-	return protocol->raw->SocketEnqueue(buffer);
+	return protocol->raw->EnqueueClone(buffer);
 }
 
 
 status_t
-ipv4_error_received(uint32 code, net_buffer* buffer)
+ipv4_error_received(net_error error, net_buffer* buffer)
 {
-	TRACE("  ipv4_error_received(code %" B_PRIx32 ", buffer %p [%zu bytes])",
-		code, buffer, buffer->size);
+	TRACE("  ipv4_error_received(error %d, buffer %p [%zu bytes])", (int)error,
+		buffer, buffer->size);
 
 	NetBufferHeaderReader<ipv4_header> bufferHeader(buffer);
 	if (bufferHeader.Status() != B_OK)
@@ -1737,20 +1740,20 @@ ipv4_error_received(uint32 code, net_buffer* buffer)
 		return B_ERROR;
 
 	// propagate error
-	return protocol->error_received(code, buffer);
+	return protocol->error_received(error, buffer);
 }
 
 
 status_t
-ipv4_error_reply(net_protocol* protocol, net_buffer* causedError, uint32 code,
-	void* errorData)
+ipv4_error_reply(net_protocol* protocol, net_buffer* cause, net_error error,
+	net_error_data* errorData)
 {
 	// Directly obtain the ICMP protocol module
 	net_protocol_module_info* icmp = receiving_protocol(IPPROTO_ICMP);
 	if (icmp == NULL)
 		return B_ERROR;
 
-	return icmp->error_reply(protocol, causedError, code, errorData);
+	return icmp->error_reply(protocol, cause, error, errorData);
 }
 
 

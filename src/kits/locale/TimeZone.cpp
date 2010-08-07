@@ -1,62 +1,141 @@
 /*
-Copyright 2010, Adrien Destugues <pulkomandy@pulkomandy.ath.cx>
-Distributed under the terms of the MIT License.
-*/
+ * Copyright (c) 2010, Haiku, Inc.
+ * Distributed under the terms of the MIT license.
+ *
+ * Authors:
+ *		Adrien Destugues <pulkomandy@pulkomandy.ath.cx>
+ * 		Oliver Tappe <zooey@hirschkaefer.de>
+ */
 
 
 #include <TimeZone.h>
-
-#include <String.h>
 
 #include <unicode/timezone.h>
 #include <ICUWrapper.h>
 
 
+const char* BTimeZone::kNameOfGmtZone = "GMT";
+
+
 BTimeZone::BTimeZone(const char* zoneCode)
 {
-	fICUTimeZone = TimeZone::createTimeZone(zoneCode);
+	SetTo(zoneCode);
 }
 
 
 BTimeZone::~BTimeZone()
 {
-	delete fICUTimeZone;
 }
 
 
-void
-BTimeZone::GetName(BString& name)
+const BString&
+BTimeZone::Name() const
 {
-	UnicodeString unicodeName;
-	fICUTimeZone->getDisplayName(unicodeName);
-
-	BStringByteSink converter(&name);
-	unicodeName.toUTF8(converter);
+	return fName;
 }
 
 
-void
-BTimeZone::GetCode(char* buffer, int size)
+const BString&
+BTimeZone::DaylightSavingName() const
 {
-	UnicodeString unicodeName;
-	fICUTimeZone->getID(unicodeName);
+	return fDaylightSavingName;
+}
 
-	CheckedArrayByteSink converter(buffer, size);
-	unicodeName.toUTF8(converter);
+
+const BString&
+BTimeZone::ShortName() const
+{
+	return fShortName;
+}
+
+
+const BString&
+BTimeZone::ShortDaylightSavingName() const
+{
+	return fShortDaylightSavingName;
+}
+
+
+const BString&
+BTimeZone::Code() const
+{
+	return fCode;
 }
 
 
 int
-BTimeZone::OffsetFromGMT()
+BTimeZone::OffsetFromGMT() const
 {
+	return fOffsetFromGMT;
+}
+
+
+bool
+BTimeZone::SupportsDaylightSaving() const
+{
+	return fSupportsDaylightSaving;
+}
+
+
+status_t
+BTimeZone::InitCheck() const
+{
+	return fInitStatus;
+}
+
+
+status_t
+BTimeZone::SetTo(const char* zoneCode)
+{
+	TimeZone* icuTimeZone;
+	if (zoneCode == NULL || zoneCode[0] == '\0')
+		icuTimeZone = TimeZone::createDefault();
+	else
+		icuTimeZone = TimeZone::createTimeZone(zoneCode);
+
+	UnicodeString unicodeString;
+	icuTimeZone->getID(unicodeString);
+	BStringByteSink converter(&fCode);
+	unicodeString.toUTF8(converter);
+
+	unicodeString.remove();
+	icuTimeZone->getDisplayName(false, TimeZone::LONG, unicodeString);
+	converter.SetTo(&fName);
+	unicodeString.toUTF8(converter);
+
+	unicodeString.remove();
+	icuTimeZone->getDisplayName(true, TimeZone::LONG, unicodeString);
+	converter.SetTo(&fDaylightSavingName);
+	unicodeString.toUTF8(converter);
+
+	unicodeString.remove();
+	icuTimeZone->getDisplayName(false, TimeZone::SHORT, unicodeString);
+	converter.SetTo(&fShortName);
+	unicodeString.toUTF8(converter);
+
+	unicodeString.remove();
+	icuTimeZone->getDisplayName(true, TimeZone::SHORT, unicodeString);
+	converter.SetTo(&fShortDaylightSavingName);
+	unicodeString.toUTF8(converter);
+
+	fSupportsDaylightSaving = icuTimeZone->useDaylightTime();
+
 	int32_t rawOffset;
 	int32_t dstOffset;
-	time_t now;
+	UDate nowMillis = 1000 * (double)time(NULL);
+
 	UErrorCode error = U_ZERO_ERROR;
-	fICUTimeZone->getOffset(time(&now) * 1000, FALSE, rawOffset, dstOffset
-		, error);
-	if (error != U_ZERO_ERROR)
-		return 0;
-	else
-		return rawOffset + dstOffset;
+	icuTimeZone->getOffset(nowMillis, FALSE, rawOffset, dstOffset, error);
+	if (!U_SUCCESS(error)) {
+		fOffsetFromGMT = 0;
+		fInitStatus = B_ERROR;
+	} else {
+		fOffsetFromGMT = (rawOffset + dstOffset) / 1000;
+			// we want seconds, not ms (which ICU gives us)
+		fInitStatus = B_OK;
+	}
+
+	delete icuTimeZone;
+
+	return fInitStatus;
 }

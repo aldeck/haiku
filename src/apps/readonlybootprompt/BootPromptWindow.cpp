@@ -18,7 +18,7 @@
 #include <GroupLayoutBuilder.h>
 #include <ListView.h>
 #include <Locale.h>
-#include <LocaleRoster.h>
+#include <MutableLocaleRoster.h>
 #include <Path.h>
 #include <ScrollView.h>
 #include <SeparatorView.h>
@@ -30,6 +30,9 @@
 #include "BootPrompt.h"
 #include "Keymap.h"
 #include "KeymapListItem.h"
+
+
+using BPrivate::gMutableLocaleRoster;
 
 
 enum {
@@ -156,7 +159,8 @@ BootPromptWindow::MessageReceived(BMessage* message)
 				BMessage preferredLanguages;
 				preferredLanguages.AddString("language",
 					languageItem->Language());
-				be_locale_roster->SetPreferredLanguages(&preferredLanguages);
+				gMutableLocaleRoster->SetPreferredLanguages(
+					&preferredLanguages);
 				_InitCatalog(true);
 			}
 			// Calling it here is a cheap way of preventing the user to have
@@ -174,48 +178,30 @@ BootPromptWindow::MessageReceived(BMessage* message)
 }
 
 
+namespace BPrivate {
+	void ForceUnloadCatalog();
+};
+
+
 void
 BootPromptWindow::_InitCatalog(bool saveSettings)
 {
 	// Initilialize the Locale Kit
-	// TODO : not possible with the current API !
-	// sCatalogInitOnce = false;
+	BPrivate::ForceUnloadCatalog();
 
-	// Generate a settings file
-	// TODO: This should not be necessary.
-	// be_locale_roster->SetPreferredLanguages() should take care of things
 	if (!saveSettings)
 		return;
 
-	/*
-	BPath path;
-	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) != B_OK
-		|| path.Append("Locale settings") != B_OK) {
-		return;
-	}
-
 	BMessage settings;
-
-	BFile file;
-	if (file.SetTo(path.Path(), B_READ_ONLY) == B_OK)
-		settings.Unflatten(&file);
-
 	BString language;
-	if (fCatalog->GetLanguage(&language) == B_OK) {
-		settings.RemoveName("language");
+	if (be_locale_roster->GetCatalog()->GetLanguage(&language) == B_OK) {
 		settings.AddString("language", language.String());
 	}
 
-	settings.RemoveName("country");
-	BCountry country(language.String(), language.ToUpper());
-	settings.AddString("country", country.Code());
+	gMutableLocaleRoster->SetPreferredLanguages(&settings);
 
-	if (file.SetTo(path.Path(), B_CREATE_FILE | B_ERASE_FILE | B_WRITE_ONLY)
-			!= B_OK
-		|| settings.Flatten(&file) != B_OK) {
-		fprintf(stderr, "Failed to write Local Kit settings!\n");
-	}
-	*/
+	BCountry country(language.String(), language.ToUpper());
+	gMutableLocaleRoster->SetDefaultCountry(country);
 }
 
 

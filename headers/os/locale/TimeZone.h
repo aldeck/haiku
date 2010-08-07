@@ -1,31 +1,44 @@
 /*
-Copyright 2010, Haiku, Inc.
-Distributed under the terms of the MIT License.
-*/
+ * Copyright 2010, Haiku, Inc. All rights reserved.
+ * Distributed under the terms of the MIT License.
+ */
+#ifndef _TIME_ZONE_H
+#define _TIME_ZONE_H
 
 
-#ifndef __TIMEZONE_H__
-#define __TIMEZONE_H__
-
-
-class BString;
-namespace icu_44 {
-	class TimeZone;
-}
+#include <String.h>
 
 
 class BTimeZone {
-	public:
-					BTimeZone(const char* zoneCode);
-					~BTimeZone();
+public:
+								BTimeZone(const char* zoneCode = NULL);
+								~BTimeZone();
 
-		void		GetName(BString& name);
-		void		GetCode(char* buffer, int size);
-		int			OffsetFromGMT();
+			const BString&		Code() const;
+			const BString&		Name() const;
+			const BString&		DaylightSavingName() const;
+			const BString&		ShortName() const;
+			const BString&		ShortDaylightSavingName() const;
+			int					OffsetFromGMT() const;
+			bool				SupportsDaylightSaving() const;
 
-	private:
-		icu_44::TimeZone*	fICUTimeZone;
+			status_t			InitCheck() const;
+
+			status_t			SetTo(const char* zoneCode);
+
+	static  const char*			kNameOfGmtZone;
+
+private:
+			BString				fCode;
+			BString				fName;
+			BString				fDaylightSavingName;
+			BString				fShortName;
+			BString				fShortDaylightSavingName;
+			int					fOffsetFromGMT;
+			bool				fSupportsDaylightSaving;
+
+			status_t			fInitStatus;
 };
 
 
-#endif
+#endif	// _TIME_ZONE_H

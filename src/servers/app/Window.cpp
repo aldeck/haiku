@@ -17,13 +17,13 @@
 #include "Decorator.h"
 #include "DecorManager.h"
 #include "Desktop.h"
-#include "DefaultWindowBehaviour.h"
 #include "DrawingEngine.h"
 #include "HWInterface.h"
 #include "MessagePrivate.h"
 #include "PortLink.h"
 #include "ServerApp.h"
 #include "ServerWindow.h"
+#include "WindowBehaviour.h"
 #include "Workspace.h"
 #include "WorkspacesView.h"
 
@@ -135,7 +135,7 @@ Window::Window(const BRect& frame, const char *name,
 				&fMaxWidth, &fMaxHeight);
 		}
 	}
-	fWindowBehaviour = new (std::nothrow)DefaultWindowBehaviour(this);
+	fWindowBehaviour = gDecorManager.AllocateWindowBehaviour(this);
 
 	// do we need to change our size to let the decorator fit?
 	// _ResizeBy() will adapt the frame for validity before resizing
@@ -542,17 +542,35 @@ Window::PreviousWindow(int32 index) const
 }
 
 
-void
-Window::ReloadDecorator()
+bool
+Window::ReloadDecor()
 {
+	::Decorator* decorator = NULL;
+	WindowBehaviour* windowBehaviour = NULL;
+
 	if (fLook != B_NO_BORDER_WINDOW_LOOK) {
-		delete fDecorator;
 		// we need a new decorator
-		fDecorator = gDecorManager.AllocateDecorator(fDesktop, fDrawingEngine,
+		decorator = gDecorManager.AllocateDecorator(fDesktop, fDrawingEngine,
 			Frame(), Title(), fLook, fFlags);
+		if (!decorator)
+			return false;
 		if (IsFocus())
-			fDecorator->SetFocus(true);
+			decorator->SetFocus(true);
 	}
+
+	windowBehaviour = gDecorManager.AllocateWindowBehaviour(this);
+	if (!windowBehaviour) {
+		delete decorator;
+		return false;
+	}
+
+	delete fDecorator;
+	fDecorator = decorator;
+
+	delete fWindowBehaviour;
+	fWindowBehaviour = windowBehaviour;
+
+	return true;
 }
 
 
@@ -777,8 +795,8 @@ Window::MouseDown(BMessage* message, BPoint where, int32* _viewToken)
 
 			// clicking a simple View
 			if (!IsFocus()) {
-				bool acceptFirstClick = desktopSettings.AcceptFirstClick()
-					|| ((Flags() & B_WILL_ACCEPT_FIRST_CLICK) != 0);
+				bool acceptFirstClick
+					= (Flags() & B_WILL_ACCEPT_FIRST_CLICK) != 0;
 				bool avoidFocus = (Flags() & B_AVOID_FOCUS) != 0;
 
 				// Activate or focus the window in case it doesn't accept first
@@ -795,7 +813,8 @@ Window::MouseDown(BMessage* message, BPoint where, int32* _viewToken)
 				// TODO: the latter is unlike BeOS - if we really wanted to
 				// imitate this behaviour, we would need to check if we're
 				// the front window instead of the focus window
-				if (!acceptFirstClick && !avoidFocus)
+				if (!acceptFirstClick && !desktopSettings.AcceptFirstClick()
+					&& !avoidFocus)
 					return;
 			}
 

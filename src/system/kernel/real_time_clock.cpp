@@ -31,9 +31,7 @@
 
 static struct real_time_data *sRealTimeData;
 static bool sIsGMT = false;
-static char sTimezoneFilename[B_PATH_NAME_LENGTH] = "";
 static bigtime_t sTimezoneOffset = 0;
-static bool sDaylightSavingTime = false;
 
 
 /*! Write the system time to CMOS. */
@@ -130,18 +128,10 @@ real_time_clock_usecs(void)
 }
 
 
-status_t
-get_rtc_info(rtc_info *info)
+uint32
+get_timezone_offset(void)
 {
-	if (info == NULL)
-		return B_BAD_VALUE;
-
-	info->time = real_time_clock();
-	info->is_gmt = sIsGMT;
-	info->tz_minuteswest = sTimezoneOffset / 1000000LL;
-	info->tz_dsttime = sDaylightSavingTime;
-
-	return B_OK;
+	return (time_t)(sTimezoneOffset / 1000000LL);
 }
 
 
@@ -203,22 +193,6 @@ rtc_secs_to_tm(uint32 seconds, struct tm *t)
 }
 
 
-//	#pragma mark -
-
-
-/*!	This is called from the gettimeofday() implementation that's part of the
-	kernel.
-*/
-status_t
-_kern_get_timezone(time_t *_timezoneOffset, bool *_daylightSavingTime)
-{
-	*_timezoneOffset = (time_t)(sTimezoneOffset / 1000000LL);
-	*_daylightSavingTime = sDaylightSavingTime;
-
-	return B_OK;
-}
-
-
 //	#pragma mark - syscalls
 
 
@@ -243,7 +217,7 @@ _user_set_real_time_clock(uint32 time)
 
 
 status_t
-_user_set_timezone(time_t timezoneOffset, bool daylightSavingTime)
+_user_set_timezone(time_t timezoneOffset)
 {
 	bigtime_t offset = (bigtime_t)timezoneOffset * 1000000LL;
 
@@ -264,7 +238,6 @@ _user_set_timezone(time_t timezoneOffset, bool daylightSavingTime)
 	}
 
 	sTimezoneOffset = offset;
-	sDaylightSavingTime = daylightSavingTime;
 
 	TRACE(("new system_time_offset %Ld\n",
 		arch_rtc_get_system_time_offset(sRealTimeData)));
@@ -274,15 +247,12 @@ _user_set_timezone(time_t timezoneOffset, bool daylightSavingTime)
 
 
 status_t
-_user_get_timezone(time_t *_timezoneOffset, bool *_daylightSavingTime)
+_user_get_timezone(time_t *_timezoneOffset)
 {
 	time_t offset = (time_t)(sTimezoneOffset / 1000000LL);
 
 	if (!IS_USER_ADDRESS(_timezoneOffset)
-		|| !IS_USER_ADDRESS(_daylightSavingTime)
-		|| user_memcpy(_timezoneOffset, &offset, sizeof(time_t)) < B_OK
-		|| user_memcpy(_daylightSavingTime, &sDaylightSavingTime,
-				sizeof(bool)) < B_OK)
+		|| user_memcpy(_timezoneOffset, &offset, sizeof(time_t)) < B_OK)
 		return B_BAD_ADDRESS;
 
 	return B_OK;
@@ -290,18 +260,12 @@ _user_get_timezone(time_t *_timezoneOffset, bool *_daylightSavingTime)
 
 
 status_t
-_user_set_tzfilename(const char *filename, size_t length, bool isGMT)
+_user_set_real_time_clock_is_gmt(bool isGMT)
 {
 	// store previous value
 	bool wasGMT = sIsGMT;
 	if (geteuid() != 0)
 		return B_NOT_ALLOWED;
-
-	if (filename != NULL && length > 0) {
-		if (!IS_USER_ADDRESS(filename)
-			|| user_strlcpy(sTimezoneFilename, filename, B_PATH_NAME_LENGTH) < 0)
-			return B_BAD_ADDRESS;
-	}
 
 	sIsGMT = isGMT;
 
@@ -316,15 +280,10 @@ _user_set_tzfilename(const char *filename, size_t length, bool isGMT)
 
 
 status_t
-_user_get_tzfilename(char *userFilename, size_t length, bool *_userIsGMT)
+_user_get_real_time_clock_is_gmt(bool *_userIsGMT)
 {
-	if ((userFilename == NULL || length == 0) && _userIsGMT == NULL)
+	if (_userIsGMT == NULL)
 		return B_BAD_VALUE;
-
-	if (userFilename != NULL
-		&& (!IS_USER_ADDRESS(userFilename)
-			|| user_strlcpy(userFilename, sTimezoneFilename, length) < 0))
-		return B_BAD_ADDRESS;
 
 	if (_userIsGMT != NULL
 		&& (!IS_USER_ADDRESS(_userIsGMT)

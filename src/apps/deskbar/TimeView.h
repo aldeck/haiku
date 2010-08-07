@@ -36,6 +36,7 @@ All rights reserved.
 
 
 #include <OS.h>
+#include <Locale.h>
 #include <Messenger.h>
 #include <View.h>
 
@@ -127,8 +128,8 @@ class TTimeView : public BView {
 
 		BMessenger	fCalendarWindow;
 		BMessageRunner*	fLongClickMessageRunner;
-		
-		BCountry* fHere; // For date and time localizing purposes
+
+		BLocale		fLocale; // For date and time localizing purposes
 };
 
 

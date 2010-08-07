@@ -506,8 +506,8 @@ AddBootModuleSymlinksToHaikuImage
 # add-ons
 AddFilesToHaikuImage system add-ons accelerants
 	: $(SYSTEM_ADD_ONS_ACCELERANTS) ;
-AddFilesToHaikuImage system add-ons opengl
-	: Mesa\ Software\ Renderer ;
+AddFilesToHaikuHybridImage system add-ons opengl
+	: Mesa\ Software\ Renderer : : true ;
 AddFilesToHaikuHybridImage system add-ons Translators
 	: $(SYSTEM_ADD_ONS_TRANSLATORS) : : true ;
 AddFilesToHaikuImage system add-ons locale catalogs
@@ -555,6 +555,10 @@ AddFilesToHaikuImage system add-ons Screen\ Savers
 
 AddFilesToHaikuImage system add-ons disk_systems
 	: <disk_system>intel <disk_system>bfs ;
+
+# decorators
+AddFilesToHaikuImage home config add-ons decorators :
+	MacDecorator WinDecorator ClassicBe ;
 
 # create directories that will remain empty
 AddDirectoryToHaikuImage common bin ;
@@ -720,7 +724,7 @@ UserBuildConfigRulePreImage	;
 HAIKU_IMAGE_NAME ?= $(HAIKU_DEFAULT_IMAGE_NAME) ;
 HAIKU_IMAGE_DIR ?= $(HAIKU_DEFAULT_IMAGE_DIR) ;
 HAIKU_IMAGE = $(HAIKU_IMAGE_NAME) ;
-HAIKU_IMAGE_SIZE ?= $(HAIKU_DEFAULT_IMAGE_SIZE) ; # 200 MB
+HAIKU_IMAGE_SIZE ?= $(HAIKU_DEFAULT_IMAGE_SIZE) ; # 220 MB
 HAIKU_IMAGE_LABEL ?= $(HAIKU_DEFAULT_IMAGE_LABEL) ;
 MakeLocate $(HAIKU_IMAGE) : $(HAIKU_IMAGE_DIR) ;
 

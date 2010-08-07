@@ -1,10 +1,13 @@
+/*
+ * Copyright 2003-2010, Haiku, Inc.
+ * Distributed under the terms of the MIT Licence.
+ */
 #ifndef _COUNTRY_H_
 #define _COUNTRY_H_
 
 
 #include <List.h>
 #include <LocaleStrings.h>
-#include <Locker.h>
 #include <String.h>
 #include <SupportDefs.h>
 
@@ -36,101 +39,32 @@ typedef enum {
 
 
 class BCountry {
-	public:
-		BCountry(const char* languageCode, const char* countryCode);
-		BCountry(const char* languageAndCountryCode = "en_US");
-		BCountry(const BCountry& other);
-		BCountry& operator=(const BCountry& other);
-		virtual 		~BCountry();
+public:
+								BCountry(const char* languageCode,
+									const char* countryCode);
+								BCountry(const char* languageAndCountryCode
+									= "en_US");
+								BCountry(const BCountry& other);
+								BCountry& operator=(const BCountry& other);
+								~BCountry();
 
-		bool 			Name(BString& name) const;
-		bool			LocaleName(BString& name) const;
-		const char*		Code() const;
-		status_t		GetIcon(BBitmap* result);
+			bool				GetName(BString& name) const;
+			const char*			Code() const;
+			status_t			GetIcon(BBitmap* result) const;
 
-		const char*		GetString(uint32 id) const;
+			const char*			GetLocalizedString(uint32 id) const;
 
-		// Date
+								// measurements
 
-		status_t	FormatDate(char* string, size_t maxSize, time_t time,
-			bool longFormat);
-		status_t	FormatDate(BString* string, time_t time,
-			bool longFormat);
-		status_t	FormatDate(BString* string, int*& fieldPositions,
-			int& fieldCount, time_t time, bool longFormat);
-		status_t		DateFields(BDateElement*& fields, int& fieldCount,
-			bool longFormat);
-		status_t		DateFormat(BString&, bool longFormat);
-		status_t		SetDateFormat(const char* formatString,
-						bool longFormat = true);
+			int8				Measurement() const;
 
-		int			StartOfWeek();
+								// timezones
 
-		// Time
+			int					GetTimeZones(BList& timezones) const;
 
-		status_t	FormatTime(char* string, size_t maxSize, time_t time,
-			bool longFormat);
-		status_t	FormatTime(BString* string, time_t time,
-			bool longFormat);
-		status_t		FormatTime(BString* string, int*& fieldPositions,
-			int& fieldCount, time_t time, bool longFormat);
-		status_t		TimeFields(BDateElement*& fields, int& fieldCount,
-			bool longFormat);
-
-		status_t		SetTimeFormat(const char* formatString,
-						bool longFormat = true);
-		status_t		TimeFormat(BString&, bool longFormat);
-
-		// numbers
-
-		virtual void FormatNumber(char* string, size_t maxSize, double value);
-		virtual status_t FormatNumber(BString* string, double value);
-		virtual void FormatNumber(char* string, size_t maxSize, int32 value);
-		virtual void FormatNumber(BString* string, int32 value);
-
-		bool		DecimalPoint(BString&) const;
-		bool		ThousandsSeparator(BString&) const;
-		bool		Grouping(BString&) const;
-
-		bool		PositiveSign(BString&) const;
-		bool		NegativeSign(BString&) const;
-
-		// measurements
-
-		virtual int8	Measurement() const;
-
-		// monetary
-
-		virtual ssize_t	FormatMonetary(char* string, size_t maxSize,
-			double value);
-		virtual ssize_t	FormatMonetary(BString* string, double value);
-
-		bool		CurrencySymbol(BString&) const;
-		bool		InternationalCurrencySymbol(BString&) const;
-		bool		MonDecimalPoint(BString&) const;
-		bool		MonThousandsSeparator(BString&) const;
-		bool		MonGrouping(BString&) const;
-		virtual int32	MonFracDigits() const;
-
-		// timezones
-		int GetTimeZones(BList& timezones);
-
-	private:
-		icu_44::DateFormat* _LockDateFormatter(bool longFormat);
-		icu_44::DateFormat* _LockTimeFormatter(bool longFormat);
-		void				_UnlockDateFormatter(bool longFormat);
-		void				_UnlockTimeFormatter(bool longFormat);
-
-		icu_44::DateFormat* fICULongDateFormatter;
-		icu_44::DateFormat* fICUShortDateFormatter;
-		icu_44::DateFormat* fICULongTimeFormatter;
-		icu_44::DateFormat* fICUShortTimeFormatter;
-		icu_44::Locale* fICULocale;
-
-		BLocker fLongDateLock;
-		BLocker fShortDateLock;
-		BLocker fLongTimeLock;
-		BLocker fShortTimeLock;
+private:
+			icu_44::Locale*		fICULocale;
 };
+
 
 #endif	/* _COUNTRY_H_ */

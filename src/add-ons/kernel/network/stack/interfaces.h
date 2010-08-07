@@ -25,6 +25,10 @@
 struct net_device_interface;
 
 
+// Additional address flags
+#define IFAF_DIRECT_ADDRESS		0x1000
+
+
 struct InterfaceAddress : DoublyLinkedListLinkImpl<InterfaceAddress>,
 		net_interface_address, Referenceable {
 								InterfaceAddress();
@@ -39,6 +43,9 @@ struct InterfaceAddress : DoublyLinkedListLinkImpl<InterfaceAddress>,
 			status_t			SetMask(const sockaddr* to);
 
 			sockaddr**			AddressFor(int32 option);
+
+			void				AddDefaultRoutes(int32 option);
+			void				RemoveDefaultRoutes(int32 option);
 
 			InterfaceAddress*&	HashTableLink() { return fLink; }
 
@@ -121,10 +128,14 @@ public:
 			bool				GetNextAddress(InterfaceAddress** _address);
 			InterfaceAddress*	AddressAt(size_t index);
 			size_t				CountAddresses();
+			void				RemoveAddresses();
 
 			status_t			Control(net_domain* domain, int32 option,
 									ifreq& request, ifreq* userRequest,
 									size_t length);
+
+			void				SetDown();
+			void				WentDown();
 
 			recursive_lock&		Lock() { return fLock; }
 
@@ -142,7 +153,6 @@ public:
 
 private:
 			status_t			_SetUp();
-			void				_SetDown();
 			InterfaceAddress*	_FirstForFamily(int family);
 			status_t			_ChangeAddress(RecursiveLocker& locker,
 									InterfaceAddress* address, int32 option,
@@ -165,8 +175,8 @@ status_t uninit_interfaces();
 // interfaces
 status_t add_interface(const char* name, net_domain_private* domain,
 	const ifaliasreq& request, net_device_interface* deviceInterface);
-status_t remove_interface(Interface* interface);
-void interface_went_down(Interface* interface);
+void remove_interface(Interface* interface);
+void interface_removed_device_interface(net_device_interface* deviceInterface);
 
 status_t add_interface_address(Interface* interface, net_domain_private* domain,
 	const ifaliasreq& request);
@@ -176,11 +186,12 @@ status_t update_interface_address(InterfaceAddress* interfaceAddress,
 Interface* get_interface(net_domain* domain, uint32 index);
 Interface* get_interface(net_domain* domain, const char* name);
 Interface* get_interface_for_device(net_domain* domain, uint32 index);
+Interface* get_interface_for_link(net_domain* domain, const sockaddr* address);
 InterfaceAddress* get_interface_address(const struct sockaddr* address);
 InterfaceAddress* get_interface_address_for_destination(net_domain* domain,
-	const struct sockaddr* destination);
+	const sockaddr* destination);
 InterfaceAddress* get_interface_address_for_link(net_domain* domain,
-	const struct sockaddr* linkAddress, bool unconfiguredOnly);
+	const sockaddr* linkAddress, bool unconfiguredOnly);
 
 uint32 count_interfaces();
 status_t list_interfaces(int family, void* buffer, size_t* _bufferSize);

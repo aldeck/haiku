@@ -14,6 +14,14 @@
 #define DESKTOP_H
 
 
+#include <Autolock.h>
+#include <InterfaceDefs.h>
+#include <List.h>
+#include <Menu.h>
+#include <ObjectList.h>
+#include <Region.h>
+#include <Window.h>
+
 #include "CursorManager.h"
 #include "DesktopListener.h"
 #include "DesktopSettings.h"
@@ -26,15 +34,6 @@
 #include "WindowList.h"
 #include "Workspace.h"
 #include "WorkspacePrivate.h"
-
-#include <ObjectList.h>
-
-#include <Autolock.h>
-#include <InterfaceDefs.h>
-#include <List.h>
-#include <Menu.h>
-#include <Region.h>
-#include <Window.h>
 
 
 #define USE_MULTI_LOCKER 1
@@ -65,6 +64,8 @@ class Desktop : public DesktopObservable, public MessageLooper,
 public:
 								Desktop(uid_t userID, const char* targetScreen);
 	virtual						~Desktop();
+
+			void				RegisterListener(DesktopListener* listener);
 
 			status_t			Init();
 
@@ -233,7 +234,7 @@ public:
 			void				Redraw();
 			void				RedrawBackground();
 
-			void				ReloadDecorator(Window* window);
+			void				ReloadDecor();
 
 			BRegion&			BackgroundRegion()
 									{ return fBackgroundRegion; }
@@ -252,9 +253,11 @@ public:
 									BPrivate::LinkSender& sender);
 
 			WindowList&			CurrentWindows();
-			WindowList&			Windows(int32 index);
+			WindowList&			AllWindows();
 
 private:
+			WindowList&			_Windows(int32 index);
+
 			void				_LaunchInputServer();
 			void				_GetLooperName(char* name, size_t size);
 			void				_PrepareQuit();

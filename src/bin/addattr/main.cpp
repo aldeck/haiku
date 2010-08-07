@@ -64,6 +64,8 @@ const struct {
 
 	{B_BOOL_TYPE, "bool"},
 
+	{B_VECTOR_ICON_TYPE, "icon"},
+
 	{B_RAW_TYPE, "raw"},
 };
 const uint32 kNumSupportedTypes = sizeof(kSupportedTypes)
@@ -110,7 +112,7 @@ usage(int returnValue)
 		"   or: %s [-f value-from-file] [-t type] [ -P ] attr file1 [file2...]\n\n"
 		"\t-P : Don't resolve links\n"
 		"\tType is one of:\n"
-		"\t\tstring, mime, int, llong, float, double, bool, raw\n"
+		"\t\tstring, mime, int, llong, float, double, bool, icon, raw\n"
 		"\t\tor a numeric value (ie. 0x1234, 42, 'ABCD', ...)\n"
 		"\tThe default is \"string\"\n", kProgramName, kProgramName);
 
@@ -124,7 +126,7 @@ invalidAttrType(const char *attrTypeName)
 	fprintf(stderr, "%s: attribute type \"%s\" is not valid\n", kProgramName,
 		attrTypeName);
 	fprintf(stderr, "\tTry one of: string, mime, int, llong, float, double,\n");
-	fprintf(stderr, "\t\tbool, raw, or a numeric value (ie. 0x1234, 42, 'ABCD'"
+	fprintf(stderr, "\t\tbool, icon, raw, or a numeric value (ie. 0x1234, 42, 'ABCD'"
 		", ...)\n");
 
 	exit(1);

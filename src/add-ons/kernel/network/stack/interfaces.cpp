@@ -19,6 +19,7 @@
 #include <KernelExport.h>
 
 #include <net_device.h>
+#include <NetUtilities.h>
 
 #include "device_interfaces.h"
 #include "domains.h"
@@ -170,6 +171,10 @@ InterfaceAddress::InterfaceAddress(net_interface* netInterface,
 
 InterfaceAddress::~InterfaceAddress()
 {
+	TRACE("InterfaceAddress %p: destructor\n", this);
+
+	if (interface != NULL && (flags & IFAF_DIRECT_ADDRESS) == 0)
+		((Interface*)interface)->ReleaseReference();
 }
 
 
@@ -213,6 +218,7 @@ InterfaceAddress::AddressFor(int32 option)
 	switch (option) {
 		case SIOCSIFADDR:
 		case SIOCGIFADDR:
+		case SIOCDIFADDR:
 			return &local;
 
 		case SIOCSIFNETMASK:
@@ -227,6 +233,54 @@ InterfaceAddress::AddressFor(int32 option)
 
 		default:
 			return NULL;
+	}
+}
+
+
+/*!	Adds the default routes that every interface address needs, ie. the local
+	host route, and one for the subnet (if set).
+*/
+void
+InterfaceAddress::AddDefaultRoutes(int32 option)
+{
+	net_route route;
+	route.destination = local;
+	route.gateway = NULL;
+	route.interface_address = this;
+
+	if (mask != NULL && (option == SIOCSIFNETMASK || option == SIOCSIFADDR)) {
+		route.mask = mask;
+		route.flags = 0;
+		add_route(domain, &route);
+	}
+
+	if (option == SIOCSIFADDR) {
+		route.mask = NULL;
+		route.flags = RTF_LOCAL | RTF_HOST;
+		add_route(domain, &route);
+	}
+}
+
+
+/*!	Removes the default routes as set by AddDefaultRoutes() again. */
+void
+InterfaceAddress::RemoveDefaultRoutes(int32 option)
+{
+	net_route route;
+	route.destination = local;
+	route.gateway = NULL;
+	route.interface_address = this;
+
+	if (mask != NULL && (option == SIOCSIFNETMASK || option == SIOCSIFADDR)) {
+		route.mask = mask;
+		route.flags = 0;
+		remove_route(domain, &route);
+	}
+
+	if (option == SIOCSIFADDR) {
+		route.mask = NULL;
+		route.flags = RTF_LOCAL | RTF_HOST;
+		remove_route(domain, &route);
 	}
 }
 
@@ -331,11 +385,18 @@ InterfaceAddress::Prepare(sockaddr** _address, size_t size)
 void
 InterfaceAddress::_Init(net_interface* netInterface, net_domain* netDomain)
 {
+	TRACE("InterfaceAddress %p: init interface %p, domain %p\n", this,
+		netInterface, netDomain);
+
 	interface = netInterface;
 	domain = netDomain;
 	local = NULL;
 	destination = NULL;
 	mask = NULL;
+	flags = 0;
+
+	if (interface != NULL)
+		((Interface*)interface)->AcquireReference();
 }
 
 
@@ -348,7 +409,10 @@ Interface::Interface(const char* interfaceName,
 	TRACE("Interface %p: new \"%s\", device interface %p\n", this,
 		interfaceName, deviceInterface);
 
-	strlcpy(name, interfaceName, IF_NAMESIZE);
+	int written = strlcpy(name, interfaceName, IF_NAMESIZE);
+	memset(name + written, 0, IF_NAMESIZE - written);
+		// Clear remaining space
+
 	device = deviceInterface->device;
 
 	index = ++sInterfaceIndex;
@@ -370,6 +434,27 @@ Interface::Interface(const char* interfaceName,
 
 Interface::~Interface()
 {
+	TRACE("Interface %p: destructor\n", this);
+
+	put_device_interface(fDeviceInterface);
+
+	// Uninitialize the domain datalink protocols
+
+	DatalinkTable::Iterator iterator = fDatalinkTable.GetIterator();
+	while (domain_datalink* datalink = iterator.Next()) {
+		put_domain_datalink_protocols(this, datalink->domain);
+	}
+
+	// Free domain datalink objects
+
+	domain_datalink* next = fDatalinkTable.Clear(true);
+	while (next != NULL) {
+		domain_datalink* datalink = next;
+		next = next->hash_link;
+
+		delete datalink;
+	}
+
 	recursive_lock_destroy(&fLock);
 
 	// Release reference of the stack - at this point, our stack may be unloaded
@@ -477,10 +562,6 @@ Interface::RemoveAddress(InterfaceAddress* address)
 	fAddresses.Remove(address);
 	address->GetDoublyLinkedListLink()->next = NULL;
 
-// TODO!
-//	if (_FirstForFamily(domain->family) == NULL)
-//		put_domain_datalink_protocols(this, domain);
-
 	locker.Unlock();
 	
 	MutexLocker hashLocker(sHashLock);
@@ -541,6 +622,17 @@ Interface::CountAddresses()
 }
 
 
+void
+Interface::RemoveAddresses()
+{
+	RecursiveLocker locker(fLock);
+
+	while (InterfaceAddress* address = fAddresses.RemoveHead()) {
+		address->ReleaseReference();
+	}
+}
+
+
 /*!	This is called in order to call the correct methods of the datalink
 	protocols, ie. it will translate address changes to
 	net_datalink_protocol::change_address(), and IFF_UP changes to
@@ -565,7 +657,7 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 				if ((requestFlags & IFF_UP) != 0)
 					status = _SetUp();
 				else
-					_SetDown();
+					SetDown();
 			}
 
 			if (status == B_OK) {
@@ -581,7 +673,7 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 			return status;
 		}
 		
-		case SIOC_IF_ALIAS_SET:
+		case B_SOCKET_SET_ALIAS:
 		{
 			RecursiveLocker locker(fLock);
 
@@ -681,6 +773,39 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 }
 
 
+void
+Interface::SetDown()
+{
+	if ((flags & IFF_UP) == 0)
+		return;
+
+	RecursiveLocker locker(fLock);
+
+	DatalinkTable::Iterator iterator = fDatalinkTable.GetIterator();
+	while (domain_datalink* datalink = iterator.Next()) {
+		datalink->first_info->interface_down(datalink->first_protocol);
+	}
+
+	flags &= ~IFF_UP;
+}
+
+
+/*!	Called when a device lost its IFF_UP status. We will invalidate all
+	interface routes here.
+*/
+void
+Interface::WentDown()
+{
+	RecursiveLocker locker(fLock);
+
+	AddressList::Iterator iterator = fAddresses.GetIterator();
+	while (InterfaceAddress* address = iterator.Next()) {
+		if (address->domain != NULL)
+			invalidate_routes(address->domain, this);
+	}
+}
+
+
 status_t
 Interface::CreateDomainDatalinkIfNeeded(net_domain* domain)
 {
@@ -713,6 +838,7 @@ Interface::CreateDomainDatalinkIfNeeded(net_domain* domain)
 	datalink->direct_address.mask = NULL;
 	datalink->direct_address.domain = domain;
 	datalink->direct_address.interface = this;
+	datalink->direct_address.flags = IFAF_DIRECT_ADDRESS;
 
 	fDatalinkTable.Insert(datalink);
 
@@ -785,7 +911,7 @@ Interface::_SetUp()
 	if (status != B_OK)
 		return status;
 
-	// propagate flag to all datalink protocols
+	// Propagate flag to all datalink protocols
 
 	RecursiveLocker locker(fLock);
 
@@ -810,26 +936,15 @@ Interface::_SetUp()
 		}
 	}
 
-	flags |= IFF_UP;
-	return B_OK;
-}
+	// Add default routes for the existing addresses
 
-
-void
-Interface::_SetDown()
-{
-	if ((flags & IFF_UP) == 0)
-		return;
-
-	RecursiveLocker locker(fLock);
-
-	DatalinkTable::Iterator iterator = fDatalinkTable.GetIterator();
-	while (domain_datalink* datalink = iterator.Next()) {
-		datalink->first_info->interface_down(datalink->first_protocol);
+	AddressList::Iterator addressIterator = fAddresses.GetIterator();
+	while (InterfaceAddress* address = addressIterator.Next()) {
+		address->AddDefaultRoutes(SIOCSIFADDR);
 	}
 
-	down_device_interface(fDeviceInterface);
-	flags &= ~IFF_UP;
+	flags |= IFF_UP;
+	return B_OK;
 }
 
 
@@ -850,13 +965,29 @@ Interface::_FirstForFamily(int family)
 
 status_t
 Interface::_ChangeAddress(RecursiveLocker& locker, InterfaceAddress* address,
-	int32 option, const sockaddr* originalAddress, const sockaddr* newAddress)
+	int32 option, const sockaddr* originalAddress,
+	const sockaddr* requestedAddress)
 {
-	// Copy old address over
+	// Copy old address
 	sockaddr_storage oldAddress;
 	if (address->domain->address_module->set_to((sockaddr*)&oldAddress,
 			originalAddress) != B_OK)
 		oldAddress.ss_family = AF_UNSPEC;
+
+	// Copy new address (this also makes sure that sockaddr::sa_len is set
+	// correctly)
+	sockaddr_storage newAddress;
+	if (address->domain->address_module->set_to((sockaddr*)&newAddress,
+			requestedAddress) != B_OK)
+		newAddress.ss_family = AF_UNSPEC;
+
+	// Test if anything changed for real
+	if (address->domain->address_module->equal_addresses(
+			(sockaddr*)&oldAddress, (sockaddr*)&newAddress)) {
+		// Nothing to do
+		TRACE("  option %" B_PRId32 " addresses are equal!\n", option);
+		return B_OK;
+	}
 
 	// TODO: mark this address busy or call while holding the lock!
 	address->AcquireReference();
@@ -866,8 +997,7 @@ Interface::_ChangeAddress(RecursiveLocker& locker, InterfaceAddress* address,
 	status_t status = datalink->first_protocol->module->change_address(
 		datalink->first_protocol, address, option,
 		oldAddress.ss_family != AF_UNSPEC ? (sockaddr*)&oldAddress : NULL,
-		newAddress != NULL && newAddress->sa_family != AF_UNSPEC
-			? newAddress : NULL);
+		newAddress.ss_family != AF_UNSPEC ? (sockaddr*)&newAddress : NULL);
 
 	locker.Lock();
 	address->ReleaseReference();
@@ -912,56 +1042,6 @@ find_interface(uint32 index)
 }
 
 
-/*!	Removes the default routes as set by add_default_routes() again. */
-static void
-remove_default_routes(InterfaceAddress* address, int32 option)
-{
-	net_route route;
-	route.destination = address->local;
-	route.gateway = NULL;
-	route.interface_address = address;
-
-	if (address->mask != NULL
-		&& (option == SIOCSIFNETMASK || option == SIOCSIFADDR)) {
-		route.mask = address->mask;
-		route.flags = 0;
-		remove_route(address->domain, &route);
-	}
-
-	if (option == SIOCSIFADDR) {
-		route.mask = NULL;
-		route.flags = RTF_LOCAL | RTF_HOST;
-		remove_route(address->domain, &route);
-	}
-}
-
-
-/*!	Adds the default routes that every interface address needs, ie. the local
-	host route, and one for the subnet (if set).
-*/
-static void
-add_default_routes(InterfaceAddress* address, int32 option)
-{
-	net_route route;
-	route.destination = address->local;
-	route.gateway = NULL;
-	route.interface_address = address;
-
-	if (address->mask != NULL
-		&& (option == SIOCSIFNETMASK || option == SIOCSIFADDR)) {
-		route.mask = address->mask;
-		route.flags = 0;
-		add_route(address->domain, &route);
-	}
-
-	if (option == SIOCSIFADDR) {
-		route.mask = NULL;
-		route.flags = RTF_LOCAL | RTF_HOST;
-		add_route(address->domain, &route);
-	}
-}
-
-
 // #pragma mark -
 
 
@@ -997,50 +1077,33 @@ add_interface(const char* name, net_domain_private* domain,
 
 /*!	Removes the interface from the list, and puts the stack's reference to it.
 */
-status_t
+void
 remove_interface(Interface* interface)
 {
-	return B_ERROR;
-#if 0
-	// deleting an interface is fairly complex as we need
-	// to clear all references to it throughout the stack
+	interface->SetDown();
+	interface->RemoveAddresses();
 
-	// this will possibly call (if IFF_UP):
-	//  interface_protocol_down()
-	//   domain_interface_went_down()
-	//    invalidate_routes()
-	//     remove_route()
-	//      update_route_infos()
-	//       get_route_internal()
-	//   down_device_interface() -- if upcount reaches 0
-	interface_set_down(interface);
+	MutexLocker locker(sLock);
+	sInterfaces.Remove(interface);
+	locker.Unlock();
 
-	// This call requires the RX Lock to be a recursive
-	// lock since each uninit_protocol() call may call
-	// again into the stack to unregister a reader for
-	// instance, which tries to obtain the RX lock again.
-	put_domain_datalink_protocols(interface);
-
-	put_device_interface(interface->device_interface);
-
-	delete interface;
-#endif
-#if 0
-	invalidate_routes(domain, interface);
-
-	list_remove_item(&domain->interfaces, interface);
 	notify_interface_removed(interface);
-	delete_interface((net_interface_private*)interface);
-#endif
+	
+	interface->ReleaseReference();
 }
 
 
+/*!	This is called whenever a device interface is being removed. We will get
+	the corresponding Interface, and remove it.
+*/
 void
-interface_went_down(Interface* interface)
+interface_removed_device_interface(net_device_interface* deviceInterface)
 {
-	TRACE("interface_went_down(%s)\n", interface->name);
-	// TODO!
-	//invalidate_routes(domain, interface);
+	MutexLocker locker(sLock);
+
+	Interface* interface = find_interface(deviceInterface->device->name);
+	if (interface != NULL)
+		remove_interface(interface);
 }
 
 
@@ -1093,6 +1156,11 @@ status_t
 update_interface_address(InterfaceAddress* interfaceAddress, int32 option,
 	const sockaddr* oldAddress, const sockaddr* newAddress)
 {
+	TRACE("%s(address %p, option %" B_PRId32 ", oldAddress %s, newAddress "
+		"%s)\n", __FUNCTION__, interfaceAddress, option,
+		AddressString(interfaceAddress->domain, oldAddress).Data(),
+		AddressString(interfaceAddress->domain, newAddress).Data());
+
 	MutexLocker locker(sHashLock);
 
 	// set logical interface address
@@ -1100,7 +1168,22 @@ update_interface_address(InterfaceAddress* interfaceAddress, int32 option,
 	if (_address == NULL)
 		return B_BAD_VALUE;
 
-	remove_default_routes(interfaceAddress, option);
+	Interface* interface = (Interface*)interfaceAddress->interface;
+
+	interfaceAddress->RemoveDefaultRoutes(option);
+
+	if (option == SIOCDIFADDR) {
+		// Remove address, and release its reference (causing our caller to
+		// delete it)
+		locker.Unlock();
+
+		invalidate_routes(interfaceAddress);
+
+		interface->RemoveAddress(interfaceAddress);
+		interfaceAddress->ReleaseReference();
+		return B_OK;
+	}
+
 	sAddressTable.Remove(interfaceAddress);
 
 	// Copy new address over
@@ -1135,8 +1218,8 @@ update_interface_address(InterfaceAddress* interfaceAddress, int32 option,
 				interfaceAddress->local, oldNetmask);
 		}
 
-		add_default_routes(interfaceAddress, option);
-		notify_interface_changed(interfaceAddress->interface);
+		interfaceAddress->AddDefaultRoutes(option);
+		notify_interface_changed(interface);
 	}
 
 	sAddressTable.Insert(interfaceAddress);
@@ -1201,6 +1284,40 @@ get_interface_for_device(net_domain* domain, uint32 index)
 }
 
 
+/*!	Returns a reference to an Interface that matches the given \a linkAddress.
+	The link address is checked against its hardware address, or its interface
+	name, or finally the interface index.
+*/
+Interface*
+get_interface_for_link(net_domain* domain, const sockaddr* _linkAddress)
+{
+	sockaddr_dl& linkAddress = *(sockaddr_dl*)_linkAddress;
+
+	MutexLocker locker(sLock);
+
+	InterfaceList::Iterator iterator = sInterfaces.GetIterator();
+	while (Interface* interface = iterator.Next()) {
+		// Test if the hardware address matches, or if the given interface
+		// matches, or if at least the index matches.
+		if ((linkAddress.sdl_alen == interface->device->address.length
+				&& memcmp(LLADDR(&linkAddress), interface->device->address.data,
+					linkAddress.sdl_alen) == 0)
+			|| (linkAddress.sdl_nlen > 0
+				&& !strcmp(interface->name, (const char*)linkAddress.sdl_data))
+			|| (linkAddress.sdl_nlen == 0 && linkAddress.sdl_alen == 0
+				&& linkAddress.sdl_index == interface->index)) {
+			if (interface->CreateDomainDatalinkIfNeeded(domain) != B_OK)
+				return NULL;
+
+			interface->AcquireReference();
+			return interface;
+		}
+	}
+
+	return NULL;
+}
+
+
 InterfaceAddress*
 get_interface_address(const sockaddr* local)
 {
@@ -1220,7 +1337,7 @@ get_interface_address(const sockaddr* local)
 
 InterfaceAddress*
 get_interface_address_for_destination(net_domain* domain,
-	const struct sockaddr* destination)
+	const sockaddr* destination)
 {
 	MutexLocker locker(sLock);
 	
@@ -1236,19 +1353,29 @@ get_interface_address_for_destination(net_domain* domain,
 }
 
 
+/*!	Returns a reference to an InterfaceAddress of the specified \a domain that
+	belongs to the interface identified via \a linkAddress. Only the hardware
+	address is matched.
+
+	If \a unconfiguredOnly is set, the interface address must not yet be
+	configured, or must currently be in the process of being configured.
+*/
 InterfaceAddress*
-get_interface_address_for_link(net_domain* domain,
-	const struct sockaddr* _linkAddress, bool unconfiguredOnly)
+get_interface_address_for_link(net_domain* domain, const sockaddr* address,
+	bool unconfiguredOnly)
 {
-	sockaddr_dl& linkAddress = *(sockaddr_dl*)_linkAddress;
+	sockaddr_dl& linkAddress = *(sockaddr_dl*)address;
 
 	MutexLocker locker(sLock);
 
 	InterfaceList::Iterator iterator = sInterfaces.GetIterator();
 	while (Interface* interface = iterator.Next()) {
+		// Test if the hardware address matches, or if the given interface
+		// matches, or if at least the index matches.
 		if (linkAddress.sdl_alen == interface->device->address.length
 			&& memcmp(LLADDR(&linkAddress), interface->device->address.data,
 				linkAddress.sdl_alen) == 0) {
+			TRACE("  %s matches\n", interface->name);
 			// link address matches
 			if (unconfiguredOnly)
 				return interface->FirstUnconfiguredForFamily(domain->family);
@@ -1283,27 +1410,38 @@ list_interfaces(int family, void* _buffer, size_t* bufferSize)
 
 	InterfaceList::Iterator iterator = sInterfaces.GetIterator();
 	while (Interface* interface = iterator.Next()) {
-		ifreq request;
-		strlcpy(request.ifr_name, interface->name, IF_NAMESIZE);
+		// Copy name
+		buffer.Push(interface->name, IF_NAMESIZE);
 
+		// Copy address
 		InterfaceAddress* address = interface->FirstForFamily(family);
+		size_t length = 0;
+
 		if (address != NULL && address->local != NULL) {
-			// copy actual address
-			memcpy(&request.ifr_addr, address->local, address->local->sa_len);
+			// Actual address
+			buffer.Push(address->local, length = address->local->sa_len);
 		} else {
-			// empty address
-			request.ifr_addr.sa_len = 2;
-			request.ifr_addr.sa_family = AF_UNSPEC;
+			// Empty address
+			sockaddr empty;
+			empty.sa_len = 2;
+			empty.sa_family = AF_UNSPEC;
+			buffer.Push(&empty, length = empty.sa_len);
 		}
+
 		if (address != NULL)
 			address->ReleaseReference();
 
-		if (buffer.Copy(&request, IF_NAMESIZE
-				+ request.ifr_addr.sa_len) == NULL)
+		if (IF_NAMESIZE + length < sizeof(ifreq)) {
+			// Make sure at least sizeof(ifreq) bytes are written for each
+			// interface for compatibility with other platforms
+			buffer.Pad(sizeof(ifreq) - IF_NAMESIZE - length);
+		}
+
+		if (buffer.Status() != B_OK)
 			return buffer.Status();
 	}
 
-	*bufferSize = buffer.ConsumedAmount();
+	*bufferSize = buffer.BytesConsumed();
 	return B_OK;
 }
 

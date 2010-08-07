@@ -128,9 +128,10 @@ net_socket_private::~net_socket_private()
 		child->RemoveFromParent();
 	}
 
+	mutex_unlock(&lock);
+
 	put_domain_protocols(this);
 
-	mutex_unlock(&lock);
 	mutex_destroy(&lock);
 }
 
@@ -206,7 +207,7 @@ add_ancillary_data(net_socket* socket, ancillary_data_container* container,
 			return B_BAD_VALUE;
 
 		if (socket->first_info->add_ancillary_data == NULL)
-			return EOPNOTSUPP;
+			return B_NOT_SUPPORTED;
 
 		status_t status = socket->first_info->add_ancillary_data(
 			socket->first_protocol, container, header);
@@ -238,7 +239,7 @@ process_ancillary_data(net_socket* socket, ancillary_data_container* container,
 
 	while ((data = next_ancillary_data(container, data, &header)) != NULL) {
 		if (socket->first_info->process_ancillary_data == NULL)
-			return EOPNOTSUPP;
+			return B_NOT_SUPPORTED;
 
 		ssize_t bytesWritten = socket->first_info->process_ancillary_data(
 			socket->first_protocol, &header, data, dataBuffer, dataBufferLen);
@@ -268,7 +269,7 @@ process_ancillary_data(net_socket* socket,
 	}
 
 	if (socket->first_info->process_ancillary_data_no_container == NULL)
-		return EOPNOTSUPP;
+		return B_NOT_SUPPORTED;
 
 	bytesWritten = socket->first_info->process_ancillary_data_no_container(
 		socket->first_protocol, buffer, dataBuffer,
@@ -914,14 +915,20 @@ socket_notify(net_socket* _socket, uint8 event, int32 value)
 
 		case B_SELECT_ERROR:
 			socket->error = value;
-			event |= B_SELECT_READ | B_SELECT_WRITE;
 			break;
 	}
 
 	MutexLocker _(socket->lock);
 
-	if (notify && socket->select_pool != NULL)
+	if (notify && socket->select_pool != NULL) {
 		notify_select_event_pool(socket->select_pool, event);
+
+		if (event == B_SELECT_ERROR) {
+			// always notify read/write on error
+			notify_select_event_pool(socket->select_pool, B_SELECT_READ);
+			notify_select_event_pool(socket->select_pool, B_SELECT_WRITE);
+		}
+	}
 
 	return B_OK;
 }
@@ -1311,7 +1318,7 @@ socket_send(net_socket* socket, msghdr* header, const void* data, size_t length,
 
 	if (addressLength == 0)
 		address = NULL;
-	else if (addressLength != 0 && address == NULL)
+	else if (address == NULL)
 		return B_BAD_VALUE;
 
 	if (socket->peer.ss_len != 0) {
@@ -1335,7 +1342,7 @@ socket_send(net_socket* socket, msghdr* header, const void* data, size_t length,
 	if (socket->address.ss_len == 0) {
 		// try to bind first
 		status_t status = socket_bind(socket, NULL, 0);
-		if (status < B_OK)
+		if (status != B_OK)
 			return status;
 	}
 

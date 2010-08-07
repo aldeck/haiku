@@ -21,11 +21,15 @@
 #include <Window.h>
 
 
+static const BString skDefaultString;
+
+
 TimeZoneListItem::TimeZoneListItem(const char* text, BCountry* country,
 	BTimeZone* timeZone)
 	:
 	BStringItem(text),
-	fIcon(NULL)
+	fIcon(NULL),
+	fTimeZone(timeZone)
 {
 	if (country != NULL) {
 		fIcon = new(std::nothrow) BBitmap(BRect(0, 0, 15, 15), B_RGBA32);
@@ -34,8 +38,6 @@ TimeZoneListItem::TimeZoneListItem(const char* text, BCountry* country,
 			fIcon = NULL;
 		}
 	}
-
-	fTimeZone = timeZone;
 }
 
 
@@ -92,13 +94,45 @@ TimeZoneListItem::DrawItem(BView* owner, BRect frame, bool complete)
 }
 
 
-void
-TimeZoneListItem::Code(char* buffer)
+bool
+TimeZoneListItem::HasTimeZone() const
 {
-	if (fTimeZone == NULL) {
-		buffer[0] = '\0';
-		return;
-	}
+	return fTimeZone != NULL;
+}
 
-	fTimeZone->GetCode(buffer, 50);
+
+const BTimeZone&
+TimeZoneListItem::TimeZone() const
+{
+	return *fTimeZone;
+}
+
+
+const BString&
+TimeZoneListItem::Code() const
+{
+	if (fTimeZone == NULL)
+		return skDefaultString;
+
+	return fTimeZone->Code();
+}
+
+
+const BString&
+TimeZoneListItem::Name() const
+{
+	if (fTimeZone == NULL)
+		return skDefaultString;
+
+	return fTimeZone->Name();
+}
+
+
+int
+TimeZoneListItem::OffsetFromGMT() const
+{
+	if (fTimeZone == NULL)
+		return 0;
+
+	return fTimeZone->OffsetFromGMT();
 }

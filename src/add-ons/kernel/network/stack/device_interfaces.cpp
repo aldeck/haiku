@@ -51,32 +51,23 @@ device_reader_thread(void* _interface)
 	net_device* device = interface->device;
 	status_t status = B_OK;
 
-	RecursiveLocker locker(interface->receive_lock);
-
 	while ((device->flags & IFF_UP) != 0) {
-		locker.Unlock();
-
 		net_buffer* buffer;
 		status = device->module->receive_data(device, &buffer);
-
-		locker.Lock();
-
 		if (status == B_OK) {
 			// feed device monitors
-			DeviceMonitorList::Iterator iterator =
-				interface->monitor_funcs.GetIterator();
-			while (net_device_monitor* monitor = iterator.Next()) {
-				monitor->receive(monitor, buffer);
-			}
+			if (atomic_get(&interface->monitor_count) > 0)
+				device_interface_monitor_receive(interface, buffer);
 
 			buffer->interface_address = NULL;
-			buffer->type = interface->deframe_func(interface->device, buffer);
-			if (buffer->type < 0) {
+			if (interface->deframe_func(interface->device, buffer) != B_OK) {
 				gNetBufferModule.free(buffer);
 				continue;
 			}
 
 			fifo_enqueue_buffer(&interface->receive_queue, buffer);
+		} else if (status == B_DEVICE_NOT_FOUND) {
+				device_removed(device);
 		} else {
 			// In case of error, give the other threads some
 			// time to run since this is a high priority time thread.
@@ -105,20 +96,29 @@ device_consumer_thread(void* _interface)
 		}
 
 		if (buffer->interface_address != NULL) {
-			// if the interface is already specified, this buffer was
+			// If the interface is already specified, this buffer was
 			// delivered locally.
 			if (buffer->interface_address->domain->module->receive_data(buffer)
 					== B_OK)
 				buffer = NULL;
 		} else {
-			// find handler for this packet
-			DeviceHandlerList::Iterator iterator =
-				interface->receive_funcs.GetIterator();
-			while (buffer && iterator.HasNext()) {
+			sockaddr_dl& linkAddress = *(sockaddr_dl*)buffer->source;
+			int32 specificType = B_NET_FRAME_TYPE(linkAddress.sdl_type,
+				linkAddress.sdl_e_type);
+
+			// Find handler for this packet
+
+			RecursiveLocker locker(interface->receive_lock);
+
+			DeviceHandlerList::Iterator iterator
+				= interface->receive_funcs.GetIterator();
+			while (buffer != NULL && iterator.HasNext()) {
 				net_device_handler* handler = iterator.Next();
 
-				// if the handler returns B_OK, it consumed the buffer
-				if (handler->type == buffer->type
+				// If the handler returns B_OK, it consumed the buffer - first
+				// handler wins.
+				if ((handler->type == buffer->type
+						|| handler->type == specificType)
 					&& handler->func(handler->cookie, device, buffer) == B_OK)
 					buffer = NULL;
 			}
@@ -165,7 +165,8 @@ allocate_device_interface(net_device* device, net_device_module_info* module)
 	if (interface == NULL)
 		return NULL;
 
-	recursive_lock_init(&interface->receive_lock, "interface receive lock");
+	recursive_lock_init(&interface->receive_lock, "device interface receive");
+	mutex_init(&interface->monitor_lock, "device interface monitors");
 
 	char name[128];
 	snprintf(name, sizeof(name), "%s receive queue", device->name);
@@ -199,6 +200,7 @@ error2:
 	uninit_fifo(&interface->receive_queue);
 error1:
 	recursive_lock_destroy(&interface->receive_lock);
+	mutex_destroy(&interface->monitor_lock);
 	delete interface;
 
 	return NULL;
@@ -208,7 +210,7 @@ error1:
 static void
 notify_device_monitors(net_device_interface* interface, int32 event)
 {
-	RecursiveLocker _(interface->receive_lock);
+	MutexLocker locker(interface->monitor_lock);
 
 	DeviceMonitorList::Iterator iterator
 		= interface->monitor_funcs.GetIterator();
@@ -239,17 +241,19 @@ dump_device_interface(int argc, char** argv)
 	kprintf("ref_count:         %" B_PRId32 "\n", interface->ref_count);
 	kprintf("deframe_func:      %p\n", interface->deframe_func);
 	kprintf("deframe_ref_count: %" B_PRId32 "\n", interface->ref_count);
-	kprintf("monitor_funcs:\n");
-	kprintf("receive_funcs:\n");
 	kprintf("consumer_thread:   %ld\n", interface->consumer_thread);
-	kprintf("receive_lock:      %p\n", &interface->receive_lock);
-	kprintf("receive_queue:     %p\n", &interface->receive_queue);
 
+	kprintf("monitor_count:     %" B_PRId32 "\n", interface->monitor_count);
+	kprintf("monitor_lock:      %p\n", &interface->monitor_lock);
+	kprintf("monitor_funcs:\n");
 	DeviceMonitorList::Iterator monitorIterator
 		= interface->monitor_funcs.GetIterator();
 	while (monitorIterator.HasNext())
 		kprintf("  %p\n", monitorIterator.Next());
 
+	kprintf("receive_lock:      %p\n", &interface->receive_lock);
+	kprintf("receive_queue:     %p\n", &interface->receive_queue);
+	kprintf("receive_funcs:\n");
 	DeviceHandlerList::Iterator handlerIterator
 		= interface->receive_funcs.GetIterator();
 	while (handlerIterator.HasNext())
@@ -288,7 +292,8 @@ acquire_device_interface(net_device_interface* interface)
 
 
 void
-get_device_interface_address(net_device_interface* interface, sockaddr* _address)
+get_device_interface_address(net_device_interface* interface,
+	sockaddr* _address)
 {
 	sockaddr_dl &address = *(sockaddr_dl*)_address;
 
@@ -302,7 +307,7 @@ get_device_interface_address(net_device_interface* interface, sockaddr* _address
 	address.sdl_alen = interface->device->address.length;
 	memcpy(LLADDR(&address), interface->device->address.data, address.sdl_alen);
 
-	address.sdl_len = sizeof(sockaddr_dl) - sizeof(address.sdl_data)
+	address.sdl_len = sizeof(sockaddr_dl) - sizeof(address.sdl_data) 
 		+ address.sdl_nlen + address.sdl_alen;
 }
 
@@ -337,15 +342,20 @@ list_device_interfaces(void* _buffer, size_t* bufferSize)
 	UserBuffer buffer(_buffer, *bufferSize);
 
 	while (net_device_interface* interface = iterator.Next()) {
-		ifreq request;
-		strlcpy(request.ifr_name, interface->device->name, IF_NAMESIZE);
-		get_device_interface_address(interface, &request.ifr_addr);
+		buffer.Push(interface->device->name, IF_NAMESIZE);
 
-		if (buffer.Copy(&request, IF_NAMESIZE + request.ifr_addr.sa_len) == NULL)
+		sockaddr_storage address;
+		get_device_interface_address(interface, (sockaddr*)&address);
+
+		buffer.Push(&address, address.ss_len);
+		if (IF_NAMESIZE + address.ss_len < (int)sizeof(ifreq))
+			buffer.Pad(sizeof(ifreq) - IF_NAMESIZE - address.ss_len);
+
+		if (buffer.Status() != B_OK)
 			return buffer.Status();
 	}
 
-	*bufferSize = buffer.ConsumedAmount();
+	*bufferSize = buffer.BytesConsumed();
 	return B_OK;
 }
 
@@ -356,13 +366,15 @@ list_device_interfaces(void* _buffer, size_t* bufferSize)
 void
 put_device_interface(struct net_device_interface* interface)
 {
+	if (interface == NULL)
+		return;
+
 	if (atomic_add(&interface->ref_count, -1) != 1)
 		return;
 
-	{
-		MutexLocker locker(sLock);
-		sInterfaces.Remove(interface);
-	}
+	MutexLocker locker(sLock);
+	sInterfaces.Remove(interface);
+	locker.Unlock();
 
 	uninit_fifo(&interface->receive_queue);
 	status_t status;
@@ -374,6 +386,7 @@ put_device_interface(struct net_device_interface* interface)
 	device->module->uninit_device(device);
 	put_module(moduleName);
 
+	mutex_destroy(&interface->monitor_lock);
 	recursive_lock_destroy(&interface->receive_lock);
 	delete interface;
 }
@@ -446,6 +459,25 @@ get_device_interface(const char* name, bool create)
 	}
 
 	return NULL;
+}
+
+
+/*!	Feeds the device monitors of the \a interface with the specified \a buffer.
+	You might want to check interface::monitor_count before calling this
+	function for optimization.
+*/
+void
+device_interface_monitor_receive(net_device_interface* interface,
+	net_buffer* buffer)
+{
+	MutexLocker locker(interface->monitor_lock);
+
+	DeviceMonitorList::Iterator iterator
+		= interface->monitor_funcs.GetIterator();
+	while (iterator.HasNext()) {
+		net_device_monitor* monitor = iterator.Next();
+		monitor->receive(monitor, buffer);
+	}
 }
 
 
@@ -666,8 +698,10 @@ register_device_monitor(net_device* device, net_device_monitor* monitor)
 	if (interface == NULL)
 		return B_DEVICE_NOT_FOUND;
 
-	RecursiveLocker _(interface->receive_lock);
+	MutexLocker monitorLocker(interface->monitor_lock);
 	interface->monitor_funcs.Add(monitor);
+	atomic_add(&interface->monitor_count, 1);
+
 	return B_OK;
 }
 
@@ -683,14 +717,16 @@ unregister_device_monitor(net_device* device, net_device_monitor* monitor)
 	if (interface == NULL)
 		return B_DEVICE_NOT_FOUND;
 
-	RecursiveLocker _(interface->receive_lock);
+	MutexLocker monitorLocker(interface->monitor_lock);
 
 	// search for the monitor
 
-	DeviceMonitorList::Iterator iterator = interface->monitor_funcs.GetIterator();
+	DeviceMonitorList::Iterator iterator
+		= interface->monitor_funcs.GetIterator();
 	while (iterator.HasNext()) {
 		if (iterator.Next() == monitor) {
 			iterator.Remove();
+			atomic_add(&interface->monitor_count, -1);
 			return B_OK;
 		}
 	}
@@ -726,16 +762,13 @@ device_removed(net_device* device)
 		return B_DEVICE_NOT_FOUND;
 
 	// Propagate the loss of the device throughout the stack.
-	// This is very complex, refer to remove_interface() for
-	// further details.
 
-	// TODO!
-	//domain_removed_device_interface(interface);
-
+	interface_removed_device_interface(interface);
 	notify_device_monitors(interface, B_DEVICE_BEING_REMOVED);
 
 	// By now all of the monitors must have removed themselves. If they
 	// didn't, they'll probably wait forever to be callback'ed again.
+	mutex_lock(&interface->monitor_lock);
 	interface->monitor_funcs.RemoveAll();
 
 	// All of the readers should be gone as well since we are out of

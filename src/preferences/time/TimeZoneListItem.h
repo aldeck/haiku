@@ -26,7 +26,12 @@ public:
 
 			void				DrawItem(BView* owner, BRect frame,
 									bool complete = false);
-			void				Code(char* buffer);
+
+			bool				HasTimeZone() const;
+			const BTimeZone&	TimeZone() const;
+			const BString&		Code() const;
+			const BString&		Name() const;
+			int					OffsetFromGMT() const;
 
 private:
 			BBitmap*			fIcon;

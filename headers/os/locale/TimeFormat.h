@@ -1,25 +1,29 @@
-/* 
+/*
  * Copyright 2010, Haiku, Inc.
- * Distributed under the terms of the MIT License.
+ * Distributed under the terms of the MIT Licence.
  */
 #ifndef _B_TIME_FORMAT_H_
 #define _B_TIME_FORMAT_H_
 
-
-#include <NumberFormat.h>
-#include <SupportDefs.h>
+#include <DateTimeFormat.h>
 
 
 class BString;
 
+class BTimeFormat : public BDateTimeFormat {
+public:
+								BTimeFormat(const BTimeFormat &other);
+	virtual						~BTimeFormat();
 
-class BTimeFormat : public BNumberFormat {
-	public:
-		status_t Format(int64 number, BString *buffer) const;
+								// formatting
 
-		// TODO : version for char* buffer, size_t bufferSize
-		// TODO : parsing ?	
+								// no-frills version: Simply appends the
+								// formatted date to the string buffer.
+								// Can fail only with B_NO_MEMORY or B_BAD_VALUE.
+	virtual	status_t 			Format(bigtime_t value, BString* buffer) const;
+
+								// TODO: ... basically, all of it!
 };
 
 
-#endif
+#endif	// _B_TIME_FORMAT_H_

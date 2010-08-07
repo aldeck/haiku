@@ -428,7 +428,7 @@ GrepWindow::_CreateMenus()
 		B_TRANSLATE("New window"), new BMessage(MSG_NEW_WINDOW), 'N');
 
 	fOpen = new BMenuItem(
-		B_TRANSLATE("Set which files to search"), new BMessage(MSG_OPEN_PANEL), 'F');
+		B_TRANSLATE("Set target" B_UTF8_ELLIPSIS), new BMessage(MSG_OPEN_PANEL), 'F');
 
 	fClose = new BMenuItem(
 		B_TRANSLATE("Close"), new BMessage(B_QUIT_REQUESTED), 'W');
@@ -464,7 +464,7 @@ GrepWindow::_CreateMenus()
 		B_TRANSLATE("Look in sub-folders"), new BMessage(MSG_RECURSE_DIRS));
 
 	fSkipDotDirs = new BMenuItem(
-		B_TRANSLATE("Skip sub-folders starting with a dot"), new BMessage(MSG_SKIP_DOT_DIRS));
+		B_TRANSLATE("Skip folders starting with a dot"), new BMessage(MSG_SKIP_DOT_DIRS));
 
 	fCaseSensitive = new BMenuItem(
 		B_TRANSLATE("Case-sensitive"), new BMessage(MSG_CASE_SENSITIVE));

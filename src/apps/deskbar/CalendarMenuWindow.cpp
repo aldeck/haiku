@@ -89,10 +89,10 @@ CalendarMenuWindow::CalendarMenuWindow(BPoint where)
 	fCalendarView(NULL),
 	fSuppressFirstClose(true)
 {
-	BCountry* here;
-	be_locale_roster->GetDefaultCountry(&here);
-	BPrivate::week_start startOfWeek 
-		= (BPrivate::week_start)here->StartOfWeek();
+	BLocale locale;
+	be_locale_roster->GetDefaultLocale(&locale);
+	BPrivate::week_start startOfWeek
+		= (BPrivate::week_start)locale.StartOfWeek();
 
 	RemoveShortcut('H', B_COMMAND_KEY | B_CONTROL_KEY);
 	AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
