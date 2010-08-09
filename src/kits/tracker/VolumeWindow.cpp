@@ -87,7 +87,7 @@ BVolumeWindow::MenusBeginning()
 		}
 	}
 
-	BMenuItem* item = Controller()->MenuBar()->FindItem(B_TRANSLATE("Unmount"));
+	BMenuItem* item = Controller()->MenuBar()->FindItem(kUnmountVolume);
 	if (item)
 		item->SetEnabled(ejectableVolumeSelected);
 }
