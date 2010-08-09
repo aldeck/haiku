@@ -50,6 +50,7 @@ All rights reserved.
 #include <InterfaceDefs.h>
 #include <LayoutItem.h>
 #include <Locale.h>
+#include <Menu.h>
 #include <MenuItem.h>
 #include <MenuBar.h>
 #include <NodeMonitor.h>
@@ -71,6 +72,7 @@ All rights reserved.
 #include "Commands.h"
 #include "ContainerWindow.h"
 #include "CountView.h"
+#include "DefaultControls.h"
 #include "DeskWindow.h"
 #include "FavoritesMenu.h"
 #include "FindPanel.h"
@@ -88,11 +90,11 @@ All rights reserved.
 #include "PoseViewController.h"
 #include "QueryContainerWindow.h"
 #include "SelectionWindow.h"
+#include "TemplatesMenu.h"
 #include "TitleView.h"
 #include "Tracker.h"
 #include "TrackerSettings.h"
 #include "Thread.h"
-#include "TemplatesMenu.h"
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -879,7 +881,7 @@ BContainerWindow::_Init(const BMessage *message)
 	else
 		RestoreState();		
 
-	Controller()->AddMenus();
+	Controller()->CreateMenus();
 	AddContextMenus();
 	AddCommonShortcuts();
 	
@@ -891,7 +893,7 @@ BContainerWindow::_Init(const BMessage *message)
 	
 	if (PoseView()->ViewMode() == kListMode) {
 		Controller()->ShowAttributeMenu();
-		Controller()->MarkAttributeMenu();
+		Controller()->AttributeMenu()->ColumnsChanged();
 	}
 	
 	TrackerSettings settings;	
@@ -1781,7 +1783,7 @@ BContainerWindow::MenusBeginning()
 
 	UpdateMenu(Controller()->MenuBar(), kMenuBarContext);
 
-	fController->AddMimeTypesToMenu(Controller()->AttributeMenu());
+	fController->AttributeMenu()->MimeTypesChanged();
 
 	if (PoseView()->TargetModel()->IsPrintersDir()) {
 		EnableNamedMenuItem(Controller()->FileMenu(), B_TRANSLATE("Make active printer"),

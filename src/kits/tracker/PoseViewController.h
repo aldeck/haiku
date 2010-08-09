@@ -23,7 +23,7 @@ class BMimeType;
 
 namespace BPrivate {
 
-	
+class DefaultAttributeMenu;	
 class BNavigator;
 class BTitleView;
 class BCountView;
@@ -42,33 +42,11 @@ public:
 	virtual	void				CreateControls(Model* model); // temporary helper method
 									// model is needed for BNavigator.
 									// TODO: Just get the model out of fPoseView
-	virtual	void				SetControlVisible(BView* control, bool visible);
-
-			// TODO: rework menu system. Menu management migrated "as is"
-			//	from ContainerWindow			
-			void				AddMenus();
-			void				AddFileMenu(BMenu *menu);
-			void				AddWindowMenu(BMenu *menu);
+			void				CreateMenus();	// temporary helper method
 			
-			// TODO: move that in an separate AttributeMenu class. And maybe do the
-			// 	same for the other (context)menus.
-			BMenuItem*			NewAttributeMenuItem(const char *label,
-									const char *name, int32 type, float width,
-									int32 align, bool editable, bool statField);	
-			BMenuItem*			NewAttributeMenuItem(const char *label,
-									const char *name, int32 type,
-									const char* displayAs, float width,
-									int32 align, bool editable, bool statField);	
-			void				NewAttributeMenu(BMenu *menu);
+	virtual	void				SetControlVisible(BView* control, bool visible);
 			void				ShowAttributeMenu();
 			void				HideAttributeMenu();
-			void				MarkAttributeMenu();
-			void				MarkAttributeMenu(BMenu *menu);
-			void				AddMimeTypesToMenu();
-			void				AddMimeTypesToMenu(BMenu *menu);
-			BMenu*				AddMimeMenu(const BMimeType& mimeType,
-									bool isSuperType,
-									BMenu* menu, int32 start);
 
 			// Scrollbar management
 			// TODO: to be simplified, make it "event" based just like countview and 
@@ -81,9 +59,10 @@ public:
 			void				ItemCountChanged(uint32 count);
 			void				SlowOperationStarted();
 			void				SlowOperationEnded();
+			void				AddPosesCompleted();
 		
 			BMenuBar*	 		MenuBar()		{ return fMenuBar; };
-			BMenu*	 			AttributeMenu() { return fAttrMenu; };			
+			DefaultAttributeMenu*	AttributeMenu() { return fAttributesMenu; };			
 			BMenu*	 			WindowMenu()	{ return fWindowMenu; };
 			BMenu*	 			FileMenu()		{ return fFileMenu; };
 			BNavigator* 		Navigator()		{ return fNavigator; };
@@ -97,7 +76,7 @@ public:
 
 protected:
 			BMenuBar*			fMenuBar;
-			BMenu*				fAttrMenu;
+			DefaultAttributeMenu*	fAttributesMenu;
 			BMenu*				fWindowMenu;
 			BMenu*				fFileMenu;			
 			BNavigator* 		fNavigator;

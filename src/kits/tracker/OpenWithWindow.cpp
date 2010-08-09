@@ -412,7 +412,7 @@ OpenWithContainerWindow::_Init(const BMessage *message)
 	else
 		RestoreState();
 		
-	//Controller()->AddMenus();
+	//Controller()->CreateMenus();
 	//AddContextMenus();
 	//AddCommonShortcuts();
 	

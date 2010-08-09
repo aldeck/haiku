@@ -29,6 +29,7 @@ SharedLibrary libtracker.so :
 	Bitmaps.cpp
 	ContainerWindow.cpp
 	CountView.cpp
+	DefaultControls.cpp
 	DeskWindow.cpp
 	DesktopPoseView.cpp
 	DialogPane.cpp
@@ -104,6 +105,7 @@ DoCatalogs libtracker.so :
 	ContainerWindow.cpp
 	PoseViewController.cpp	
 	CountView.cpp
+	DefaultControls.cpp
 	DeskWindow.cpp
 	DirMenu.cpp
 	FavoritesMenu.cpp

@@ -46,6 +46,7 @@ All rights reserved.
 #include <string.h>
 
 #include "Commands.h"
+#include "DefaultControls.h"
 #include "PoseView.h"
 #include "PoseViewController.h"
 #include "Utilities.h"
@@ -314,12 +315,9 @@ BTitleView::MouseDown(BPoint where)
 	// if so, display the attribute menu:
 
 	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
-		BPopUpMenu *menu = new BPopUpMenu("Attributes", false, false);
-		menu->SetFont(be_plain_font);
-		fPoseView->Controller()->NewAttributeMenu(menu);
-		fPoseView->Controller()->AddMimeTypesToMenu(menu);
-		fPoseView->Controller()->MarkAttributeMenu(menu);
-		menu->SetTargetForItems(fPoseView);
+		DefaultAttributeMenu* menu =
+			new DefaultAttributeMenu(fPoseView->Controller());
+		menu->MimeTypesChanged();
 		menu->Go(ConvertToScreen(where), true, false);
 		return;
 	}

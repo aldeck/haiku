@@ -73,6 +73,7 @@ All rights reserved.
 #include "ContainerWindow.h"
 #include "CountView.h"
 #include "Cursors.h"
+#include "DefaultControls.h"
 #include "DeskWindow.h"
 #include "DesktopPoseView.h"
 #include "DirMenu.h"
@@ -1520,7 +1521,7 @@ BPoseView::AddTrashPoses()
 void
 BPoseView::AddPosesCompleted()
 {
-	Controller()->AddMimeTypesToMenu();	// TODO: Controller()->AddPosesCompleted() // NewPosesAdded()
+	Controller()->AddPosesCompleted();
 
 	// if we're not in icon mode then we need to check for poses that
 	// were "auto" placed to see if they overlap with other icons
@@ -2443,7 +2444,7 @@ BPoseView::RemoveColumn(BColumn *columnToRemove, bool runAlert)
 	rect.left = offset;
 	Invalidate(rect);
 
-	Controller()->MarkAttributeMenu();
+	Controller()->AttributeMenu()->ColumnsChanged();
 
 	if (IsWatchingDateFormatChange()) {
 		int32 columnCount = CountColumns();
@@ -2522,7 +2523,7 @@ BPoseView::AddColumn(BColumn *newColumn, const BColumn *after)
 
 	rect.left = offset;
 	Invalidate(rect);
-	Controller()->MarkAttributeMenu();
+	Controller()->AttributeMenu()->ColumnsChanged();
 
 	// Check if this is a time attribute and if so,
 	// start watching for changed in time/date format:

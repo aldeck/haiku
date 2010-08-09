@@ -701,7 +701,7 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 	RestoreState();
 	CheckScreenIntersect();
 	
-	Controller()->AddMenus();
+	Controller()->CreateMenus();
 	AddContextMenus();
 	AddCommonShortcuts();
 	

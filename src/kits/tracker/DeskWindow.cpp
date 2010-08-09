@@ -258,7 +258,7 @@ BDeskWindow::_Init(const BMessage *message)
 		RestoreState();
 
 	// setup controls
-	Controller()->AddMenus(); // TODO: shouldn't be needed, old code needs it
+	Controller()->CreateMenus(); // TODO: shouldn't be needed, old code needs it
 	AddContextMenus();	
 	AddCommonShortcuts();	
 	CheckScreenIntersect();
