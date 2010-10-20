@@ -371,12 +371,17 @@ PackageView::ItemExists(PackageItem &item, BPath &path, int32 &policy)
 				// TODO: Maybe add 'No, but ask again' type of choice as well?
 				alertString = B_TRANSLATE("Do you want to remember this "
 					"decision for the rest of this installation?\n");
-				alertString << ((choice == P_EXISTS_OVERWRITE)
-					? B_TRANSLATE("All existing files will be replaced?")
-					: B_TRANSLATE("All existing files will be skipped?"));
-
+				
+				BString actionString;
+				if (choice == P_EXISTS_OVERWRITE) {
+					alertString << B_TRANSLATE("All existing files will be replaced?");
+					actionString = "Replace all";
+				} else {
+					alertString << B_TRANSLATE("All existing files will be skipped?");
+					actionString = "Skip all";
+				}
 				alert = new BAlert("policy_decision", alertString.String(),
-					B_TRANSLATE("Replace all"), B_TRANSLATE("Ask again"));
+					actionString.String(), B_TRANSLATE("Ask again"));
 
 				int32 decision = alert->Go();
 				if (decision == 0)
@@ -602,9 +607,9 @@ PackageView::_GroupChanged(int32 index)
 	fCurrentType = index;
 	pkg_profile *prof = fInfo.GetProfile(index);
 	BString test;
-	fInstallDesc->SetText(prof->description.String());
-
+	
 	if (prof) {
+		fInstallDesc->SetText(prof->description.String());
 		BMenuItem *item = 0;
 		BPath path;
 		BMessage *temp;

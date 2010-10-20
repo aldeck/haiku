@@ -83,16 +83,17 @@ NodeManager::Init(BRect videoBounds, float videoFrameRate,
 	float speed, uint32 enabledNodes, bool useOverlays)
 {
 	// init base class
-	PlaybackManager::Init(videoFrameRate, loopingMode, loopingEnabled, speed);
+	PlaybackManager::Init(videoFrameRate, true, loopingMode, loopingEnabled,
+		speed);
 
 	// get some objects from a derived class
-	if (!fVideoTarget)
+	if (fVideoTarget == NULL)
 		fVideoTarget = CreateVideoTarget();
 
-	if (!fVideoSupplier)
+	if (fVideoSupplier == NULL)
 		fVideoSupplier = CreateVideoSupplier();
 
-	if (!fAudioSupplier)
+	if (fAudioSupplier == NULL)
 		fAudioSupplier = CreateAudioSupplier();
 
 	return FormatChanged(videoBounds, videoFrameRate, preferredVideoFormat,
@@ -110,12 +111,18 @@ NodeManager::InitCheck()
 void
 NodeManager::SetPlayMode(int32 mode, bool continuePlaying)
 {
-//	if (fMediaRoster && fMediaRoster->Lock()) {
-//		BMediaNode::run_mode runMode = mode > 0 ?
-//			BMediaNode::B_DROP_DATA : BMediaNode::B_OFFLINE;
-//		fMediaRoster->SetRunModeNode(fVideoConnection.consumer, runMode);
-//		fMediaRoster->Unlock();
-//	}
+	if (fVideoConsumer != NULL && fMediaRoster != NULL
+		&& fMediaRoster->Lock()) {
+		BMediaNode::run_mode runMode = mode > 0 ?
+			BMediaNode::B_DROP_DATA : BMediaNode::B_OFFLINE;
+		status_t ret = fMediaRoster->SetRunModeNode(fVideoConnection.consumer,
+			runMode);
+		if (ret != B_OK) {
+			printf("NodeManager::SetPlayMode(%ld), setting run mode failed: "
+				"%s\n", mode, strerror(ret));
+		}
+		fMediaRoster->Unlock();
+	}
 
 	PlaybackManager::SetPlayMode(mode, continuePlaying);
 }
@@ -142,17 +149,17 @@ NodeManager::FormatChanged(BRect videoBounds, float videoFrameRate,
 		// TODO: if enabledNodes would indicate that audio or video
 		// is no longer needed, or, worse yet, suddenly needed when
 		// it wasn't before, then we should not return here!
+		PlaybackManager::Init(videoFrameRate, false, LoopMode(),
+			IsLoopingEnabled(), Speed(), MODE_PLAYING_PAUSED_FORWARD,
+			CurrentFrame());
 		return B_OK;
-	}
-
-	if (videoFrameRate != FramesPerSecond()) {
-		TRACE("   -> need to Init()\n");
-		PlaybackManager::Init(videoFrameRate, LoopMode(), IsLoopingEnabled(),
-			Speed(), MODE_PLAYING_PAUSED_FORWARD, CurrentFrame());
 	}
 
 	_StopNodes();
 	_TearDownNodes();
+
+	PlaybackManager::Init(videoFrameRate, true, LoopMode(), IsLoopingEnabled(),
+		Speed(), MODE_PLAYING_PAUSED_FORWARD, CurrentFrame());
 
 	SetVideoBounds(videoBounds);
 
@@ -689,8 +696,6 @@ NodeManager::_StartNodes()
 
 	bigtime_t perf = timeSource->PerformanceTimeFor(real + latency
 		+ initLatency);
-printf("performance time for %lld: %lld\n", real + latency
-	+ initLatency, perf);
 
 	timeSource->Release();
 

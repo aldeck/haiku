@@ -10,9 +10,7 @@
 #include <stdio.h>
 
 #include <Autolock.h>
-#ifdef __HAIKU__
-#	include <GradientLinear.h>
-#endif
+#include <GradientLinear.h>
 #include <Message.h>
 #include <ScrollBar.h>
 #include <ScrollView.h>
@@ -70,6 +68,12 @@ public:
 									uint32 playbackState);
 
 	virtual	void				ItemChanged(const PlaylistItem* item);
+
+#if __GNUC__ == 2
+	virtual	void				Draw(BView* owner, BRect frame, uint32 flags);
+#else
+			using SimpleItem::Draw;
+#endif
 
 private:
 			PlaylistItemRef		fItem;
@@ -142,7 +146,6 @@ PlaylistListView::Item::Draw(BView* owner, BRect frame, const font_height& fh,
 		r.OffsetTo(frame.left + 4,
 			ceilf((frame.top + frame.bottom - playbackMarkSize) / 2));
 
-#ifdef __HAIKU__
 		uint32 flags = owner->Flags();
 		owner->SetFlags(flags | B_SUBPIXEL_PRECISE);
 
@@ -171,43 +174,6 @@ PlaylistListView::Item::Draw(BView* owner, BRect frame, const font_height& fh,
 		owner->FillShape(&shape, gradient);
 
 		owner->SetFlags(flags);
-#else
-		BPoint arrow[3];
-		arrow[0] = r.LeftTop();
-		arrow[1] = r.LeftBottom();
-		arrow[2].x = r.right;
-		arrow[2].y = (r.top + r.bottom) / 2;
-
-		rgb_color lightGreen = tint_color(green, B_LIGHTEN_2_TINT);
-		rgb_color darkGreen = tint_color(green, B_DARKEN_2_TINT);
- 		owner->BeginLineArray(6);
-			// black outline
-			owner->AddLine(arrow[0], arrow[1], black);
-			owner->AddLine(BPoint(arrow[1].x + 1.0, arrow[1].y - 1.0),
-				arrow[2], black);
-			owner->AddLine(arrow[0], arrow[2], black);
-			// inset arrow
-			arrow[0].x += 1.0;
-			arrow[0].y += 2.0;
-			arrow[1].x += 1.0;
-			arrow[1].y -= 2.0;
-			arrow[2].x -= 2.0;
-			// highlights and shadow
-			owner->AddLine(arrow[1], arrow[2], darkGreen);
-			owner->AddLine(arrow[0], arrow[2], lightGreen);
-			owner->AddLine(arrow[0], arrow[1], lightGreen);
-		owner->EndLineArray();
-		// fill green
-		arrow[0].x += 1.0;
-		arrow[0].y += 1.0;
-		arrow[1].x += 1.0;
-		arrow[1].y -= 1.0;
-		arrow[2].x -= 2.0;
-
-		owner->SetLowColor(owner->HighColor());
-		owner->SetHighColor(green);
-		owner->FillPolygon(arrow, 3);
-#endif // __HAIKU__
 	}
 }
 
@@ -219,33 +185,43 @@ PlaylistListView::Item::ItemChanged(const PlaylistItem* item)
 }
 
 
+#if __GNUC__ == 2
+
+void
+PlaylistListView::Item::Draw(BView* owner, BRect frame, uint32 flags)
+{
+	SimpleItem::Draw(owner, frame, flags);
+}
+
+#endif
+
+
 // #pragma mark -
 
 
 PlaylistListView::PlaylistListView(BRect frame, Playlist* playlist,
 		Controller* controller, CommandStack* stack)
-	: SimpleListView(frame, "playlist listview", NULL)
+	:
+	SimpleListView(frame, "playlist listview", NULL),
 
-	, fPlaylist(playlist)
-	, fPlaylistObserver(new PlaylistObserver(this))
+	fPlaylist(playlist),
+	fPlaylistObserver(new PlaylistObserver(this)),
 
-	, fController(controller)
-	, fControllerObserver(new ControllerObserver(this,
-			OBSERVE_PLAYBACK_STATE_CHANGES))
+	fController(controller),
+	fControllerObserver(new ControllerObserver(this,
+			OBSERVE_PLAYBACK_STATE_CHANGES)),
 
-	, fCommandStack(stack)
+	fCommandStack(stack),
 
-	, fCurrentPlaylistIndex(-1)
-	, fPlaybackState(PLAYBACK_STATE_STOPPED)
+	fCurrentPlaylistIndex(-1),
+	fPlaybackState(PLAYBACK_STATE_STOPPED),
 
-	, fLastClickedItem(NULL)
+	fLastClickedItem(NULL)
 {
 	fPlaylist->AddListener(fPlaylistObserver);
 	fController->AddListener(fControllerObserver);
 
-#ifdef __HAIKU__
 	SetFlags(Flags() | B_SUBPIXEL_PRECISE);
-#endif
 }
 
 
@@ -303,6 +279,8 @@ PlaylistListView::MessageReceived(BMessage* message)
 				_SetCurrentPlaylistIndex(index);
 			break;
 		}
+		case MSG_PLAYLIST_IMPORT_FAILED:
+			break;
 
 		// ControllerObserver messages
 		case MSG_CONTROLLER_PLAYBACK_STATE_CHANGED:
@@ -425,8 +403,10 @@ PlaylistListView::DrawListItem(BView* owner, int32 index, BRect frame) const
 void
 PlaylistListView::RefsReceived(BMessage* message, int32 appendIndex)
 {
-	fCommandStack->Perform(new (nothrow) ImportPLItemsCommand(fPlaylist,
-		message, appendIndex));
+	if (fCommandStack->Perform(new (nothrow) ImportPLItemsCommand(fPlaylist,
+			message, appendIndex)) != B_OK) {
+		fPlaylist->NotifyImportFailed();
+	}
 }
 
 

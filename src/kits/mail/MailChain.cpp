@@ -29,64 +29,64 @@ namespace MailInternal {
 
 BMailChain::BMailChain(uint32 i)
 	:
-	id(i),
-	meta_data(NULL),
-	_err(B_OK),
-	direction(inbound),
-	settings_ct(0),
-	addons_ct(0) 
+	fId(i),
+	fMetaData(NULL),
+	fStatus(B_OK),
+	fDirection(inbound),
+	fSettingsCount(0),
+	fAddonsCount(0) 
 {
-	name[0] = 0;
+	fName[0] = 0;
 	Reload();
 }
 
 
 BMailChain::BMailChain(BMessage* settings)
 	:
-	id(settings->FindInt32("id")),
-	meta_data(NULL),
-	_err(B_OK),
-	direction(inbound),
-	settings_ct(0),
-	addons_ct(0) 
+	fId(settings->FindInt32("id")),
+	fMetaData(NULL),
+	fStatus(B_OK),
+	fDirection(inbound),
+	fSettingsCount(0),
+	fAddonsCount(0) 
 {
-	name[0] = 0;
+	fName[0] = 0;
 	Load(settings);
 }
 
 
 BMailChain::~BMailChain()
 {
-	delete meta_data;
+	delete fMetaData;
 		
-	for (int32 i = 0; filter_settings.ItemAt(i); i++)
-		delete (BMessage*)filter_settings.ItemAt(i);
+	for (int32 i = 0; fFilterSettings.ItemAt(i); i++)
+		delete (BMessage*)fFilterSettings.ItemAt(i);
 		
-	for (int32 i = 0; filter_addons.ItemAt(i); i++)
-		delete (entry_ref*)filter_addons.ItemAt(i);
+	for (int32 i = 0; fFilterAddons.ItemAt(i); i++)
+		delete (entry_ref*)fFilterAddons.ItemAt(i);
 }
 
 
 status_t
 BMailChain::Load(BMessage* settings)
 {
-	delete meta_data;
+	delete fMetaData;
 		
-	meta_data = new BMessage;
+	fMetaData = new BMessage;
 	if (settings->HasMessage("meta_data"))
-		settings->FindMessage("meta_data", meta_data);
+		settings->FindMessage("meta_data", fMetaData);
 	
 	const char* n;
 	status_t ret = settings->FindString("name", &n);
 	if (ret == B_OK)
-		strncpy(name, n, sizeof(name));
+		strncpy(fName, n, sizeof(fName));
 	else
-		name[0] = '\0';
+		fName[0] = '\0';
 
 	type_code t;
-	settings->GetInfo("filter_settings", &t, (int32*)(&settings_ct));
-	settings->GetInfo("filter_addons", &t, (int32*)(&addons_ct));
-	if (settings_ct != addons_ct)
+	settings->GetInfo("filter_settings", &t, (int32*)(&fSettingsCount));
+	settings->GetInfo("filter_addons", &t, (int32*)(&fAddonsCount));
+	if (fSettingsCount != fAddonsCount)
 		return B_MISMATCHED_VALUES;
 
 	for (int i = 0;;i++) {
@@ -100,17 +100,23 @@ BMailChain::Load(BMessage* settings)
 			&& settings->FindRef("filter_addons", i, ref) < B_OK)) {
 			delete filter;
 			delete ref;
-			break;
+			return B_NO_MEMORY;
 		}
 		
-		if (!filter_settings.AddItem(filter) || !filter_addons.AddItem(ref))
-			break;
+		if (!fFilterSettings.AddItem(filter)) {
+			delete filter;
+			delete ref;
+			return B_NO_MEMORY;
+		}
+
+		if (!fFilterAddons.AddItem(ref)) {
+			fFilterSettings.RemoveItem(filter);
+			delete filter;
+			delete ref;
+			return B_NO_MEMORY;
+		}
 	}
-	
-	if (filter_settings.CountItems() != settings_ct
-		||  filter_addons.CountItems() != addons_ct)
-		return B_NO_MEMORY;
-	
+
 	return B_OK;
 }
 
@@ -118,13 +124,13 @@ BMailChain::Load(BMessage* settings)
 status_t
 BMailChain::InitCheck() const
 {
-	if (settings_ct != addons_ct)
+	if (fSettingsCount != fAddonsCount)
 		return B_MISMATCHED_VALUES;
-	if (filter_settings.CountItems() != settings_ct
-		|| filter_addons.CountItems() != addons_ct)
+	if (fFilterSettings.CountItems() != fSettingsCount
+		|| fFilterAddons.CountItems() != fAddonsCount)
 		return B_NO_MEMORY;
-	if (_err < B_OK)
-		return _err;
+	if (fStatus < B_OK)
+		return fStatus;
 		
 	return B_OK;
 }
@@ -146,15 +152,15 @@ BMailChain::Archive(BMessage* archive, bool deep) const
 	if (ret != B_OK)
 		return ret;	
 	
-	ret = archive->AddInt32("id", id);
+	ret = archive->AddInt32("id", fId);
 	if (ret != B_OK)
 		return ret;
 	
-	ret = archive->AddString("name", name);
+	ret = archive->AddString("name", fName);
 	if (ret != B_OK)
 		return ret;
 	
-	ret = archive->AddMessage("meta_data", meta_data);
+	ret = archive->AddMessage("meta_data", fMetaData);
 	if (ret != B_OK)
 		return ret;
 	
@@ -163,8 +169,8 @@ BMailChain::Archive(BMessage* archive, bool deep) const
 		entry_ref* ref;
 		
 		int32 i;
-		for (i = 0;((settings = (BMessage*)filter_settings.ItemAt(i)) != NULL)
-					&& ((ref = (entry_ref*)filter_addons.ItemAt(i)) != NULL);
+		for (i = 0;((settings = (BMessage*)fFilterSettings.ItemAt(i)) != NULL)
+					&& ((ref = (entry_ref*)fFilterAddons.ItemAt(i)) != NULL);
 			++i) {
 			ret = archive->AddMessage("filter_settings", settings);
 			if (ret < B_OK)
@@ -177,7 +183,7 @@ BMailChain::Archive(BMessage* archive, bool deep) const
 			if (ret < B_OK)
 				return ret;
 		}
-		if (i != settings_ct)
+		if (i != fSettingsCount)
 			return B_MISMATCHED_VALUES;
 	}
 	
@@ -194,25 +200,25 @@ BMailChain::Instantiate(BMessage* archive)
 
 
 status_t
-BMailChain::Path(BPath* path) const
+BMailChain::GetPath(BPath& path) const
 {
-	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY,path);
+	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
 	if (status < B_OK) {
 		fprintf(stderr, "Couldn't find user settings directory: %s\n",
 			strerror(status));
 		return status;
 	}
 
-	path->Append("Mail/chains");
+	path.Append("Mail/chains");
 
 	if (ChainDirection() == outbound)
-		path->Append("outbound");
+		path.Append("outbound");
 	else
-		path->Append("inbound");
+		path.Append("inbound");
 
 	BString leaf;
-	leaf << id;
-	path->Append(leaf.String());
+	leaf << fId;
+	path.Append(leaf.String());
 
 	return B_OK;
 }
@@ -221,25 +227,24 @@ BMailChain::Path(BPath* path) const
 status_t
 BMailChain::Save(bigtime_t /*timeout*/)
 {
-	status_t ret;
-	
 	BMessage archive;
-	ret = Archive(&archive,true);
+	status_t ret = Archive(&archive, true);
 	if (ret != B_OK) {
 		fprintf(stderr, "Couldn't archive chain %ld: %s\n",
-			id, strerror(ret));
+			fId, strerror(ret));
 		return ret;
 	}
 
 	BPath path;
-	if ((ret = Path(&path)) < B_OK)
+	if ((ret = GetPath(path)) < B_OK)
 		return ret;
 
 	BPath directory;
 	if ((ret = path.GetParent(&directory)) < B_OK)
 		return ret;
 
-	return MailInternal::WriteMessageFile(archive,directory,path.Leaf()/*,timeout*/);
+	return MailInternal::WriteMessageFile(archive, directory,
+		path.Leaf()/*, timeout*/);
 }
 
 
@@ -248,7 +253,7 @@ BMailChain::Delete() const
 {
 	status_t status;
 	BPath path;
-	if ((status = Path(&path)) < B_OK)
+	if ((status = GetPath(path)) < B_OK)
 		return status;
 
 	BEntry entry(path.Path());
@@ -262,14 +267,14 @@ BMailChain::Delete() const
 b_mail_chain_direction
 BMailChain::ChainDirection() const
 {
-	return direction;
+	return fDirection;
 }
 
 
 void
 BMailChain::SetChainDirection(b_mail_chain_direction dir)
 {
-	direction = dir;
+	fDirection = dir;
 }
 
 
@@ -281,7 +286,7 @@ BMailChain::Reload()
 	if (ret != B_OK) {
 		fprintf(stderr, "Couldn't find user settings directory: %s\n",
 			strerror(ret));
-		_err = ret;
+		fStatus = ret;
 		return ret;
 	}
 	
@@ -291,20 +296,20 @@ BMailChain::Reload()
 		BPath working = path;
 		working.Append("inbound");
 		BString leaf;
-		leaf << id;
+		leaf << fId;
 		
 		//puts(path.Path());
 		//puts(leaf.String());
 		
 		if (BDirectory(working.Path()).Contains(leaf.String())) {
 			path = working;
-			direction = inbound;
+			fDirection = inbound;
 		} else {
 			working = path;
 			working.Append("outbound");
 			if (BDirectory(working.Path()).Contains(leaf.String())) {
 				path = working;
-				direction = outbound;
+				fDirection = outbound;
 			}
 		}
 		
@@ -324,7 +329,7 @@ BMailChain::Reload()
 		fprintf(stderr, "Couldn't open chain settings file '%s': %s\n",
 			path.Path(), strerror(ret));
 		Load(&empty);
-		_err = B_FILE_ERROR;
+		fStatus = B_FILE_ERROR;
 		return ret;
 	}
 	
@@ -335,12 +340,12 @@ BMailChain::Reload()
 		fprintf(stderr, "Couldn't read settings from '%s': %s\n",
 			path.Path(), strerror(ret));
 		Load(&tmp);
-		_err = ret;
+		fStatus = ret;
 		return ret;
 	}
 	
 	// clobber old settings
-	_err = ret = Load(&tmp);
+	fStatus = ret = Load(&tmp);
 	return ret;
 }
 
@@ -348,14 +353,14 @@ BMailChain::Reload()
 uint32
 BMailChain::ID() const
 {
-	return id;
+	return fId;
 }
 
 
 const char*
 BMailChain::Name() const
 {
-	return name;
+	return fName;
 }
 
 
@@ -363,9 +368,9 @@ status_t
 BMailChain::SetName(const char* n)
 {
 	if (n)
-		strncpy(name, n, sizeof(name));
+		strncpy(fName, n, sizeof(fName));
 	else
-		name[0] = '\0';
+		fName[0] = '\0';
 	
 	return B_OK;
 }
@@ -374,14 +379,14 @@ BMailChain::SetName(const char* n)
 BMessage*
 BMailChain::MetaData() const
 {
-	return meta_data;
+	return fMetaData;
 }
 
 
 int32
 BMailChain::CountFilters() const
 {
-	return filter_settings.CountItems();
+	return fFilterSettings.CountItems();
 }
 
 
@@ -389,17 +394,17 @@ status_t
 BMailChain::GetFilter(int32 index, BMessage* out_settings,
 	entry_ref* addon) const
 {
-	if (index >= filter_settings.CountItems())
+	if (index >= fFilterSettings.CountItems())
 		return B_BAD_INDEX;
 	
-	BMessage* settings = (BMessage*)filter_settings.ItemAt(index);
+	BMessage* settings = (BMessage*)fFilterSettings.ItemAt(index);
 	if (settings)
 		*out_settings = *settings;
 	else
 		return B_BAD_INDEX;
 	
 	if (addon) {
-		entry_ref* ref = (entry_ref*)filter_addons.ItemAt(index);
+		entry_ref* ref = (entry_ref*)fFilterAddons.ItemAt(index);
 		if (ref)
 			*addon = *ref;
 		else
@@ -413,13 +418,13 @@ status_t
 BMailChain::SetFilter(int32 index, const BMessage& s,
 	const entry_ref& addon)
 {
-	BMessage* settings = (BMessage*)filter_settings.ItemAt(index);
+	BMessage* settings = (BMessage*)fFilterSettings.ItemAt(index);
 	if (settings)
 		*settings = s;
 	else
 		return B_BAD_INDEX;
 	
-	entry_ref* ref = (entry_ref*)filter_addons.ItemAt(index);
+	entry_ref* ref = (entry_ref*)fFilterAddons.ItemAt(index);
 	if (ref)
 		*ref = addon;
 	else
@@ -435,22 +440,22 @@ BMailChain::AddFilter(const BMessage& settings, const entry_ref& addon)
 	BMessage* s = new BMessage(settings);
 	entry_ref* a = new entry_ref(addon);
 	
-	if (!filter_settings.AddItem(s)) {
+	if (!fFilterSettings.AddItem(s)) {
 		delete s;
 		delete a;
 		return B_BAD_INDEX;
 	}
 	
-	if (!filter_addons.AddItem(a)) {
-		filter_settings.RemoveItem(settings_ct);
+	if (!fFilterAddons.AddItem(a)) {
+		fFilterSettings.RemoveItem(fSettingsCount);
 		delete s;
 		delete a;
 		return B_BAD_INDEX;
 	}
 	// else
 	
-	++settings_ct;
-	++addons_ct;
+	++fSettingsCount;
+	++fAddonsCount;
 	
 	return B_OK;
 }
@@ -460,23 +465,23 @@ status_t
 BMailChain::AddFilter(int32 index, const BMessage& settings,
 	const entry_ref& addon)
 {
-	BMessage*s = new BMessage(settings);
+	BMessage* s = new BMessage(settings);
 	entry_ref* a = new entry_ref(addon);
 	
-	if (!filter_settings.AddItem(s, index)) {
+	if (!fFilterSettings.AddItem(s, index)) {
 		delete s;
 		delete a;
 		return B_BAD_INDEX;
 	}
 	
-	if (!filter_addons.AddItem(a, index)) {
-		filter_settings.RemoveItem(index);
+	if (!fFilterAddons.AddItem(a, index)) {
+		fFilterSettings.RemoveItem(index);
 		delete s;
 		delete a;
 		return B_BAD_INDEX;
 	}
-	++settings_ct;
-	++addons_ct;
+	++fSettingsCount;
+	++fAddonsCount;
 
 	return B_OK;
 }
@@ -485,14 +490,14 @@ BMailChain::AddFilter(int32 index, const BMessage& settings,
 status_t
 BMailChain::RemoveFilter(int32 index)
 {
-	BMessage* s = (BMessage*)filter_settings.RemoveItem(index);
+	BMessage* s = (BMessage*)fFilterSettings.RemoveItem(index);
 	delete s;
 
-	entry_ref* a = (entry_ref*)filter_addons.RemoveItem(index);
+	entry_ref* a = (entry_ref*)fFilterAddons.RemoveItem(index);
 	delete a;
 
-	--settings_ct;
-	--addons_ct;
+	--fSettingsCount;
+	--fAddonsCount;
 
 	return s || a ? B_OK : B_BAD_INDEX;
 }

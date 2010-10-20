@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 
+#include <ControlLook.h>
 #include <LayoutContext.h>
 #include <LayoutItem.h>
 #include <LayoutUtils.h>
@@ -258,7 +259,7 @@ BTwoDimensionalLayout::BTwoDimensionalLayout()
 
 BTwoDimensionalLayout::BTwoDimensionalLayout(BMessage* from)
 	:
-	BLayout(from),
+	BAbstractLayout(from),
 	fLeftInset(0),
 	fRightInset(0),
 	fTopInset(0),
@@ -286,10 +287,10 @@ void
 BTwoDimensionalLayout::SetInsets(float left, float top, float right,
 	float bottom)
 {
-	fLeftInset = left;
-	fTopInset = top;
-	fRightInset = right;
-	fBottomInset = bottom;
+	fLeftInset = BControlLook::ComposeItemSpacing(left);
+	fTopInset = BControlLook::ComposeItemSpacing(top);
+	fRightInset = BControlLook::ComposeItemSpacing(right);
+	fBottomInset = BControlLook::ComposeItemSpacing(bottom);
 
 	InvalidateLayout();
 }
@@ -324,7 +325,7 @@ BTwoDimensionalLayout::AlignLayoutWith(BTwoDimensionalLayout* other,
 
 
 BSize
-BTwoDimensionalLayout::MinSize()
+BTwoDimensionalLayout::BaseMinSize()
 {
 	_ValidateMinMax();
 	return AddInsets(fLocalLayouter->MinSize());
@@ -332,7 +333,7 @@ BTwoDimensionalLayout::MinSize()
 
 
 BSize
-BTwoDimensionalLayout::MaxSize()
+BTwoDimensionalLayout::BaseMaxSize()
 {
 	_ValidateMinMax();
 	return AddInsets(fLocalLayouter->MaxSize());
@@ -340,7 +341,7 @@ BTwoDimensionalLayout::MaxSize()
 
 
 BSize
-BTwoDimensionalLayout::PreferredSize()
+BTwoDimensionalLayout::BasePreferredSize()
 {
 	_ValidateMinMax();
 	return AddInsets(fLocalLayouter->PreferredSize());
@@ -348,9 +349,9 @@ BTwoDimensionalLayout::PreferredSize()
 
 
 BAlignment
-BTwoDimensionalLayout::Alignment()
+BTwoDimensionalLayout::BaseAlignment()
 {
-	return BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_USE_FULL_HEIGHT);
+	return BAbstractLayout::BaseAlignment();
 }
 
 
@@ -377,64 +378,17 @@ BTwoDimensionalLayout::GetHeightForWidth(float width, float* min, float* max,
 
 
 void
-BTwoDimensionalLayout::InvalidateLayout()
+BTwoDimensionalLayout::SetFrame(BRect frame)
 {
-	BLayout::InvalidateLayout();
-
-	fLocalLayouter->InvalidateLayout();
+	BAbstractLayout::SetFrame(frame);
 }
 
 
 void
-BTwoDimensionalLayout::LayoutView()
+BTwoDimensionalLayout::InvalidateLayout(bool children)
 {
-	_ValidateMinMax();
-
-	// layout the horizontal/vertical elements
-	BSize size = SubtractInsets(View()->Frame().Size());
-
-#ifdef DEBUG_LAYOUT
-printf("BTwoDimensionalLayout::LayoutView(%p): size: (%.1f, %.1f)\n",
-View(), size.width, size.height);
-#endif
-
-	fLocalLayouter->Layout(size);
-
-	// layout the items
-	int itemCount = CountItems();
-	for (int i = 0; i < itemCount; i++) {
-		BLayoutItem* item = ItemAt(i);
-		if (item->IsVisible()) {
-			Dimensions itemDimensions;
-			GetItemDimensions(item, &itemDimensions);
-			BRect frame = fLocalLayouter->ItemFrame(itemDimensions);
-			frame.left += fLeftInset;
-			frame.top += fTopInset;
-			frame.right += fLeftInset;
-			frame.bottom += fTopInset;
-{
-#ifdef DEBUG_LAYOUT
-printf("  frame for item %2d (view: %p): ", i, item->View());
-frame.PrintToStream();
-#endif
-//BSize min(item->MinSize());
-//BSize max(item->MaxSize());
-//printf("    min: (%.1f, %.1f), max: (%.1f, %.1f)\n", min.width, min.height,
-//	max.width, max.height);
-//if (item->HasHeightForWidth()) {
-//float minHeight, maxHeight, preferredHeight;
-//item->GetHeightForWidth(frame.Width(), &minHeight, &maxHeight,
-//	&preferredHeight);
-//printf("    hfw: min: %.1f, max: %.1f, pref: %.1f\n", minHeight, maxHeight,
-//	preferredHeight);
-//}
-}
-
-			item->AlignInFrame(frame);
-		}
-//else
-//printf("  item %2d not visible", i);
-	}
+	BLayout::InvalidateLayout(children);
+	fLocalLayouter->InvalidateLayout();
 }
 
 
@@ -442,7 +396,7 @@ status_t
 BTwoDimensionalLayout::Archive(BMessage* into, bool deep) const
 {
 	BArchiver archiver(into);
-	status_t err = BLayout::Archive(into, deep);
+	status_t err = BAbstractLayout::Archive(into, deep);
 
 	if (err == B_OK) {
 		BRect insets(fLeftInset, fTopInset, fRightInset, fBottomInset);
@@ -484,6 +438,61 @@ BTwoDimensionalLayout::AllUnarchived(const BMessage* from)
 		err = fLocalLayouter->AlignLayoutsFromArchive(&unarchiver, B_VERTICAL);
 
 	return err;
+}
+
+
+void
+BTwoDimensionalLayout::DerivedLayoutItems()
+{
+	_ValidateMinMax();
+
+	// layout the horizontal/vertical elements
+	BSize size(SubtractInsets(LayoutArea().Size()));
+
+#ifdef DEBUG_LAYOUT
+printf("BTwoDimensionalLayout::DerivedLayoutItems(): view: %p"
+	" size: (%.1f, %.1f)\n", View(), size.Width(), size.Height());
+#endif
+
+	fLocalLayouter->Layout(size);
+
+	// layout the items
+	BPoint itemOffset(LayoutArea().LeftTop());
+	int itemCount = CountItems();
+	for (int i = 0; i < itemCount; i++) {
+		BLayoutItem* item = ItemAt(i);
+		if (item->IsVisible()) {
+			Dimensions itemDimensions;
+			GetItemDimensions(item, &itemDimensions);
+			BRect frame = fLocalLayouter->ItemFrame(itemDimensions);
+			frame.left += fLeftInset;
+			frame.top += fTopInset;
+			frame.right += fLeftInset;
+			frame.bottom += fTopInset;
+			frame.OffsetBy(itemOffset);
+{
+#ifdef DEBUG_LAYOUT
+printf("  frame for item %2d (view: %p): ", i, item->View());
+frame.PrintToStream();
+#endif
+//BSize min(item->MinSize());
+//BSize max(item->MaxSize());
+//printf("    min: (%.1f, %.1f), max: (%.1f, %.1f)\n", min.width, min.height,
+//	max.width, max.height);
+//if (item->HasHeightForWidth()) {
+//float minHeight, maxHeight, preferredHeight;
+//item->GetHeightForWidth(frame.Width(), &minHeight, &maxHeight,
+//	&preferredHeight);
+//printf("    hfw: min: %.1f, max: %.1f, pref: %.1f\n", minHeight, maxHeight,
+//	preferredHeight);
+//}
+}
+
+			item->AlignInFrame(frame);
+		}
+//else
+//printf("  item %2d not visible", i);
+	}
 }
 
 
@@ -547,17 +556,6 @@ void
 BTwoDimensionalLayout::_ValidateMinMax()
 {
 	fLocalLayouter->ValidateMinMax();
-
-	if (BView* view = View())
-		view->ResetLayoutInvalidation();
-}
-
-
-BLayoutContext*
-BTwoDimensionalLayout::_CurrentLayoutContext()
-{
-	BView* view = View();
-	return (view ? view->LayoutContext() : NULL);
 }
 
 
@@ -1060,7 +1058,7 @@ void
 BTwoDimensionalLayout::LocalLayouter::Layout(BSize size)
 {
 	DoHorizontalLayout(size.width);
-	fVLayouter->Layout(size.height, this, fLayout->_CurrentLayoutContext());
+	fVLayouter->Layout(size.height, this, fLayout->LayoutContext());
 }
 
 
@@ -1092,13 +1090,14 @@ BTwoDimensionalLayout::LocalLayouter::ValidateMinMax()
 
 	fHLayouter->ValidateMinMax();
 	fVLayouter->ValidateMinMax();
+	fLayout->ResetLayoutInvalidation();
 }
 
 
 void
 BTwoDimensionalLayout::LocalLayouter::DoHorizontalLayout(float width)
 {
-	BLayoutContext* context = fLayout->_CurrentLayoutContext();
+	BLayoutContext* context = fLayout->LayoutContext();
 	if (fHorizontalLayoutContext != context
 			|| width != fHorizontalLayoutWidth) {
 		_SetHorizontalLayoutContext(context, width);

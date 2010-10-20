@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2009 Stephan Aßmus <superstippi@gmx.de>
+ * Copyright 2006-2010 Stephan Aßmus <superstippi@gmx.de>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
@@ -8,36 +8,40 @@
 
 #include <stdio.h>
 
-// XXX: Hack for BeOS: REMOVE ME later
-#ifndef __HAIKU__
-#define private public
-#define BitmapFlags(b) ((b)->fFlags)
-#else
-#define BitmapFlags(b) ((b)->Flags())
-#endif
 #include <Bitmap.h>
-#ifndef __HAIKU__
-#undef private
-#endif
 
 #include <Application.h>
+#include <Region.h>
 #include <WindowScreen.h>
 
 #include "Settings.h"
+#include "SubtitleBitmap.h"
+
+
+enum {
+	MSG_INVALIDATE = 'ivdt'
+};
 
 
 VideoView::VideoView(BRect frame, const char* name, uint32 resizeMask)
 	:
 	BView(frame, name, resizeMask, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE
 		| B_PULSE_NEEDED),
+	fVideoFrame(Bounds()),
 	fOverlayMode(false),
 	fIsPlaying(false),
 	fIsFullscreen(false),
 	fLastMouseMove(system_time()),
+
+	fSubtitleBitmap(new SubtitleBitmap),
+	fSubtitleFrame(),
+	fSubtitleMaxButtom(Bounds().bottom),
+	fHasSubtitle(false),
+	fSubtitleChanged(false),
+
 	fGlobalSettingsListener(this)
 {
 	SetViewColor(B_TRANSPARENT_COLOR);
-		// might be reset to overlay key color if overlays are used
 	SetHighColor(0, 0, 0);
 
 	// create some hopefully sensible default overlay restrictions
@@ -49,31 +53,40 @@ VideoView::VideoView(BRect frame, const char* name, uint32 resizeMask)
 
 	Settings::Default()->AddListener(&fGlobalSettingsListener);
 	_AdoptGlobalSettings();
+
+//SetSubTitle("<b><i>This</i></b> is a <font color=\"#00ff00\">test</font>!"
+//	"\nWith a <i>short</i> line and a <b>long</b> line.");
 }
 
 
 VideoView::~VideoView()
 {
 	Settings::Default()->RemoveListener(&fGlobalSettingsListener);
+	delete fSubtitleBitmap;
 }
 
 
 void
 VideoView::Draw(BRect updateRect)
 {
-	bool fillBlack = true;
+	BRegion outSideVideoRegion(updateRect);
 
 	if (LockBitmap()) {
 		if (const BBitmap* bitmap = GetBitmap()) {
-			fillBlack = false;
+			outSideVideoRegion.Exclude(fVideoFrame);
 			if (!fOverlayMode)
 				_DrawBitmap(bitmap);
+			else
+				FillRect(fVideoFrame & updateRect, B_SOLID_LOW);
 		}
 		UnlockBitmap();
 	}
 
-	if (fillBlack)
-		FillRect(updateRect);
+	if (outSideVideoRegion.CountRects() > 0)
+		FillRegion(&outSideVideoRegion);
+
+	if (fHasSubtitle)
+		_DrawSubtitle();
 }
 
 
@@ -87,6 +100,13 @@ VideoView::MessageReceived(BMessage* message)
 			// the global settings instance...
 			_AdoptGlobalSettings();
 			break;
+		case MSG_INVALIDATE:
+		{
+			BRect dirty;
+			if (message->FindRect("dirty", &dirty) == B_OK)
+				Invalidate(dirty);
+			break;
+		}
 		default:
 			BView::MessageReceived(message);
 	}
@@ -100,17 +120,19 @@ VideoView::Pulse()
 		return;
 
 	bigtime_t now = system_time();
-	if (now - fLastMouseMove > 2LL * 1000000) {
+	if (now - fLastMouseMove > 1500000) {
 		fLastMouseMove = now;
 		// take care of disabling the screen saver
 		BPoint where;
 		uint32 buttons;
 		GetMouse(&where, &buttons, false);
 		if (buttons == 0) {
+			BMessage message(M_HIDE_FULL_SCREEN_CONTROLS);
+			message.AddPoint("where", where);
+			Window()->PostMessage(&message, Window());
+
 			ConvertToScreen(&where);
 			set_mouse_position((int32)where.x, (int32)where.y);
-			// hide the mouse cursor until the user moves it
-			be_app->ObscureCursor();
 		}
 	}
 }
@@ -140,23 +162,22 @@ VideoView::SetBitmap(const BBitmap* bitmap)
 
 	if (LockBitmap()) {
 		if (fOverlayMode
-			|| (BitmapFlags(bitmap) & B_BITMAP_WILL_OVERLAY) != 0) {
+			|| (bitmap->Flags() & B_BITMAP_WILL_OVERLAY) != 0) {
 			if (!fOverlayMode) {
 				// init overlay
 				rgb_color key;
 				status_t ret = SetViewOverlay(bitmap, bitmap->Bounds(),
-					Bounds(), &key, B_FOLLOW_ALL,
+					fVideoFrame, &key, B_FOLLOW_ALL,
 					B_OVERLAY_FILTER_HORIZONTAL
 					| B_OVERLAY_FILTER_VERTICAL);
 				if (ret == B_OK) {
 					fOverlayKeyColor = key;
-					SetViewColor(key);
 					SetLowColor(key);
 					snooze(20000);
-					FillRect(Bounds(), B_SOLID_LOW);
+					FillRect(fVideoFrame, B_SOLID_LOW);
 					Sync();
 					// use overlay from here on
-					fOverlayMode = true;
+					_SetOverlayMode(true);
 
 					// update restrictions
 					overlay_restrictions restrictions;
@@ -166,25 +187,33 @@ VideoView::SetBitmap(const BBitmap* bitmap)
 				} else {
 					// try again next time
 					// synchronous draw
-					FillRect(Bounds());
+					FillRect(fVideoFrame);
 					Sync();
 				}
 			} else {
 				// transfer overlay channel
 				rgb_color key;
-				SetViewOverlay(bitmap, bitmap->Bounds(), Bounds(),
+				SetViewOverlay(bitmap, bitmap->Bounds(), fVideoFrame,
 					&key, B_FOLLOW_ALL, B_OVERLAY_FILTER_HORIZONTAL
 						| B_OVERLAY_FILTER_VERTICAL
 						| B_OVERLAY_TRANSFER_CHANNEL);
 			}
 		} else if (fOverlayMode
-			&& (BitmapFlags(bitmap) & B_BITMAP_WILL_OVERLAY) == 0) {
-			fOverlayMode = false;
+			&& (bitmap->Flags() & B_BITMAP_WILL_OVERLAY) == 0) {
+			_SetOverlayMode(false);
 			ClearViewOverlay();
 			SetViewColor(B_TRANSPARENT_COLOR);
 		}
-		if (!fOverlayMode)
-			_DrawBitmap(bitmap);
+		if (!fOverlayMode) {
+			if (fSubtitleChanged) {
+				_LayoutSubtitle();
+				Invalidate(fVideoFrame | fSubtitleFrame);
+			} else if (fHasSubtitle
+				&& fVideoFrame.Intersects(fSubtitleFrame)) {
+				Invalidate(fVideoFrame);
+			} else
+				_DrawBitmap(bitmap);
+		}
 
 		UnlockBitmap();
 	}
@@ -250,7 +279,7 @@ VideoView::DisableOverlay()
 	ClearViewOverlay();
 	snooze(20000);
 	Sync();
-	fOverlayMode = false;
+	_SetOverlayMode(false);
 }
 
 
@@ -268,18 +297,91 @@ VideoView::SetFullscreen(bool fullScreen)
 }
 
 
+void
+VideoView::SetVideoFrame(const BRect& frame)
+{
+	if (fVideoFrame == frame)
+		return;
+
+	BRegion invalid(fVideoFrame | frame);
+	invalid.Exclude(frame);
+	Invalidate(&invalid);
+
+	fVideoFrame = frame;
+
+	fSubtitleBitmap->SetVideoBounds(fVideoFrame.OffsetToCopy(B_ORIGIN));
+	_LayoutSubtitle();
+}
+
+
+void
+VideoView::SetSubTitle(const char* text)
+{
+	BRect oldSubtitleFrame = fSubtitleFrame;
+
+	if (text == NULL || text[0] == '\0') {
+		fHasSubtitle = false;
+		fSubtitleChanged = true;
+	} else {
+		fHasSubtitle = true;
+		// If the subtitle frame still needs to be invalidated during
+		// normal playback, make sure we don't unset the fSubtitleChanged
+		// flag. It will be reset after drawing the subtitle once.
+		fSubtitleChanged = fSubtitleBitmap->SetText(text) || fSubtitleChanged;
+		if (fSubtitleChanged)
+			_LayoutSubtitle();
+	}
+
+	if (!fIsPlaying && Window() != NULL) {
+		// If we are playing, the new subtitle will be displayed,
+		// or the old one removed from screen, as soon as the next
+		// frame is shown. Otherwise we need to invalidate manually.
+		// But we are not in the window thread and we shall not lock
+		// it or we may dead-locks.
+		BMessage message(MSG_INVALIDATE);
+		message.AddRect("dirty", oldSubtitleFrame | fSubtitleFrame);
+		Window()->PostMessage(&message);
+	}
+}
+
+
+void
+VideoView::SetSubTitleMaxBottom(float bottom)
+{
+	if (bottom == fSubtitleMaxButtom)
+		return;
+
+	fSubtitleMaxButtom = bottom;
+
+	BRect oldSubtitleFrame = fSubtitleFrame;
+	_LayoutSubtitle();
+	Invalidate(fSubtitleFrame | oldSubtitleFrame);
+}
+
+
 // #pragma mark -
 
 
 void
 VideoView::_DrawBitmap(const BBitmap* bitmap)
 {
-#ifdef __HAIKU__
+	SetDrawingMode(B_OP_COPY);
 	uint32 options = fUseBilinearScaling ? B_FILTER_BITMAP_BILINEAR : 0;
-	DrawBitmap(bitmap, bitmap->Bounds(), Bounds(), options);
-#else
-	DrawBitmap(bitmap, bitmap->Bounds(), Bounds());
-#endif
+	DrawBitmapAsync(bitmap, bitmap->Bounds(), fVideoFrame, options);
+}
+
+
+void
+VideoView::_DrawSubtitle()
+{
+	SetDrawingMode(B_OP_ALPHA);
+	SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+
+	DrawBitmapAsync(fSubtitleBitmap->Bitmap(), fSubtitleFrame.LeftTop());
+
+	// Unless the subtitle frame intersects the video frame, we don't have
+	// to draw the subtitle again.
+	fSubtitleChanged = false;
 }
 
 
@@ -292,7 +394,66 @@ VideoView::_AdoptGlobalSettings()
 	fUseOverlays = settings.useOverlays;
 	fUseBilinearScaling = settings.scaleBilinear;
 
-	if (!fIsPlaying && !fOverlayMode)
-		Invalidate();
+	switch (settings.subtitleSize) {
+		case mpSettings::SUBTITLE_SIZE_SMALL:
+			fSubtitleBitmap->SetCharsPerLine(45.0);
+			break;
+		case mpSettings::SUBTITLE_SIZE_MEDIUM:
+			fSubtitleBitmap->SetCharsPerLine(36.0);
+			break;
+		case mpSettings::SUBTITLE_SIZE_LARGE:
+			fSubtitleBitmap->SetCharsPerLine(32.0);
+			break;
+	}
+
+	fSubtitlePlacement = settings.subtitlePlacement;
+
+	_LayoutSubtitle();
+	Invalidate();
 }
+
+
+void
+VideoView::_SetOverlayMode(bool overlayMode)
+{
+	fOverlayMode = overlayMode;
+	fSubtitleBitmap->SetOverlayMode(overlayMode);
+}
+
+
+void
+VideoView::_LayoutSubtitle()
+{
+	if (!fHasSubtitle)
+		return;
+
+	const BBitmap* subtitleBitmap = fSubtitleBitmap->Bitmap();
+	if (subtitleBitmap == NULL)
+		return;
+
+	fSubtitleFrame = subtitleBitmap->Bounds();
+
+	BPoint offset;
+	offset.x = (fVideoFrame.left + fVideoFrame.right
+		- fSubtitleFrame.Width()) / 2;
+	switch (fSubtitlePlacement) {
+		default:
+		case mpSettings::SUBTITLE_PLACEMENT_BOTTOM_OF_VIDEO:
+			offset.y = fVideoFrame.bottom - fSubtitleFrame.Height();
+			break;
+		case mpSettings::SUBTITLE_PLACEMENT_BOTTOM_OF_SCREEN:
+		{
+			// Center between video and screen bottom, if there is still
+			// enough room.
+			float centeredOffset = (fVideoFrame.bottom + fSubtitleMaxButtom
+				- fSubtitleFrame.Height()) / 2;
+			float maxOffset = fSubtitleMaxButtom - fSubtitleFrame.Height();
+			offset.y = min_c(centeredOffset, maxOffset);
+			break;
+		}
+	}
+
+	fSubtitleFrame.OffsetTo(offset);
+}
+
 

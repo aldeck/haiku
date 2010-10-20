@@ -8,11 +8,13 @@
 
 #include <SupportDefs.h>
 
+#include <time.h>
 #include <wctype.h>
 
 
 struct lconv;
 struct lc_time_t;
+struct locale_data;		// glibc
 
 
 namespace BPrivate {
@@ -46,14 +48,33 @@ struct LocaleMonetaryDataBridge {
 
 
 struct LocaleNumericDataBridge {
-	const char** 		addrOfGlibcDecimalPoint;
-	const char** 		addrOfGlibcThousandsSep;
-	const char** 		addrOfGlibcGrouping;
-	uint32_t*	 		addrOfGlibcWCDecimalPoint;
-	uint32_t*	 		addrOfGlibcWCThousandsSep;
+private:
+	// struct used by glibc to store numeric locale data
+	struct GlibcNumericLocale {
+		const char* name;
+		const char* filedata;
+		off_t filesize;
+		int mmaped;
+		unsigned int usage_count;
+		int use_translit;
+		const char *options;
+		unsigned int nstrings;
+		union locale_data_value
+		{
+			const uint32_t* wstr;
+			const char* string;
+			unsigned int word;
+		}
+		values[6];
+	};
+	locale_data* originalGlibcLocale;
+
+public:
 	const struct lconv* posixLocaleConv;
+	GlibcNumericLocale  glibcNumericLocale;
 
 	LocaleNumericDataBridge();
+	~LocaleNumericDataBridge();
 };
 
 
@@ -64,12 +85,22 @@ struct LocaleTimeDataBridge {
 };
 
 
+struct TimeConversionDataBridge {
+	int*					addrOfDaylight;
+	long*					addrOfTimezone;
+	char**					addrOfTZName;
+
+	TimeConversionDataBridge();
+};
+
+
 struct LocaleDataBridge {
 	LocaleCtypeDataBridge		ctypeDataBridge;
 	LocaleMessagesDataBridge	messagesDataBridge;
 	LocaleMonetaryDataBridge	monetaryDataBridge;
 	LocaleNumericDataBridge		numericDataBridge;
 	LocaleTimeDataBridge		timeDataBridge;
+	TimeConversionDataBridge	timeConversionDataBridge;
 	const char**				posixLanginfo;
 
 	LocaleDataBridge();
@@ -95,6 +126,13 @@ public:
 									int& out) = 0;
 	virtual status_t			Strxfrm(char* out, const char* in, size_t size,
 									size_t& outSize) = 0;
+
+	virtual status_t			TZSet(const char* timeZoneID) = 0;
+	virtual	status_t			Localtime(const time_t* inTime,
+									struct tm* tmOut) = 0;
+	virtual	status_t			Gmtime(const time_t* inTime,
+									struct tm* tmOut) = 0;
+	virtual status_t			Mktime(struct tm* inOutTm, time_t& timeOut) = 0;
 
 	virtual void				Initialize(LocaleDataBridge* dataBridge) = 0;
 

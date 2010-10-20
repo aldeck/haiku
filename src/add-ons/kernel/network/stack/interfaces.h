@@ -122,11 +122,14 @@ public:
 			InterfaceAddress*	FirstUnconfiguredForFamily(int family);
 			InterfaceAddress*	AddressForDestination(net_domain* domain,
 									const sockaddr* destination);
+			InterfaceAddress*	AddressForLocal(net_domain* domain,
+									const sockaddr* local);
 
 			status_t			AddAddress(InterfaceAddress* address);
 			void				RemoveAddress(InterfaceAddress* address);
 			bool				GetNextAddress(InterfaceAddress** _address);
 			InterfaceAddress*	AddressAt(size_t index);
+			int32				IndexOfAddress(InterfaceAddress* address);
 			size_t				CountAddresses();
 			void				RemoveAddresses();
 

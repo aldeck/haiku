@@ -3,22 +3,25 @@
 #include <List.h>
 #include <Window.h>
 
-#include "BALMLayout.h"
+#include "ALMLayout.h"
 
 
 class AreasWindow : public BWindow {
 public:
 	AreasWindow(BRect frame) 
-		: BWindow(frame, "ALM Areas",
-			B_TITLED_WINDOW, B_QUIT_ON_WINDOW_CLOSE)
+		:
+		BWindow(frame, "ALM Areas", B_TITLED_WINDOW, B_QUIT_ON_WINDOW_CLOSE)
 	{
 		button1 = new BButton("1");
 		button2 = new BButton("2");
 		button3 = new BButton("3");
 		button4 = new BButton("4");
 
+		button1->SetExplicitMinSize(BSize(0, 0));
+		button1->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+
 		// create a new BALMLayout and use  it for this window
-		BALMLayout* layout = new BALMLayout();
+		BALMLayout* layout = new BALMLayout(6);
 		SetLayout(layout);
 
 		// create extra tabs
@@ -26,32 +29,25 @@ public:
 		YTab* y2 = layout->AddYTab();
 		YTab* y3 = layout->AddYTab();
 
-		Area* a1 = layout->AddArea(
-			layout->Left(), layout->Top(), 
-			layout->Right(), y1,
-			button1);
+		Area* a1 = layout->AddView(button1, layout->Left(), layout->Top(), 
+			layout->Right(), y1);
 		a1->SetTopInset(10);
 		a1->SetLeftInset(10);
 		a1->SetRightInset(10);
 
-		Area* a2 = layout->AddArea(
-			layout->Left(), y1, 
-			layout->Right(), y2,
-			button2);
-		a2->SetHorizontalAlignment(B_ALIGN_LEFT);
+		layout->AddView(button2, layout->Left(), y1, layout->Right(), y2);
+		button2->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_TOP));
 
-		Area* a3 = layout->AddArea(
-			layout->Left(), y2, 
-			layout->Right(), y3,
-			button3);
-		a3->SetHorizontalAlignment(B_ALIGN_HORIZONTAL_CENTER);
-		a3->HasSameHeightAs(a1);
+		Area* a3 = layout->AddView(button3, layout->Left(), y2, layout->Right(),
+			y3);
+		button3->SetExplicitAlignment(BAlignment(B_ALIGN_HORIZONTAL_CENTER,
+			B_ALIGN_VERTICAL_CENTER));
+		a3->SetHeightAs(a1);
 
-		Area* a4 = layout->AddArea(
-			layout->Left(), y3, 
-			layout->Right(), layout->Bottom(),
-			button4);
-		a4->SetHorizontalAlignment(B_ALIGN_RIGHT);
+		layout->AddView(button4, layout->Left(), y3, layout->Right(),
+			layout->Bottom());
+		button4->SetExplicitAlignment(BAlignment(B_ALIGN_RIGHT,
+			B_ALIGN_BOTTOM));	
 	}
 	
 private:
@@ -65,7 +61,8 @@ private:
 class Areas : public BApplication {
 public:
 	Areas() 
-		: BApplication("application/x-vnd.haiku.Areas") 
+		:
+		BApplication("application/x-vnd.haiku.Areas") 
 	{
 		BRect frameRect;
 		frameRect.Set(100, 100, 300, 300);

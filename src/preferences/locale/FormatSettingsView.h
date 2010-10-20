@@ -43,8 +43,6 @@ public:
 	virtual	void				MessageReceived(BMessage* message);
 	virtual	void				AttachedToWindow();
 
-	virtual	void				SetDefaults();
-	virtual	bool				IsDefaultable() const;
 	virtual	void				Revert();
 	virtual	void				SetLocale(const BLocale& locale);
 	virtual	void				RecordRevertSettings();
@@ -54,6 +52,7 @@ private:
 			void				_UpdateExamples();
 			void				_SendNotices();
 			void				_ParseDateFormat();
+			void				_ParseCurrencyFormat();
 			void				_UpdateLongDateFormatString();
 
 private:
@@ -73,6 +72,11 @@ private:
 			BStringView*		fLongTimeExampleView;
 			BStringView*		fShortTimeExampleView;
 			BStringView*		fNumberFormatExampleView;
+			BStringView*		fMonetaryView;
+
+			BTextControl*		fCurrencySymbolView;
+			BRadioButton*		fCurrencySymbolBefore;
+			BRadioButton*		fCurrencySymbolAfter;
 
 			bool				f24HrClock;
 

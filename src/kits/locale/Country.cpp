@@ -10,12 +10,13 @@
 #include <AutoDeleter.h>
 #include <IconUtils.h>
 #include <List.h>
+#include <Language.h>
+#include <LocaleRoster.h>
 #include <Resources.h>
 #include <String.h>
-#include <TimeZone.h>
 
-#include <unicode/datefmt.h>
 #include <unicode/locid.h>
+#include <unicode/ulocdata.h>
 #include <ICUWrapper.h>
 
 #include <iostream>
@@ -68,14 +69,39 @@ BCountry::~BCountry()
 }
 
 
-bool
-BCountry::GetName(BString& name) const
+status_t
+BCountry::GetNativeName(BString& name) const
 {
+	UnicodeString string;
+	fICULocale->getDisplayName(*fICULocale, string);
+	string.toTitle(NULL, *fICULocale);
+
+	name.Truncate(0);
+	BStringByteSink converter(&name);
+	string.toUTF8(converter);
+
+	return B_OK;
+}
+
+
+status_t
+BCountry::GetName(BString& name, const BLanguage* displayLanguage) const
+{
+	BString appLanguage;
+	if (displayLanguage == NULL) {
+		BMessage preferredLanguage;
+		be_locale_roster->GetPreferredLanguages(&preferredLanguage);
+		preferredLanguage.FindString("language", 0, &appLanguage);
+	} else {
+		appLanguage = displayLanguage->Code();
+	}
+
 	UnicodeString uString;
-	fICULocale->getDisplayCountry(uString);
+	fICULocale->getDisplayName(Locale(appLanguage), uString);
 	BStringByteSink stringConverter(&name);
 	uString.toUTF8(stringConverter);
-	return true;
+
+	return B_OK;
 }
 
 
@@ -89,23 +115,17 @@ BCountry::Code() const
 status_t
 BCountry::GetIcon(BBitmap* result) const
 {
-	if (result == NULL)
-		return B_BAD_DATA;
-	// TODO: a proper way to locate the library being used ?
-	BResources storage("/boot/system/lib/liblocale.so");
-	if (storage.InitCheck() != B_OK)
-		return B_ERROR;
-	size_t size;
 	const char* code = fICULocale->getCountry();
-	if (code != NULL) {
-		const void* buffer = storage.LoadResource(B_VECTOR_ICON_TYPE, code,
-			&size);
-		if (buffer != NULL && size != 0) {
-			return BIconUtils::GetVectorIcon(static_cast<const uint8*>(buffer),
-				size, result);
-		}
-	}
-	return B_BAD_DATA;
+	if (code == NULL)
+		return  B_ERROR;
+	return be_locale_roster->GetFlagIconForCountry(result, code);
+}
+
+
+status_t
+BCountry::GetAvailableTimeZones(BMessage* timeZones) const
+{
+	return be_locale_roster->GetAvailableTimeZonesForCountry(timeZones, Code());
 }
 
 
@@ -113,41 +133,12 @@ BCountry::GetIcon(BBitmap* result) const
 int8
 BCountry::Measurement() const
 {
-	return B_US;
-}
-
-
-// #pragma mark - Timezones
-
-
-int
-BCountry::GetTimeZones(BList& timezones) const
-{
-	ObjectDeleter<StringEnumeration> icuTimeZoneList
-		= TimeZone::createEnumeration(fICULocale->getCountry());
-	if (icuTimeZoneList.Get() == NULL)
-		return 0;
-
 	UErrorCode error = U_ZERO_ERROR;
-
-	const char* tzName;
-	std::map<BString, BTimeZone*> timeZoneMap;
-		// The map allows us to remove duplicates and get a count of the
-		// remaining zones after that
-	while ((tzName = icuTimeZoneList->next(NULL, error)) != NULL) {
-		if (error == U_ZERO_ERROR) {
-			BTimeZone* timeZone = new(std::nothrow) BTimeZone(tzName);
-			timeZoneMap.insert(std::pair<BString, BTimeZone*>(timeZone->Name(),
-				timeZone));
-		} else
-			error = U_ZERO_ERROR;
+	switch (ulocdata_getMeasurementSystem(Code(), &error)) {
+		case UMS_US:
+			return B_US;
+		case UMS_SI:
+		default:
+			return B_METRIC;
 	}
-
-	std::map<BString, BTimeZone*>::const_iterator tzIter;
-	for (tzIter = timeZoneMap.begin(); tzIter != timeZoneMap.end(); ++tzIter)
-		timezones.AddItem(tzIter->second);
-
-	return timezones.CountItems();
 }
-
-

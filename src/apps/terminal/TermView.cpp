@@ -62,7 +62,7 @@
 extern int function_keycode_table[];
 extern char *function_key_char_table[];
 
-const static rgb_color kTermColorTable[8] = {
+static rgb_color kTermColorTable[256] = {
 	{ 40,  40,  40, 0},	// black
 	{204,   0,   0, 0},	// red
 	{ 78, 154,   6, 0},	// green
@@ -71,6 +71,257 @@ const static rgb_color kTermColorTable[8] = {
 	{115,  68, 123, 0},	// magenta
 	{  6, 152, 154, 0},	// cyan
 	{245, 245, 245, 0},	// white
+
+	{128, 128, 128, 0},	// black
+	{255,   0,   0, 0},	// red
+	{  0, 255,   0, 0},	// green
+	{255, 255,   0, 0},	// yellow
+	{  0,   0, 255, 0},	// blue
+	{255,   0, 255, 0},	// magenta
+	{  0, 255, 255, 0},	// cyan
+	{255, 255, 255, 0},	// white
+
+	{  0,   0,   0, 0},
+	{  0,   0,  51, 0},
+	{  0,   0, 102, 0},
+	{  0,   0, 153, 0},
+	{  0,   0, 204, 0},
+	{  0,   0, 255, 0},
+	{  0,  51,   0, 0},
+	{  0,  51,  51, 0},
+	{  0,  51, 102, 0},
+	{  0,  51, 153, 0},
+	{  0,  51, 204, 0},
+	{  0,  51, 255, 0},
+	{  0, 102,   0, 0},
+	{  0, 102,  51, 0},
+	{  0, 102, 102, 0},
+	{  0, 102, 153, 0},
+	{  0, 102, 204, 0},
+	{  0, 102, 255, 0},
+	{  0, 153,   0, 0},
+	{  0, 153,  51, 0},
+	{  0, 153, 102, 0},
+	{  0, 153, 153, 0},
+	{  0, 153, 204, 0},
+	{  0, 153, 255, 0},
+	{  0, 204,   0, 0},
+	{  0, 204,  51, 0},
+	{  0, 204, 102, 0},
+	{  0, 204, 153, 0},
+	{  0, 204, 204, 0},
+	{  0, 204, 255, 0},
+	{  0, 255,   0, 0},
+	{  0, 255,  51, 0},
+	{  0, 255, 102, 0},
+	{  0, 255, 153, 0},
+	{  0, 255, 204, 0},
+	{  0, 255, 255, 0},
+	{ 51,   0,   0, 0},
+	{ 51,   0,  51, 0},
+	{ 51,   0, 102, 0},
+	{ 51,   0, 153, 0},
+	{ 51,   0, 204, 0},
+	{ 51,   0, 255, 0},
+	{ 51,  51,   0, 0},
+	{ 51,  51,  51, 0},
+	{ 51,  51, 102, 0},
+	{ 51,  51, 153, 0},
+	{ 51,  51, 204, 0},
+	{ 51,  51, 255, 0},
+	{ 51, 102,   0, 0},
+	{ 51, 102,  51, 0},
+	{ 51, 102, 102, 0},
+	{ 51, 102, 153, 0},
+	{ 51, 102, 204, 0},
+	{ 51, 102, 255, 0},
+	{ 51, 153,   0, 0},
+	{ 51, 153,  51, 0},
+	{ 51, 153, 102, 0},
+	{ 51, 153, 153, 0},
+	{ 51, 153, 204, 0},
+	{ 51, 153, 255, 0},
+	{ 51, 204,   0, 0},
+	{ 51, 204,  51, 0},
+	{ 51, 204, 102, 0},
+	{ 51, 204, 153, 0},
+	{ 51, 204, 204, 0},
+	{ 51, 204, 255, 0},
+	{ 51, 255,   0, 0},
+	{ 51, 255,  51, 0},
+	{ 51, 255, 102, 0},
+	{ 51, 255, 153, 0},
+	{ 51, 255, 204, 0},
+	{ 51, 255, 255, 0},
+	{102,   0,   0, 0},
+	{102,   0,  51, 0},
+	{102,   0, 102, 0},
+	{102,   0, 153, 0},
+	{102,   0, 204, 0},
+	{102,   0, 255, 0},
+	{102,  51,   0, 0},
+	{102,  51,  51, 0},
+	{102,  51, 102, 0},
+	{102,  51, 153, 0},
+	{102,  51, 204, 0},
+	{102,  51, 255, 0},
+	{102, 102,   0, 0},
+	{102, 102,  51, 0},
+	{102, 102, 102, 0},
+	{102, 102, 153, 0},
+	{102, 102, 204, 0},
+	{102, 102, 255, 0},
+	{102, 153,   0, 0},
+	{102, 153,  51, 0},
+	{102, 153, 102, 0},
+	{102, 153, 153, 0},
+	{102, 153, 204, 0},
+	{102, 153, 255, 0},
+	{102, 204,   0, 0},
+	{102, 204,  51, 0},
+	{102, 204, 102, 0},
+	{102, 204, 153, 0},
+	{102, 204, 204, 0},
+	{102, 204, 255, 0},
+	{102, 255,   0, 0},
+	{102, 255,  51, 0},
+	{102, 255, 102, 0},
+	{102, 255, 153, 0},
+	{102, 255, 204, 0},
+	{102, 255, 255, 0},
+	{153,   0,   0, 0},
+	{153,   0,  51, 0},
+	{153,   0, 102, 0},
+	{153,   0, 153, 0},
+	{153,   0, 204, 0},
+	{153,   0, 255, 0},
+	{153,  51,   0, 0},
+	{153,  51,  51, 0},
+	{153,  51, 102, 0},
+	{153,  51, 153, 0},
+	{153,  51, 204, 0},
+	{153,  51, 255, 0},
+	{153, 102,   0, 0},
+	{153, 102,  51, 0},
+	{153, 102, 102, 0},
+	{153, 102, 153, 0},
+	{153, 102, 204, 0},
+	{153, 102, 255, 0},
+	{153, 153,   0, 0},
+	{153, 153,  51, 0},
+	{153, 153, 102, 0},
+	{153, 153, 153, 0},
+	{153, 153, 204, 0},
+	{153, 153, 255, 0},
+	{153, 204,   0, 0},
+	{153, 204,  51, 0},
+	{153, 204, 102, 0},
+	{153, 204, 153, 0},
+	{153, 204, 204, 0},
+	{153, 204, 255, 0},
+	{153, 255,   0, 0},
+	{153, 255,  51, 0},
+	{153, 255, 102, 0},
+	{153, 255, 153, 0},
+	{153, 255, 204, 0},
+	{153, 255, 255, 0},
+	{204,   0,   0, 0},
+	{204,   0,  51, 0},
+	{204,   0, 102, 0},
+	{204,   0, 153, 0},
+	{204,   0, 204, 0},
+	{204,   0, 255, 0},
+	{204,  51,   0, 0},
+	{204,  51,  51, 0},
+	{204,  51, 102, 0},
+	{204,  51, 153, 0},
+	{204,  51, 204, 0},
+	{204,  51, 255, 0},
+	{204, 102,   0, 0},
+	{204, 102,  51, 0},
+	{204, 102, 102, 0},
+	{204, 102, 153, 0},
+	{204, 102, 204, 0},
+	{204, 102, 255, 0},
+	{204, 153,   0, 0},
+	{204, 153,  51, 0},
+	{204, 153, 102, 0},
+	{204, 153, 153, 0},
+	{204, 153, 204, 0},
+	{204, 153, 255, 0},
+	{204, 204,   0, 0},
+	{204, 204,  51, 0},
+	{204, 204, 102, 0},
+	{204, 204, 153, 0},
+	{204, 204, 204, 0},
+	{204, 204, 255, 0},
+	{204, 255,   0, 0},
+	{204, 255,  51, 0},
+	{204, 255, 102, 0},
+	{204, 255, 153, 0},
+	{204, 255, 204, 0},
+	{204, 255, 255, 0},
+	{255,   0,   0, 0},
+	{255,   0,  51, 0},
+	{255,   0, 102, 0},
+	{255,   0, 153, 0},
+	{255,   0, 204, 0},
+	{255,   0, 255, 0},
+	{255,  51,   0, 0},
+	{255,  51,  51, 0},
+	{255,  51, 102, 0},
+	{255,  51, 153, 0},
+	{255,  51, 204, 0},
+	{255,  51, 255, 0},
+	{255, 102,   0, 0},
+	{255, 102,  51, 0},
+	{255, 102, 102, 0},
+	{255, 102, 153, 0},
+	{255, 102, 204, 0},
+	{255, 102, 255, 0},
+	{255, 153,   0, 0},
+	{255, 153,  51, 0},
+	{255, 153, 102, 0},
+	{255, 153, 153, 0},
+	{255, 153, 204, 0},
+	{255, 153, 255, 0},
+	{255, 204,   0, 0},
+	{255, 204,  51, 0},
+	{255, 204, 102, 0},
+	{255, 204, 153, 0},
+	{255, 204, 204, 0},
+	{255, 204, 255, 0},
+	{255, 255,   0, 0},
+	{255, 255,  51, 0},
+	{255, 255, 102, 0},
+	{255, 255, 153, 0},
+	{255, 255, 204, 0},
+	{255, 255, 255, 0},
+
+	{ 10,  10,  10, 0},
+	{ 20,  20,  20, 0},
+	{ 30,  30,  30, 0},
+	{ 40,  40,  40, 0},
+	{ 50,  50,  50, 0},
+	{ 60,  60,  60, 0},
+	{ 70,  70,  70, 0},
+	{ 80,  80,  80, 0},
+	{ 90,  90,  90, 0},
+	{100, 100, 100, 0},
+	{110, 110, 110, 0},
+	{120, 120, 120, 0},
+	{130, 130, 130, 0},
+	{140, 140, 140, 0},
+	{150, 150, 150, 0},
+	{160, 160, 160, 0},
+	{170, 170, 170, 0},
+	{180, 180, 180, 0},
+	{190, 190, 190, 0},
+	{200, 200, 200, 0},
+	{210, 210, 210, 0},
+	{220, 220, 220, 0},
+	{230, 230, 230, 0},
+	{240, 240, 240, 0},
 };
 
 #define ROWS_DEFAULT 25
@@ -297,8 +548,6 @@ TermView::_InitObject(int32 argc, const char** argv)
 	fVisibleTextBuffer = NULL;
 	fScrollBar = NULL;
 	fInline = NULL;
-	fTextForeColor = kBlackColor;
-	fTextBackColor = kWhiteColor;
 	fCursorForeColor = kWhiteColor;
 	fCursorBackColor = kBlackColor;
 	fSelectForeColor = kWhiteColor;
@@ -358,7 +607,7 @@ TermView::_InitObject(int32 argc, const char** argv)
 	if (error < B_OK)
 		return error;
 
-	SetLowColor(fTextBackColor);
+	SetLowColor(kTermColorTable[8]);
 	SetViewColor(B_TRANSPARENT_32_BIT);
 
 	return B_OK;
@@ -585,10 +834,10 @@ TermView::GetTermSizeFromRect(const BRect &rect, int *_rows,
 void
 TermView::SetTextColor(rgb_color fore, rgb_color back)
 {
-	fTextForeColor = fore;
-	fTextBackColor = back;
+	kTermColorTable[0] = back;
+	kTermColorTable[7] = fore;
 
-	SetLowColor(fTextBackColor);
+	SetLowColor(back);
 }
 
 
@@ -849,10 +1098,10 @@ TermView::_Deactivate()
 
 //! Draw part of a line in the given view.
 void
-TermView::_DrawLinePart(int32 x1, int32 y1, uint16 attr, char *buf,
+TermView::_DrawLinePart(int32 x1, int32 y1, uint32 attr, char *buf,
 	int32 width, bool mouse, bool cursor, BView *inView)
 {
-	rgb_color rgb_fore = fTextForeColor, rgb_back = fTextBackColor;
+	rgb_color rgb_fore, rgb_back;
 
 	inView->SetFont(&fHalfFont);
 
@@ -863,12 +1112,8 @@ TermView::_DrawLinePart(int32 x1, int32 y1, uint16 attr, char *buf,
 	// color attribute
 	int forecolor = IS_FORECOLOR(attr);
 	int backcolor = IS_BACKCOLOR(attr);
-
-	if (IS_FORESET(attr))
-		rgb_fore = kTermColorTable[forecolor];
-
-	if (IS_BACKSET(attr))
-		rgb_back = kTermColorTable[backcolor];
+	rgb_fore = kTermColorTable[forecolor];
+	rgb_back = kTermColorTable[backcolor];
 
 	// Selection check.
 	if (cursor) {
@@ -926,7 +1171,7 @@ TermView::_DrawCursor()
 	int32 firstVisible = _LineAt(0);
 
 	UTF8Char character;
-	uint16 attr;
+	uint32 attr = 0;
 
 	bool cursorVisible = _IsCursorVisible();
 
@@ -950,7 +1195,7 @@ TermView::_DrawCursor()
 		if (selected)
 			SetHighColor(fSelectBackColor);
 		else
-			SetHighColor(cursorVisible ? fCursorBackColor : fTextBackColor);
+			SetHighColor(cursorVisible ? fCursorBackColor : kTermColorTable[IS_BACKCOLOR(attr)]);
 
 		FillRect(rect);
 	}
@@ -1088,27 +1333,6 @@ TermView::DetachedFromWindow()
 void
 TermView::Draw(BRect updateRect)
 {
-//	if (IsPrinting()) {
-//		_DoPrint(updateRect);
-//		return;
-//	}
-
-// debug_printf("TermView::Draw((%f, %f) - (%f, %f))\n", updateRect.left,
-// updateRect.top, updateRect.right, updateRect.bottom);
-// {
-// BRect bounds(Bounds());
-// debug_printf("Bounds(): (%f, %f) - (%f - %f)\n", bounds.left, bounds.top,
-// 	bounds.right, bounds.bottom);
-// debug_printf("clipping region:\n");
-// BRegion region;
-// GetClippingRegion(&region);
-// for (int32 i = 0; i < region.CountRects(); i++) {
-// 	BRect rect(region.RectAt(i));
-// 	debug_printf("  (%f, %f) - (%f, %f)\n", rect.left, rect.top, rect.right,
-// 		rect.bottom);
-// }
-// }
-
 	int32 x1 = (int32)updateRect.left / fFontWidth;
 	int32 x2 = std::min((int)updateRect.right / fFontWidth, fColumns - 1);
 
@@ -1116,16 +1340,13 @@ TermView::Draw(BRect updateRect)
 	int32 y1 = _LineAt(updateRect.top);
 	int32 y2 = std::min(_LineAt(updateRect.bottom), (int32)fRows - 1);
 
-//debug_printf("TermView::Draw(): (%ld, %ld) - (%ld, %ld), top: %f, fontHeight: %d, scrollOffset: %f\n",
-//x1, y1, x2, y2, updateRect.top, fFontHeight, fScrollOffset);
-
 	// clear the area to the right of the line ends
 	if (y1 <= y2) {
 		float clearLeft = fColumns * fFontWidth;
 		if (clearLeft <= updateRect.right) {
 			BRect rect(clearLeft, updateRect.top, updateRect.right,
 				updateRect.bottom);
-			SetHighColor(fTextBackColor);
+			SetHighColor(kTermColorTable[0]);
 			FillRect(rect);
 		}
 	}
@@ -1136,13 +1357,15 @@ TermView::Draw(BRect updateRect)
 		if (clearTop <= updateRect.bottom) {
 			BRect rect(updateRect.left, clearTop, updateRect.right,
 				updateRect.bottom);
-			SetHighColor(fTextBackColor);
+			SetHighColor(kTermColorTable[0]);
 			FillRect(rect);
 		}
 	}
 
 	// draw the affected line parts
 	if (x1 <= x2) {
+		uint32 attr = 0;
+
 		for (int32 j = y1; j <= y2; j++) {
 			int32 k = x1;
 			char buf[fColumns * 4 + 1];
@@ -1156,22 +1379,49 @@ TermView::Draw(BRect updateRect)
 			for (int32 i = k; i <= x2;) {
 				int32 lastColumn = x2;
 				bool insideSelection = _CheckSelectedRegion(j, i, lastColumn);
-				uint16 attr;
+					// This will clip lastColumn to the selection start or end
+					// to ensure the selection is not drawn at the same time as
+					// something else
 				int32 count = fVisibleTextBuffer->GetString(j - firstVisible, i,
 					lastColumn, buf, attr);
 
-//debug_printf("  fVisibleTextBuffer->GetString(%ld, %ld, %ld) -> (%ld, \"%.*s\"), selected: %d\n",
-//j - firstVisible, i, lastColumn, count, (int)count, buf, insideSelection);
+// debug_printf("  fVisibleTextBuffer->GetString(%ld, %ld, %ld) -> (%ld, \"%.*s\"), selected: %d\n",
+// j - firstVisible, i, lastColumn, count, (int)count, buf, insideSelection);
 
 				if (count == 0) {
+					// No chars to draw : we just fill the rectangle with the
+					// back color of the last char at the left
 					BRect rect(fFontWidth * i, _LineOffset(j),
 						fFontWidth * (lastColumn + 1) - 1, 0);
 					rect.bottom = rect.top + fFontHeight - 1;
 
-					SetHighColor(insideSelection ? fSelectBackColor
-						: fTextBackColor);
-					FillRect(rect);
+					if (insideSelection) {
+						// This area is selected, fill it with the select color
+						SetHighColor(fSelectBackColor);
+						FillRect(rect);
+					} else {
+						// We are not in the selection, so we have to try to
+						// guess the color for this line from the last char
+						// that was drawn in it.
+						int t = 1;
+						while (count == 0 && i - t >= 0) {
+							count = fVisibleTextBuffer->GetString(
+								j - firstVisible,
+								i - t, lastColumn, buf, attr);
+							t++;
+						}
 
+						// If the line is completely empty, we use the default
+						// back color.
+						// TODO: It would be better to look at the line above,
+						// or ensure each line is always initialized with an
+						// attribute telling wat color to set.
+						SetHighColor(count ? kTermColorTable[IS_BACKCOLOR(attr)]
+							: kTermColorTable[0]);
+						FillRect(rect);
+					}
+
+					// Go on to the next block
 					i = lastColumn + 1;
 					continue;
 				}
@@ -1198,7 +1448,7 @@ void
 TermView::_DoPrint(BRect updateRect)
 {
 #if 0
-	ushort attr;
+	uint32 attr;
 	uchar buf[1024];
 
 	const int numLines = (int)((updateRect.Height()) / fFontHeight);

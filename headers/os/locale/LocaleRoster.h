@@ -9,6 +9,7 @@
 #include <String.h>
 
 
+class BBitmap;
 class BCatalog;
 class BCollator;
 class BCountry;
@@ -28,10 +29,6 @@ public:
 								BLocaleRoster();
 								~BLocaleRoster();
 
-			status_t			GetDefaultCollator(BCollator* collator) const;
-			status_t			GetDefaultLanguage(BLanguage* language) const;
-			status_t			GetDefaultCountry(BCountry* country) const;
-			status_t			GetDefaultLocale(BLocale* locale) const;
 			status_t			GetDefaultTimeZone(BTimeZone* timezone) const;
 
 			status_t			GetLanguage(const char* languageCode,
@@ -39,12 +36,18 @@ public:
 
 			status_t			GetPreferredLanguages(BMessage* message) const;
 
-			status_t			GetInstalledLanguages(BMessage* message) const;
-									// the message contains one or more
-									// 'language'-string-fields which
-									// contain the language-name(s)
+			status_t			GetAvailableLanguages(BMessage* message) const;
 
-			status_t			GetAvailableCountries(BMessage* message) const;
+			status_t			GetAvailableCountries(
+									BMessage* timeZones) const;
+			status_t			GetAvailableTimeZones(
+									BMessage* timeZones) const;
+			status_t			GetAvailableTimeZonesForCountry(
+									BMessage* message,
+									const char* countryCode) const;
+
+			status_t			GetFlagIconForCountry(BBitmap* flagIcon,
+									const char* countryCode);
 
 			status_t			GetInstalledCatalogs(BMessage* message,
 									const char* sigPattern = NULL,

@@ -14,7 +14,7 @@
 
 #define INITIAL_HEAP_SIZE	B_PAGE_SIZE
 
-static char sInitialHeap[INITIAL_HEAP_SIZE];
+static char sInitialHeap[INITIAL_HEAP_SIZE] __attribute__ ((aligned (8)));
 static void* sHeapBase = sInitialHeap;
 static size_t sHeapSize = INITIAL_HEAP_SIZE;
 
@@ -124,7 +124,7 @@ struct DebugAllocPool {
 		// check address
 		if (((addr_t)address & 7) != 0 || address <= fBase + 1
 			|| address >= fBase + fEnd) {
-			kprintf("DebugAllocator::Free(%p): bad address\n", address);
+			kprintf("DebugAllocPool::Free(%p): bad address\n", address);
 			return;
 		}
 
@@ -132,7 +132,7 @@ struct DebugAllocPool {
 		allocation_header* header = (allocation_header*)address - 1;
 		uint32 index = header - fBase;
 		if (header->free) {
-			kprintf("DebugAllocator::Free(%p): double free\n", address);
+			kprintf("DebugAllocPool::Free(%p): double free\n", address);
 			return;
 		}
 

@@ -27,6 +27,7 @@
 #include "DesktopSettings.h"
 #include "EventDispatcher.h"
 #include "MessageLooper.h"
+#include "MultiLocker.h"
 #include "Screen.h"
 #include "ScreenManager.h"
 #include "ServerCursor.h"
@@ -34,15 +35,6 @@
 #include "WindowList.h"
 #include "Workspace.h"
 #include "WorkspacePrivate.h"
-
-
-#define USE_MULTI_LOCKER 1
-
-#if USE_MULTI_LOCKER
-#  include "MultiLocker.h"
-#else
-#  include <Locker.h>
-#endif
 
 
 class BMessage;
@@ -83,7 +75,6 @@ public:
 			void				KeyEvent(uint32 what, int32 key,
 									int32 modifiers);
 	// Locking
-#if USE_MULTI_LOCKER
 			bool				LockSingleWindow()
 									{ return fWindowLock.ReadLock(); }
 			void				UnlockSingleWindow()
@@ -95,17 +86,6 @@ public:
 									{ fWindowLock.WriteUnlock(); }
 
 			const MultiLocker&	WindowLocker() { return fWindowLock; }
-#else // USE_MULTI_LOCKER
-			bool				LockSingleWindow()
-									{ return fWindowLock.Lock(); }
-			void				UnlockSingleWindow()
-									{ fWindowLock.Unlock(); }
-
-			bool				LockAllWindows()
-									{ return fWindowLock.Lock(); }
-			void				UnlockAllWindows()
-									{ fWindowLock.Unlock(); }
-#endif // USE_MULTI_LOCKER
 
 	// Mouse and cursor methods
 
@@ -144,6 +124,11 @@ public:
 									{ return fVirtualScreen.DrawingEngine(); }
 			::HWInterface*		HWInterface() const
 									{ return fVirtualScreen.HWInterface(); }
+
+			void				RebuildAndRedrawAfterWindowChange(
+									Window* window, BRegion& dirty);
+									// the window lock must be held when calling
+									// this function
 
 	// ScreenOwner implementation
 	virtual	void				ScreenRemoved(Screen* screen) {}
@@ -252,8 +237,11 @@ public:
 			void				WriteWindowOrder(int32 workspace,
 									BPrivate::LinkSender& sender);
 
+			//! The window lock must be held when accessing a window list!
 			WindowList&			CurrentWindows();
 			WindowList&			AllWindows();
+
+			Window*				WindowForClientLooperPort(port_id port);
 
 private:
 			WindowList&			_Windows(int32 index);
@@ -295,8 +283,6 @@ private:
 			void				_TriggerWindowRedrawing(
 									BRegion& newDirtyRegion);
 			void				_SetBackground(BRegion& background);
-			void				_RebuildAndRedrawAfterWindowChange(
-									Window* window, BRegion& dirty);
 
 			status_t			_ActivateApp(team_id team);
 
@@ -345,11 +331,7 @@ private:
 
 			CursorManager		fCursorManager;
 
-#if USE_MULTI_LOCKER
 			MultiLocker			fWindowLock;
-#else
-			BLocker				fWindowLock;
-#endif
 
 			BRegion				fBackgroundRegion;
 			BRegion				fScreenRegion;

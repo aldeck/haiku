@@ -2,7 +2,7 @@
  * MainWin.h - Media Player for the Haiku Operating System
  *
  * Copyright (C) 2006 Marcus Overhagen <marcus@overhagen.de>
- * Copyright (C) 2007-2009 Stephan Aßmus <superstippi@gmx.de> (MIT ok)
+ * Copyright (C) 2007-2010 Stephan Aßmus <superstippi@gmx.de> (MIT ok)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -89,7 +89,9 @@ private:
 			void				_CreateMenu();
 			void				_SetupVideoAspectItems(BMenu* menu);
 			void				_SetupTrackMenus(BMenu* audioTrackMenu,
-									BMenu* videoTrackMenu);
+									BMenu* videoTrackMenu,
+									BMenu* subTitleTrackMenu);
+			void				_UpdateAudioChannelCount(int32 audioTrackIndex);
 
 			void				_GetMinimumWindowSize(int& width,
 										int& height) const;
@@ -97,6 +99,7 @@ private:
 			void				_GetUnscaledVideoSize(int& videoWidth,
 									int& videoHeight) const;
 			int					_CurrentVideoSizeInPercent() const;
+			void				_ZoomVideoView(int percentDiff);
 			void				_ResizeWindow(int percent,
 									bool useNoVideoWidth = false,
 									bool stayOnScreen = false);
@@ -115,8 +118,13 @@ private:
 			void				_ToggleAlwaysOnTop();
 			void				_ToggleNoInterface();
 			void				_ShowIfNeeded();
+			void				_ShowFullscreenControls(bool show,
+									bool animate = true);
 
-			void				_SetFileAttributes();
+			void				_UpdatePlaylistItemFile();
+			void				_UpdateAttributesMenu(const BNode& node);
+			void				_SetRating(int32 rating);
+
 			void				_UpdateControlsEnabledStatus();
 			void				_UpdatePlaylistMenu();
 			void				_AddPlaylistItem(PlaylistItem* item,
@@ -128,6 +136,7 @@ private:
 
 			void				_AdoptGlobalSettings();
 
+private:
 			bigtime_t			fCreationTime;
 
 			BMenuBar*			fMenuBar;
@@ -138,14 +147,16 @@ private:
 			PlaylistWindow*		fPlaylistWindow;
 
 			BMenu*				fFileMenu;
+			BMenu*				fPlaylistMenu;
 			BMenu*				fAudioMenu;
 			BMenu*				fVideoMenu;
 			BMenu*				fVideoAspectMenu;
 			BMenu*				fAudioTrackMenu;
 			BMenu*				fVideoTrackMenu;
-			BMenu*				fSettingsMenu;
+			BMenu*				fSubTitleTrackMenu;
 			BMenuItem*			fNoInterfaceMenuItem;
-			BMenu*				fPlaylistMenu;
+			BMenu*				fAttributesMenu;
+			BMenu*				fRatingMenu;
 
 			bool				fHasFile;
 			bool				fHasVideo;
@@ -155,9 +166,12 @@ private:
 			PlaylistObserver*	fPlaylistObserver;
 			Controller*			fController;
 			ControllerObserver*	fControllerObserver;
-	volatile bool				fIsFullscreen;
-	volatile bool				fAlwaysOnTop;
-	volatile bool				fNoInterface;
+
+			bool				fIsFullscreen;
+			bool				fAlwaysOnTop;
+			bool				fNoInterface;
+			bool				fShowsFullscreenControls;
+
 			int					fSourceWidth;
 			int					fSourceHeight;
 			int					fWidthAspect;
@@ -169,14 +183,22 @@ private:
 			int					fNoVideoWidth;
 			BRect				fSavedFrame;
 			BRect				fNoVideoFrame;
+
 			bool				fMouseDownTracking;
 			BPoint				fMouseDownMousePos;
 			BPoint				fMouseDownWindowPos;
+			BPoint				fLastMousePos;
+			bigtime_t			fLastMouseMovedTime;
+			float				fMouseMoveDist;
 
 			ListenerAdapter		fGlobalSettingsListener;
 			bool				fCloseWhenDonePlayingMovie;
 			bool				fCloseWhenDonePlayingSound;
+			bool				fLoopMovies;
+			bool				fLoopSounds;
+			bool				fScaleFullscreenControls;
 			bigtime_t			fInitialSeekPosition;
+			bool				fAllowWinding;
 
 	static	int					sNoVideoWidth;
 };

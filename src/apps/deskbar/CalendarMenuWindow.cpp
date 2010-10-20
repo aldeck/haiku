@@ -13,7 +13,6 @@
 #include <GroupLayoutBuilder.h>
 #include <GroupView.h>
 #include <Locale.h>
-#include <LocaleRoster.h>
 #include <Screen.h>
 #include <SpaceLayoutItem.h>
 #include <String.h>
@@ -89,10 +88,8 @@ CalendarMenuWindow::CalendarMenuWindow(BPoint where)
 	fCalendarView(NULL),
 	fSuppressFirstClose(true)
 {
-	BLocale locale;
-	be_locale_roster->GetDefaultLocale(&locale);
 	BPrivate::week_start startOfWeek
-		= (BPrivate::week_start)locale.StartOfWeek();
+		= (BPrivate::week_start)be_locale->StartOfWeek();
 
 	RemoveShortcut('H', B_COMMAND_KEY | B_CONTROL_KEY);
 	AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
@@ -129,7 +126,8 @@ CalendarMenuWindow::CalendarMenuWindow(BPoint where)
 	BView* view = BGroupLayoutBuilder(B_VERTICAL, 5.0)
 		.Add(gridLayout->View())
 		.Add(fCalendarView)
-		.SetInsets(5.0, 5.0, 5.0, 5.0);
+		.SetInsets(5.0, 5.0, 5.0, 5.0)
+		.TopView();
 	groupView->AddChild(view);
 	AddChild(groupView);
 

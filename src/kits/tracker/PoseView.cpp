@@ -32,6 +32,11 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "PoseView.h"
+
+#include <algorithm>
+#include <functional>
+
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
@@ -85,7 +90,6 @@ All rights reserved.
 #include "Navigator.h"
 #include "NavMenu.h"
 #include "Pose.h"
-#include "PoseView.h"
 #include "PoseViewController.h"
 #include "InfoWindow.h"
 #include "Utilities.h"
@@ -98,7 +102,7 @@ All rights reserved.
 
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "PoseView"
 
 using std::min;
 using std::max;
@@ -3245,6 +3249,14 @@ BPoseView::PlacePose(BPose *pose, BRect &viewBounds)
 		// check good location on the desktop
 		|| (checkValidLocation && !IsValidLocation(rect))) {
 		NextSlot(pose, rect, viewBounds);
+		// we've scanned the entire desktop without finding an available position,
+		// give up and simply place it towards the top left.
+		if (checkValidLocation && !rect.Intersects(viewBounds)) {
+			fHintLocation = PinToGrid(BPoint(0.0, 0.0), fGrid, fOffset);
+			pose->SetLocation(fHintLocation, this);
+			rect = pose->CalcRect(this);
+			break;
+		}
 	}
 
 	rect.InsetBy(3, 0);
@@ -4154,7 +4166,8 @@ BPoseView::HandleDropCommon(BMessage *message, Model *targetModel, BPose *target
 				char name[B_FILE_NAME_LENGTH];
 				BFile file;
 				if (CreateClippingFile(poseView, file, name, &targetDirectory, message,
-					"Untitled clipping", !targetPose, dropPt) != B_OK)
+					B_TRANSLATE("Untitled clipping"),
+					!targetPose, dropPt) != B_OK)
 					return false;
 
 				// here is a file for the drag initiator, it is up to it now to stuff it
@@ -4306,7 +4319,8 @@ BPoseView::HandleDropCommon(BMessage *message, Model *targetModel, BPose *target
 
 			BFile file;
 			if (CreateClippingFile(poseView, file, name, &targetDirectory, message,
-					"Untitled clipping", !targetPose, dropPt) != B_OK)
+					B_TRANSLATE("Untitled clipping"),
+					!targetPose, dropPt) != B_OK)
 				return false;
 
 			// write out the file
@@ -4359,7 +4373,7 @@ BPoseView::HandleDropCommon(BMessage *message, Model *targetModel, BPose *target
 
 			BFile file;
 			if (CreateClippingFile(poseView, file, name, &targetDirectory, message,
-				"Untitled bitmap", !targetPose, dropPt) != B_OK)
+				B_TRANSLATE("Untitled bitmap"), !targetPose, dropPt) != B_OK)
 				return false;
 
 			int32 size = embeddedBitmap.FlattenedSize();
@@ -4644,7 +4658,7 @@ BPoseView::MoveSelectionInto(Model *destFolder, BContainerWindow *srcWindow,
 	if (srcWindow->TargetModel()->IsQuery()
 		&& !forceCopy && !destIsTrash && !createLink) {
 		srcWindow->UpdateIfNeeded();
-		BAlert *alert = new BAlert("", 
+		BAlert *alert = new BAlert("",
 			B_TRANSLATE("Are you sure you want to move or copy the selected "
 			"item(s) to this folder?"), B_TRANSLATE("Cancel"),
 			B_TRANSLATE("Move"), NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
@@ -5848,9 +5862,9 @@ BPoseView::SelectMatchingEntries(const BMessage *message)
 		regExpression.SetTo(expression);
 
 		if (regExpression.InitCheck() != B_OK) {
-			BString message;
-			message << B_TRANSLATE("Error in regular expression:\n\n'");
-			message << regExpression.ErrorString() << "'";
+			BString message(
+				B_TRANSLATE("Error in regular expression:\n\n'%errstring'"));
+			message.ReplaceFirst("%errstring", regExpression.ErrorString());
 			(new BAlert("", message.String(), B_TRANSLATE("OK"), NULL, NULL,
 				B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go();
 			return 0;
@@ -8497,6 +8511,19 @@ PoseCompareAddWidgetBinder(const BPose *p1, const BPose *p2, void *castToPoseVie
 }
 
 
+struct PoseComparator : public std::binary_function<const BPose *, 
+	const BPose *, bool>
+{
+	PoseComparator(BPoseView *poseView): fPoseView(poseView) { }
+
+	bool operator() (const BPose *p1, const BPose *p2) {
+		return PoseCompareAddWidget(p1, p2, fPoseView) < 0;
+	}
+
+	BPoseView * fPoseView;	
+};
+
+
 #if xDEBUG
 static BPose *
 DumpOne(BPose *pose, void *)
@@ -8517,9 +8544,13 @@ BPoseView::SortPoses()
 	PRINT(("===================\n"));
 #endif
 
-	fPoseList->SortItems(PoseCompareAddWidgetBinder, this);
-	if (fFiltering)
-		fFilteredPoseList->SortItems(PoseCompareAddWidgetBinder, this);
+	BPose **poses = reinterpret_cast<BPose **>(fPoseList->AsBList()->Items());
+	std::stable_sort(poses, &poses[fPoseList->CountItems()], PoseComparator(this));
+	if (fFiltering) {
+		poses = reinterpret_cast<BPose **>(fFilteredPoseList->AsBList()->Items());
+		std::stable_sort(poses, &poses[fPoseList->CountItems()], 
+			PoseComparator(this));
+	}
 }
 
 

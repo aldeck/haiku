@@ -103,6 +103,7 @@ public:
 			void				Close() { Quit(); }
 
 			void				AddChild(BView* child, BView* before = NULL);
+			void				AddChild(BLayoutItem* child);
 			bool				RemoveChild(BView* child);
 			int32				CountChildren() const;
 			BView*				ChildAt(int32 index) const;
@@ -285,6 +286,7 @@ private:
 	friend class BWindowScreen;
 	friend class BDirectWindow;
 	friend class BFilePanel;
+	friend class BWindowStack;
 
 	friend void _set_menu_sem_(BWindow* w, sem_id sem);
 	friend status_t _safe_get_server_token_(const BLooper*, int32*);

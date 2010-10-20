@@ -17,6 +17,7 @@
 
 #include <Autolock.h>
 #include <AppFileInfo.h>
+#include <Bitmap.h>
 #include <Catalog.h>
 #include <Collator.h>
 #include <Country.h>
@@ -24,6 +25,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <File.h>
+#include <IconUtils.h>
 #include <Language.h>
 #include <Locale.h>
 #include <MutableLocaleRoster.h>
@@ -35,6 +37,7 @@
 #include <ICUWrapper.h>
 
 // ICU includes
+#include <unicode/locdspnm.h>
 #include <unicode/locid.h>
 #include <unicode/timezone.h>
 
@@ -75,70 +78,6 @@ status_t
 BLocaleRoster::Refresh()
 {
 	return gRosterData.Refresh();
-}
-
-
-status_t
-BLocaleRoster::GetDefaultCollator(BCollator* collator) const
-{
-	if (!collator)
-		return B_BAD_VALUE;
-
-	BAutolock lock(gRosterData.fLock);
-	if (!lock.IsLocked())
-		return B_ERROR;
-
-	*collator = *gRosterData.fDefaultLocale.Collator();
-
-	return B_OK;
-}
-
-
-status_t
-BLocaleRoster::GetDefaultLanguage(BLanguage* language) const
-{
-	if (!language)
-		return B_BAD_VALUE;
-
-	BAutolock lock(gRosterData.fLock);
-	if (!lock.IsLocked())
-		return B_ERROR;
-
-	*language = gRosterData.fDefaultLanguage;
-
-	return B_OK;
-}
-
-
-status_t
-BLocaleRoster::GetDefaultCountry(BCountry* country) const
-{
-	if (!country)
-		return B_BAD_VALUE;
-
-	BAutolock lock(gRosterData.fLock);
-	if (!lock.IsLocked())
-		return B_ERROR;
-
-	*country = *gRosterData.fDefaultLocale.Country();
-
-	return B_OK;
-}
-
-
-status_t
-BLocaleRoster::GetDefaultLocale(BLocale* locale) const
-{
-	if (!locale)
-		return B_BAD_VALUE;
-
-	BAutolock lock(gRosterData.fLock);
-	if (!lock.IsLocked())
-		return B_ERROR;
-
-	*locale = gRosterData.fDefaultLocale;
-
-	return B_OK;
 }
 
 
@@ -190,24 +129,21 @@ BLocaleRoster::GetPreferredLanguages(BMessage* languages) const
 }
 
 
+/**
+ * \brief Fills \c message with 'language'-fields containing the language-
+ * ID(s) of all available languages.
+ */
 status_t
-BLocaleRoster::GetInstalledLanguages(BMessage* languages) const
+BLocaleRoster::GetAvailableLanguages(BMessage* languages) const
 {
 	if (!languages)
 		return B_BAD_VALUE;
 
-	int32 i;
-	UnicodeString icuLanguageName;
-	BString languageName;
-
 	int32_t localeCount;
-	const Locale* icuLocaleList
-		= Locale::getAvailableLocales(localeCount);
+	const Locale* icuLocaleList = Locale::getAvailableLocales(localeCount);
 
-	// TODO: Loop over the strings and add them to a std::set to remove
-	//       duplicates?
-	for (i = 0; i < localeCount; i++)
-		languages->AddString("langs", icuLocaleList[i].getName());
+	for (int i = 0; i < localeCount; i++)
+		languages->AddString("language", icuLocaleList[i].getName());
 
 	return B_OK;
 }
@@ -223,9 +159,104 @@ BLocaleRoster::GetAvailableCountries(BMessage* countries) const
 	const char* const* countryList = uloc_getISOCountries();
 
 	for (i = 0; countryList[i] != NULL; i++)
-		countries->AddString("countries", countryList[i]);
+		countries->AddString("country", countryList[i]);
 
 	return B_OK;
+}
+
+
+status_t
+BLocaleRoster::GetAvailableTimeZones(BMessage* timeZones) const
+{
+	if (!timeZones)
+		return B_BAD_VALUE;
+
+	status_t status = B_OK;
+
+	StringEnumeration* zoneList = TimeZone::createEnumeration();
+
+	UErrorCode icuStatus = U_ZERO_ERROR;
+	int32 count = zoneList->count(icuStatus);
+	if (U_SUCCESS(icuStatus)) {
+		for (int i = 0; i < count; ++i) {
+			const char* zoneID = zoneList->next(NULL, icuStatus);
+			if (zoneID == NULL || !U_SUCCESS(icuStatus)) {
+				status = B_ERROR;
+				break;
+			}
+ 			timeZones->AddString("timeZone", zoneID);
+		}
+	} else
+		status = B_ERROR;
+
+	delete zoneList;
+
+	return status;
+}
+
+
+status_t
+BLocaleRoster::GetAvailableTimeZonesForCountry(BMessage* timeZones,
+	const char* countryCode) const
+{
+	if (!timeZones)
+		return B_BAD_VALUE;
+
+	status_t status = B_OK;
+
+	StringEnumeration* zoneList = TimeZone::createEnumeration(countryCode);
+		// countryCode == NULL will yield all timezones not bound to a country
+
+	UErrorCode icuStatus = U_ZERO_ERROR;
+	int32 count = zoneList->count(icuStatus);
+	if (U_SUCCESS(icuStatus)) {
+		for (int i = 0; i < count; ++i) {
+			const char* zoneID = zoneList->next(NULL, icuStatus);
+			if (zoneID == NULL || !U_SUCCESS(icuStatus)) {
+				status = B_ERROR;
+				break;
+			}
+ 			timeZones->AddString("timeZone", zoneID);
+		}
+	} else
+		status = B_ERROR;
+
+	delete zoneList;
+
+	return status;
+}
+
+
+status_t
+BLocaleRoster::GetFlagIconForCountry(BBitmap* flagIcon, const char* countryCode)
+{
+	if (countryCode == NULL)
+		return B_BAD_DATA;
+
+	BAutolock lock(gRosterData.fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	if (!gRosterData.fAreResourcesLoaded) {
+		status_t result = gRosterData.fResources.SetToImage(&gRosterData);
+		if (result != B_OK)
+			return result;
+
+		result = gRosterData.fResources.PreloadResourceType();
+		if (result != B_OK)
+			return result;
+
+		gRosterData.fAreResourcesLoaded = true;
+	}
+
+	size_t size;
+	const void* buffer = gRosterData.fResources.LoadResource(B_VECTOR_ICON_TYPE,
+		countryCode, &size);
+	if (buffer == NULL || size == 0)
+		return B_NAME_NOT_FOUND;
+
+	return BIconUtils::GetVectorIcon(static_cast<const uint8*>(buffer), size,
+		flagIcon);
 }
 
 

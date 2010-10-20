@@ -1,11 +1,12 @@
 /*
- * Copyright 2001-2009, Haiku, Inc.
+ * Copyright 2001-2010, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Ingo Weinhold (ingo_weinhold@gmx.de)
  *		Axel Dörfler, axeld@pinc-software.de
  */
+
 
 /*!	BRoster class lets you launch apps and keeps track of apps
 	that are running.
@@ -2323,8 +2324,20 @@ BRoster::_LaunchApp(const char* mimeType, const entry_ref* ref,
 		if (error != B_OK) {
 			if (appThread >= 0)
 				kill_thread(appThread);
-			if (!isScript)
+			if (!isScript) {
 				_RemovePreRegApp(appToken);
+
+				if (!wasDocument) {
+					// Remove app hint if it's this one
+					BMimeType appType(signature);
+					entry_ref hintRef;
+
+					if (appType.InitCheck() == B_OK
+						&& appType.GetAppHint(&hintRef) == B_OK
+						&& appRef == hintRef)
+						appType.SetAppHint(NULL);
+				}
+			}
 		}
 	}
 
@@ -2451,9 +2464,12 @@ BRoster::_ResolveApp(const char* inType, entry_ref* ref,
 		char signature[B_MIME_TYPE_LENGTH];
 		if (appFileInfo.SetTo(&appFile) == B_OK
 			&& appFileInfo.GetSignature(signature) == B_OK) {
-			if (!strcasecmp(appMeta.Type(), signature))
-				appMeta.SetAppHint(&appRef);
-			else {
+			if (!strcasecmp(appMeta.Type(), signature)) {
+				// Only set the app hint if there is none yet
+				entry_ref dummyRef;
+				if (appMeta.GetAppHint(&dummyRef) != B_OK)
+					appMeta.SetAppHint(&appRef);
+			} else {
 				appMeta.SetAppHint(NULL);
 				appMeta.SetTo(signature);
 			}
@@ -2667,11 +2683,10 @@ BRoster::_TranslateType(const char* mimeType, BMimeType* appMeta,
 	secondarySignature[0] = '\0';
 
 	if (error == B_OK) {
+		BMimeType superType;
+		if (type.GetSupertype(&superType) == B_OK)
+			superType.GetPreferredApp(secondarySignature);
 		if (type.IsInstalled()) {
-			BMimeType superType;
-			if (type.GetSupertype(&superType) == B_OK)
-				superType.GetPreferredApp(secondarySignature);
-
 			if (type.GetPreferredApp(primarySignature) != B_OK) {
 				// The type is installed, but has no preferred app.
 				primarySignature[0] = '\0';

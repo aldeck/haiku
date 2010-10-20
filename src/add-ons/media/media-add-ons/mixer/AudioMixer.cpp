@@ -680,7 +680,7 @@ status_t
 AudioMixer::SetBufferGroup(const media_source &for_source,
 	BBufferGroup *newGroup)
 {
-	PRINT("AudioMixer::SetBufferGroup\n");
+	TRACE("AudioMixer::SetBufferGroup\n");
 	// the downstream consumer (soundcard) node asks us to use another
 	// BBufferGroup (might be NULL). We only have one output (id 0)
 	if (for_source.port != ControlPort() || for_source.id != 0)
@@ -1475,7 +1475,7 @@ AudioMixer::SetParameterValue(int32 id, bigtime_t when, const void *value,
 				if (size != sizeof(int32))
 					goto err;
 				fCore->Settings()->SetResamplingAlgorithm(static_cast<const int32 *>(value)[0]);
-				// XXX tell the core to change the algorithm
+				fCore->UpdateResamplingAlgorithm();
 				break;
 			case 80:	// Refuse output format changes
 				if (size != sizeof(int32))
@@ -1818,12 +1818,12 @@ AudioMixer::UpdateParameterWeb()
 
 	dp = group->MakeDiscreteParameter(PARAM_ETC(70), B_MEDIA_RAW_AUDIO, "Resampling algorithm", B_INPUT_MUX);
 	dp->AddItem(0, "Drop/repeat samples");
+	dp->AddItem(2, "Linear interpolation");
 
 	// Note: The following code is outcommented on purpose
 	// and is about to be modified at a later point
 	/*
 	dp->AddItem(1, "Drop/repeat samples (template based)");
-	dp->AddItem(2, "Linear interpolation");
 	dp->AddItem(3, "17th order filtering");
 	*/
 	group->MakeDiscreteParameter(PARAM_ETC(80), B_MEDIA_RAW_AUDIO, "Refuse output format changes", B_ENABLE);

@@ -2,7 +2,7 @@
  * MainWin.cpp - Media Player for the Haiku Operating System
  *
  * Copyright (C) 2006 Marcus Overhagen <marcus@overhagen.de>
- * Copyright (C) 2007-2009 Stephan Aßmus <superstippi@gmx.de> (GPL->MIT ok)
+ * Copyright (C) 2007-2010 Stephan Aßmus <superstippi@gmx.de> (GPL->MIT ok)
  * Copyright (C) 2007-2009 Fredrik Modéen <[FirstName]@[LastName].se> (MIT ok)
  *
  * This program is free software; you can redistribute it and/or
@@ -32,6 +32,7 @@
 #include <Autolock.h>
 #include <Debug.h>
 #include <fs_attr.h>
+#include <Language.h>
 #include <Menu.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
@@ -43,10 +44,12 @@
 #include <Roster.h>
 #include <Screen.h>
 #include <String.h>
+#include <TypeConstants.h>
 #include <View.h>
 
 #include "AudioProducer.h"
 #include "ControllerObserver.h"
+#include "DurationToString.h"
 #include "FilePlaylistItem.h"
 #include "MainApp.h"
 #include "PeakView.h"
@@ -68,7 +71,6 @@ int MainWin::sNoVideoWidth = MIN_WIDTH;
 enum {
 	M_DUMMY = 0x100,
 	M_FILE_OPEN = 0x1000,
-	M_FILE_NEWPLAYER,
 	M_FILE_INFO,
 	M_FILE_PLAYLIST,
 	M_FILE_CLOSE,
@@ -81,6 +83,7 @@ enum {
 	M_VOLUME_DOWN,
 	M_SKIP_NEXT,
 	M_SKIP_PREV,
+	M_WIND,
 
 	// The common display aspect ratios
 	M_ASPECT_SAME_AS_SOURCE,
@@ -92,16 +95,23 @@ enum {
 	M_ASPECT_37_20,
 	M_ASPECT_47_20,
 
-	M_SELECT_AUDIO_TRACK		= 0x00000800,
-	M_SELECT_AUDIO_TRACK_END	= 0x00000fff,
-	M_SELECT_VIDEO_TRACK		= 0x00010000,
-	M_SELECT_VIDEO_TRACK_END	= 0x000fffff,
+	M_SELECT_AUDIO_TRACK			= 0x00000800,
+	M_SELECT_AUDIO_TRACK_END		= 0x00000fff,
+	M_SELECT_VIDEO_TRACK			= 0x00010000,
+	M_SELECT_VIDEO_TRACK_END		= 0x00010fff,
+	M_SELECT_SUB_TITLE_TRACK		= 0x00020000,
+	M_SELECT_SUB_TITLE_TRACK_END	= 0x00020fff,
+
+	M_SET_RATING,
 
 	M_SET_PLAYLIST_POSITION,
 
 	M_FILE_DELETE,
 
-	M_SHOW_IF_NEEDED
+	M_SHOW_IF_NEEDED,
+
+	M_SLIDE_CONTROLS,
+	M_FINISH_SLIDING_CONTROLS
 };
 
 
@@ -139,6 +149,11 @@ static property_info sPropertyInfo[] = {
 };
 
 
+static const char* kRatingAttrName = "Media:Rating";
+
+static const char* kDisabledSeekMessage = "Drop files to play";
+
+
 //#define printf(a...)
 
 
@@ -162,15 +177,22 @@ MainWin::MainWin(bool isFirstWindow, BMessage* message)
 	fIsFullscreen(false),
 	fAlwaysOnTop(false),
 	fNoInterface(false),
+	fShowsFullscreenControls(false),
 	fSourceWidth(-1),
 	fSourceHeight(-1),
 	fWidthAspect(0),
 	fHeightAspect(0),
 	fSavedFrame(),
 	fNoVideoFrame(),
+
 	fMouseDownTracking(false),
+	fLastMousePos(0, 0),
+	fLastMouseMovedTime(system_time()),
+	fMouseMoveDist(0),
+
 	fGlobalSettingsListener(this),
-	fInitialSeekPosition(0)
+	fInitialSeekPosition(0),
+	fAllowWinding(true)
 {
 	// Handle window position and size depending on whether this is the
 	// first window or not. Use the window size from the window that was
@@ -231,6 +253,7 @@ MainWin::MainWin(bool isFirstWindow, BMessage* message)
 	fControlsHeight = (int)fControls->Frame().Height() + 1;
 	fControlsWidth = (int)fControls->Frame().Width() + 1;
 	fControls->SetResizingMode(B_FOLLOW_BOTTOM | B_FOLLOW_LEFT_RIGHT);
+	fControls->SetDisabledString(kDisabledSeekMessage);
 
 	fPlaylist->AddListener(fPlaylistObserver);
 	fController->SetVideoView(fVideoView);
@@ -376,17 +399,20 @@ MainWin::DispatchMessage(BMessage* msg, BHandler* handler)
 {
 	if ((msg->what == B_MOUSE_DOWN)
 		&& (handler == fBackground || handler == fVideoView
-			|| handler == fControls))
+			|| handler == fControls)) {
 		_MouseDown(msg, dynamic_cast<BView*>(handler));
+	}
 
 	if ((msg->what == B_MOUSE_MOVED)
 		&& (handler == fBackground || handler == fVideoView
-			|| handler == fControls))
+			|| handler == fControls)) {
 		_MouseMoved(msg, dynamic_cast<BView*>(handler));
+	}
 
 	if ((msg->what == B_MOUSE_UP)
-		&& (handler == fBackground || handler == fVideoView))
+		&& (handler == fBackground || handler == fVideoView)) {
 		_MouseUp(msg);
+	}
 
 	if ((msg->what == B_KEY_DOWN)
 		&& (handler == fBackground || handler == fVideoView)) {
@@ -512,19 +538,11 @@ MainWin::MessageReceived(BMessage* msg)
 		}
 
 		case B_REFS_RECEIVED:
-			printf("MainWin::MessageReceived: B_REFS_RECEIVED\n");
 			_RefsReceived(msg);
 			break;
 		case B_SIMPLE_DATA:
-			printf("MainWin::MessageReceived: B_SIMPLE_DATA\n");
-			if (msg->HasRef("refs")) {
-				// add to recent documents as it's not done with drag-n-drop
-				entry_ref ref;
-				for (int32 i = 0; msg->FindRef("refs", i, &ref) == B_OK; i++) {
-					be_roster->AddToRecentDocuments(&ref, kAppSig);
-				}
+			if (msg->HasRef("refs"))
 				_RefsReceived(msg);
-			}
 			break;
 		case M_OPEN_PREVIOUS_PLAYLIST:
 			OpenPlaylist(msg);
@@ -589,6 +607,14 @@ MainWin::MessageReceived(BMessage* msg)
 			}
 			break;
 		}
+		case MSG_PLAYLIST_IMPORT_FAILED:
+		{
+			BAlert* alert = new BAlert("Nothing to Play", "None of the files "
+				"you wanted to play appear to be media files.", "OK");
+			alert->Go();
+			fControls->SetDisabledString(kDisabledSeekMessage);
+			break;
+		}
 
 		// ControllerObserver messages
 		case MSG_CONTROLLER_FILE_FINISHED:
@@ -598,9 +624,19 @@ MainWin::MessageReceived(BMessage* msg)
 			bool hadNext = fPlaylist->SetCurrentItemIndex(
 				fPlaylist->CurrentItemIndex() + 1);
 			if (!hadNext) {
+				// Reached end of playlist
+				// Handle "quit when done" settings
 				if ((fHasVideo && fCloseWhenDonePlayingMovie)
 					|| (!fHasVideo && fCloseWhenDonePlayingSound))
 					PostMessage(B_QUIT_REQUESTED);
+				// Handle "loop by default" settings
+				if ((fHasVideo && fLoopMovies)
+					|| (!fHasVideo && fLoopSounds)) {
+					if (fPlaylist->CountItems() > 1)
+						fPlaylist->SetCurrentItemIndex(0);
+					else
+						fController->Play();
+				}
 			}
 			break;
 		}
@@ -642,6 +678,23 @@ MainWin::MessageReceived(BMessage* msg)
 					item->SetMarked(i == index);
 					i++;
 				}
+				_UpdateAudioChannelCount(index);
+			}
+			break;
+		}
+		case MSG_CONTROLLER_SUB_TITLE_TRACK_CHANGED:
+		{
+			int32 index;
+			if (msg->FindInt32("index", &index) == B_OK) {
+				int32 i = 0;
+				while (BMenuItem* item = fSubTitleTrackMenu->ItemAt(i)) {
+					BMessage* message = item->Message();
+					if (message != NULL) {
+						item->SetMarked((int32)message->what
+							- M_SELECT_SUB_TITLE_TRACK == index);
+					}
+					i++;
+				}
 			}
 			break;
 		}
@@ -658,9 +711,13 @@ MainWin::MessageReceived(BMessage* msg)
 			if (msg->FindFloat("position", &position) == B_OK) {
 				fControls->SetPosition(position, fController->TimePosition(),
 					fController->TimeDuration());
+				fAllowWinding = true;
 			}
 			break;
 		}
+		case MSG_CONTROLLER_SEEK_HANDLED:
+			break;
+
 		case MSG_CONTROLLER_VOLUME_CHANGED:
 		{
 			float volume;
@@ -677,9 +734,6 @@ MainWin::MessageReceived(BMessage* msg)
 		}
 
 		// menu item messages
-		case M_FILE_NEWPLAYER:
-			gMainApp->NewWindow();
-			break;
 		case M_FILE_OPEN:
 		{
 			BMessenger target(this);
@@ -697,9 +751,6 @@ MainWin::MessageReceived(BMessage* msg)
 			break;
 		case M_FILE_PLAYLIST:
 			ShowPlaylistWindow();
-			break;
-		case B_ABOUT_REQUESTED:
-			be_app->PostMessage(msg);
 			break;
 		case M_FILE_CLOSE:
 			PostMessage(B_QUIT_REQUESTED);
@@ -749,10 +800,14 @@ MainWin::MessageReceived(BMessage* msg)
 			float dx = msg->FindFloat("be:wheel_delta_x");
 			float dy = msg->FindFloat("be:wheel_delta_y");
 			bool inv = modifiers() & B_COMMAND_KEY;
-			if (dx > 0.1)	PostMessage(inv ? M_VOLUME_DOWN : M_SKIP_PREV);
-			if (dx < -0.1)	PostMessage(inv ? M_VOLUME_UP : M_SKIP_NEXT);
-			if (dy > 0.1)	PostMessage(inv ? M_SKIP_PREV : M_VOLUME_DOWN);
-			if (dy < -0.1)	PostMessage(inv ? M_SKIP_NEXT : M_VOLUME_UP);
+			if (dx > 0.1)
+				PostMessage(inv ? M_VOLUME_DOWN : M_SKIP_PREV);
+			if (dx < -0.1)
+				PostMessage(inv ? M_VOLUME_UP : M_SKIP_NEXT);
+			if (dy > 0.1)
+				PostMessage(inv ? M_SKIP_PREV : M_VOLUME_DOWN);
+			if (dy < -0.1)
+				PostMessage(inv ? M_SKIP_NEXT : M_VOLUME_UP);
 			break;
 		}
 
@@ -763,6 +818,40 @@ MainWin::MessageReceived(BMessage* msg)
 		case M_SKIP_PREV:
 			fControls->SkipBackward();
 			break;
+
+		case M_WIND:
+		{
+			if (!fAllowWinding)
+				break;
+
+			bigtime_t howMuch;
+			int64 frames;
+			if (msg->FindInt64("how much", &howMuch) != B_OK
+				|| msg->FindInt64("frames", &frames) != B_OK) {
+				break;
+			}
+
+			if (fController->Lock()) {
+				if (fHasVideo && !fController->IsPlaying()) {
+					int64 newFrame = fController->CurrentFrame() + frames;
+					fController->SetFramePosition(newFrame);
+				} else {
+					bigtime_t seekTime = fController->TimePosition() + howMuch;
+					if (seekTime < 0) {
+						fInitialSeekPosition = seekTime;
+						PostMessage(M_SKIP_PREV);
+					} else if (seekTime > fController->TimeDuration()) {
+						fInitialSeekPosition = 0;
+						PostMessage(M_SKIP_NEXT);
+					} else
+						fController->SetTimePosition(seekTime);
+				}
+				fController->Unlock();
+
+				fAllowWinding = false;
+			}
+			break;
+		}
 
 		case M_VOLUME_UP:
 			fController->VolumeUp();
@@ -838,6 +927,61 @@ MainWin::MessageReceived(BMessage* msg)
 			_ShowIfNeeded();
 			break;
 
+		case M_SLIDE_CONTROLS:
+		{
+			float offset;
+			if (msg->FindFloat("offset", &offset) == B_OK) {
+				fControls->MoveBy(0, offset);
+				fVideoView->SetSubTitleMaxBottom(fControls->Frame().top - 1);
+				UpdateIfNeeded();
+				snooze(15000);
+			}
+			break;
+		}
+		case M_FINISH_SLIDING_CONTROLS:
+		{
+			float offset;
+			bool show;
+			if (msg->FindFloat("offset", &offset) == B_OK
+				&& msg->FindBool("show", &show) == B_OK) {
+				if (show) {
+					fControls->MoveTo(fControls->Frame().left, offset);
+					fVideoView->SetSubTitleMaxBottom(offset - 1);
+				} else {
+					fVideoView->SetSubTitleMaxBottom(
+						fVideoView->Bounds().bottom);
+					fControls->RemoveSelf();
+					fControls->MoveTo(fVideoView->Frame().left,
+						fVideoView->Frame().bottom + 1);
+					fBackground->AddChild(fControls);
+					fControls->SetSymbolScale(1.0f);
+					while (!fControls->IsHidden())
+						fControls->Hide();
+				}
+			}
+			break;
+		}
+		case M_HIDE_FULL_SCREEN_CONTROLS:
+			if (fIsFullscreen) {
+				BPoint videoViewWhere;
+				if (msg->FindPoint("where", &videoViewWhere) == B_OK) {
+					if (!fControls->Frame().Contains(videoViewWhere)) {
+						_ShowFullscreenControls(false);
+						// hide the mouse cursor until the user moves it
+						be_app->ObscureCursor();
+					}
+				}
+			}
+			break;
+
+		case M_SET_RATING:
+		{
+			int32 rating;
+			if (msg->FindInt32("rating", &rating) == B_OK)
+				_SetRating(rating);
+			break;
+		}
+
 		default:
 			if (msg->what >= M_SELECT_AUDIO_TRACK
 				&& msg->what <= M_SELECT_AUDIO_TRACK_END) {
@@ -847,6 +991,12 @@ MainWin::MessageReceived(BMessage* msg)
 			if (msg->what >= M_SELECT_VIDEO_TRACK
 				&& msg->what <= M_SELECT_VIDEO_TRACK_END) {
 				fController->SelectVideoTrack(msg->what - M_SELECT_VIDEO_TRACK);
+				break;
+			}
+			if ((int32)msg->what >= M_SELECT_SUB_TITLE_TRACK - 1
+				&& msg->what <= M_SELECT_SUB_TITLE_TRACK_END) {
+				fController->SelectSubTitleTrack((int32)msg->what
+					- M_SELECT_SUB_TITLE_TRACK);
 				break;
 			}
 			// let BWindow handle the rest
@@ -1133,10 +1283,9 @@ MainWin::_RefsReceived(BMessage* message)
 	// so that undo/redo is used for modifying the playlist
 	fPlaylistWindow->PostMessage(message);
 
-	if (message->FindRect("window frame", &fNoVideoFrame) != B_OK) {
+	if (message->FindRect("window frame", &fNoVideoFrame) != B_OK)
 		fNoVideoFrame = BRect();
-		_ShowIfNeeded();
-	}
+	_ShowIfNeeded();
 }
 
 
@@ -1173,6 +1322,7 @@ MainWin::_PlaylistItemOpened(const PlaylistItemRef& item, status_t result)
 				message << "Error: " << strerror(result);
 			}
 			(new BAlert("error", message.String(), "OK"))->Go();
+			fControls->SetDisabledString(kDisabledSeekMessage);
 		} else {
 			// Just go to the next file and don't bother user (yet)
 			fPlaylist->SetCurrentItemIndex(fPlaylist->CurrentItemIndex() + 1);
@@ -1188,13 +1338,17 @@ MainWin::_PlaylistItemOpened(const PlaylistItemRef& item, status_t result)
 		fHasAudio = fController->AudioTrackCount() != 0;
 		SetTitle(item->Name().String());
 
+		if (fInitialSeekPosition < 0) {
+			fInitialSeekPosition
+				= fController->TimeDuration() + fInitialSeekPosition;
+		}
 		fController->SetTimePosition(fInitialSeekPosition);
 		fInitialSeekPosition = 0;
 	}
 	_SetupWindow();
 
 	if (result == B_OK)
-		_SetFileAttributes();
+		_UpdatePlaylistItemFile();
 }
 
 
@@ -1203,7 +1357,8 @@ MainWin::_SetupWindow()
 {
 //	printf("MainWin::_SetupWindow\n");
 	// Populate the track menus
-	_SetupTrackMenus(fAudioTrackMenu, fVideoTrackMenu);
+	_SetupTrackMenus(fAudioTrackMenu, fVideoTrackMenu, fSubTitleTrackMenu);
+	_UpdateAudioChannelCount(fController->CurrentAudioTrack());
 
 	fVideoMenu->SetEnabled(fHasVideo);
 	fAudioMenu->SetEnabled(fHasAudio);
@@ -1222,11 +1377,6 @@ MainWin::_SetupWindow()
 	}
 	_UpdateControlsEnabledStatus();
 
-	if (!fHasVideo && fNoVideoFrame.IsValid()) {
-		MoveTo(fNoVideoFrame.LeftTop());
-		ResizeTo(fNoVideoFrame.Width(), fNoVideoFrame.Height());
-	}
-	fNoVideoFrame = BRect();
 	_ShowIfNeeded();
 
 	// Adopt the size and window layout if necessary
@@ -1258,28 +1408,30 @@ MainWin::_CreateMenu()
 	fAudioMenu = new BMenu("Audio");
 	fVideoMenu = new BMenu("Video");
 	fVideoAspectMenu = new BMenu("Aspect ratio");
-	fSettingsMenu = new BMenu("Settings");
 	fAudioTrackMenu = new BMenu("Track");
 	fVideoTrackMenu = new BMenu("Track");
+	fSubTitleTrackMenu = new BMenu("Subtitles");
+	fAttributesMenu = new BMenu("Attributes");
 
 	fMenuBar->AddItem(fFileMenu);
 	fMenuBar->AddItem(fAudioMenu);
 	fMenuBar->AddItem(fVideoMenu);
-	fMenuBar->AddItem(fSettingsMenu);
+	fMenuBar->AddItem(fAttributesMenu);
 
-	fFileMenu->AddItem(new BMenuItem("New player"B_UTF8_ELLIPSIS,
-		new BMessage(M_FILE_NEWPLAYER), 'N'));
-	fFileMenu->AddSeparatorItem();
+	BMenuItem* item = new BMenuItem("New player"B_UTF8_ELLIPSIS,
+		new BMessage(M_NEW_PLAYER), 'N');
+	fFileMenu->AddItem(item);
+	item->SetTarget(be_app);
 
-//	fFileMenu->AddItem(new BMenuItem("Open File"B_UTF8_ELLIPSIS,
-//		new BMessage(M_FILE_OPEN), 'O'));
-	// Add recent files
+	// Add recent files to "Open File" entry as sub-menu.
 	BRecentFilesList recentFiles(10, false, NULL, kAppSig);
-	BMenuItem* item = new BMenuItem(recentFiles.NewFileListMenu(
-		"Open file"B_UTF8_ELLIPSIS, new BMessage(B_REFS_RECEIVED),
-		NULL, this, 10, false, NULL, 0, kAppSig), new BMessage(M_FILE_OPEN));
+	item = new BMenuItem(recentFiles.NewFileListMenu(
+		"Open file"B_UTF8_ELLIPSIS, NULL, NULL, this, 10, true, NULL, kAppSig),
+		new BMessage(M_FILE_OPEN));
 	item->SetShortcut('O', 0);
 	fFileMenu->AddItem(item);
+
+	fFileMenu->AddSeparatorItem();
 
 	fFileMenu->AddItem(new BMenuItem("File info"B_UTF8_ELLIPSIS,
 		new BMessage(M_FILE_INFO), 'I'));
@@ -1288,9 +1440,27 @@ MainWin::_CreateMenu()
 	fPlaylistMenu->Superitem()->SetMessage(new BMessage(M_FILE_PLAYLIST));
 
 	fFileMenu->AddSeparatorItem();
-	fFileMenu->AddItem(new BMenuItem("About " NAME B_UTF8_ELLIPSIS,
-		new BMessage(B_ABOUT_REQUESTED)));
+
+	fNoInterfaceMenuItem = new BMenuItem("Hide interface",
+		new BMessage(M_TOGGLE_NO_INTERFACE), 'H');
+	fFileMenu->AddItem(fNoInterfaceMenuItem);
+	fFileMenu->AddItem(new BMenuItem("Always on top",
+		new BMessage(M_TOGGLE_ALWAYS_ON_TOP), 'A'));
+
+	item = new BMenuItem("Settings"B_UTF8_ELLIPSIS,
+		new BMessage(M_SETTINGS), 'S');
+	fFileMenu->AddItem(item);
+	item->SetTarget(be_app);
+
 	fFileMenu->AddSeparatorItem();
+
+	item = new BMenuItem("About " NAME B_UTF8_ELLIPSIS,
+		new BMessage(B_ABOUT_REQUESTED));
+	fFileMenu->AddItem(item);
+	item->SetTarget(be_app);
+
+	fFileMenu->AddSeparatorItem();
+
 	fFileMenu->AddItem(new BMenuItem("Close", new BMessage(M_FILE_CLOSE), 'W'));
 	fFileMenu->AddItem(new BMenuItem("Quit", new BMessage(M_FILE_QUIT), 'Q'));
 
@@ -1299,6 +1469,7 @@ MainWin::_CreateMenu()
 	fAudioMenu->AddItem(fAudioTrackMenu);
 
 	fVideoMenu->AddItem(fVideoTrackMenu);
+	fVideoMenu->AddItem(fSubTitleTrackMenu);
 	fVideoMenu->AddSeparatorItem();
 	BMessage* resizeMessage = new BMessage(M_VIEW_SIZE);
 	resizeMessage->AddInt32("size", 50);
@@ -1330,16 +1501,15 @@ MainWin::_CreateMenu()
 	_SetupVideoAspectItems(fVideoAspectMenu);
 	fVideoMenu->AddItem(fVideoAspectMenu);
 
-	fNoInterfaceMenuItem = new BMenuItem("No interface",
-		new BMessage(M_TOGGLE_NO_INTERFACE), 'B');
-	fSettingsMenu->AddItem(fNoInterfaceMenuItem);
-	fSettingsMenu->AddItem(new BMenuItem("Always on top",
-		new BMessage(M_TOGGLE_ALWAYS_ON_TOP), 'T'));
-	fSettingsMenu->AddSeparatorItem();
-	item = new BMenuItem("Settings"B_UTF8_ELLIPSIS,
-		new BMessage(M_SETTINGS), 'S');
-	fSettingsMenu->AddItem(item);
-	item->SetTarget(be_app);
+	fRatingMenu = new BMenu("Rating");
+	fAttributesMenu->AddItem(fRatingMenu);
+	for (int32 i = 1; i <= 10; i++) {
+		char label[16];
+		snprintf(label, sizeof(label), "%ld", i);
+		BMessage* setRatingMsg = new BMessage(M_SET_RATING);
+		setRatingMsg->AddInt32("rating", i);
+		fRatingMenu->AddItem(new BMenuItem(label, setRatingMsg));
+	}
 }
 
 
@@ -1398,43 +1568,88 @@ MainWin::_SetupVideoAspectItems(BMenu* menu)
 
 
 void
-MainWin::_SetupTrackMenus(BMenu* audioTrackMenu, BMenu* videoTrackMenu)
+MainWin::_SetupTrackMenus(BMenu* audioTrackMenu, BMenu* videoTrackMenu,
+	BMenu* subTitleTrackMenu)
 {
 	audioTrackMenu->RemoveItems(0, audioTrackMenu->CountItems(), true);
 	videoTrackMenu->RemoveItems(0, videoTrackMenu->CountItems(), true);
+	subTitleTrackMenu->RemoveItems(0, subTitleTrackMenu->CountItems(), true);
 
 	char s[100];
 
 	int count = fController->AudioTrackCount();
 	int current = fController->CurrentAudioTrack();
 	for (int i = 0; i < count; i++) {
-		sprintf(s, "Track %d", i + 1);
+		BMessage metaData;
+		const char* languageString = NULL;
+		if (fController->GetAudioMetaData(i, &metaData) == B_OK)
+			metaData.FindString("language", &languageString);
+		if (languageString != NULL) {
+			BLanguage language(languageString);
+			BString languageName;
+			if (language.GetName(languageName) == B_OK)
+				languageString = languageName.String();
+			snprintf(s, sizeof(s), "%s", languageString);
+		} else
+			snprintf(s, sizeof(s), "Track %d", i + 1);
 		BMenuItem* item = new BMenuItem(s,
 			new BMessage(M_SELECT_AUDIO_TRACK + i));
 		item->SetMarked(i == current);
 		audioTrackMenu->AddItem(item);
 	}
-	if (!count) {
+	if (count == 0) {
 		audioTrackMenu->AddItem(new BMenuItem("none", new BMessage(M_DUMMY)));
 		audioTrackMenu->ItemAt(0)->SetMarked(true);
 	}
-	audioTrackMenu->SetEnabled(count > 1);
 
 
 	count = fController->VideoTrackCount();
 	current = fController->CurrentVideoTrack();
 	for (int i = 0; i < count; i++) {
-		sprintf(s, "Track %d", i + 1);
+		snprintf(s, sizeof(s), "Track %d", i + 1);
 		BMenuItem* item = new BMenuItem(s,
 			new BMessage(M_SELECT_VIDEO_TRACK + i));
 		item->SetMarked(i == current);
 		videoTrackMenu->AddItem(item);
 	}
-	if (!count) {
+	if (count == 0) {
 		videoTrackMenu->AddItem(new BMenuItem("none", new BMessage(M_DUMMY)));
 		videoTrackMenu->ItemAt(0)->SetMarked(true);
 	}
-	videoTrackMenu->SetEnabled(count > 1);
+
+	count = fController->SubTitleTrackCount();
+	if (count > 0) {
+		current = fController->CurrentSubTitleTrack();
+		BMenuItem* item = new BMenuItem("Off",
+			new BMessage(M_SELECT_SUB_TITLE_TRACK - 1));
+		subTitleTrackMenu->AddItem(item);
+		item->SetMarked(current == -1);
+
+		subTitleTrackMenu->AddSeparatorItem();
+
+		for (int i = 0; i < count; i++) {
+			const char* name = fController->SubTitleTrackName(i);
+			if (name != NULL)
+				snprintf(s, sizeof(s), "%s", name);
+			else
+				snprintf(s, sizeof(s), "Track %d", i + 1);
+			item = new BMenuItem(s,
+				new BMessage(M_SELECT_SUB_TITLE_TRACK + i));
+			item->SetMarked(i == current);
+			subTitleTrackMenu->AddItem(item);
+		}
+	} else {
+		subTitleTrackMenu->AddItem(new BMenuItem("none",
+			new BMessage(M_DUMMY)));
+		subTitleTrackMenu->ItemAt(0)->SetMarked(true);
+	}
+}
+
+
+void
+MainWin::_UpdateAudioChannelCount(int32 audioTrackIndex)
+{
+	fControls->SetAudioChannelCount(fController->AudioTrackChannelCount());
 }
 
 
@@ -1496,12 +1711,33 @@ MainWin::_CurrentVideoSizeInPercent() const
 	int viewWidth = fVideoView->Bounds().IntegerWidth() + 1;
 	int viewHeight = fVideoView->Bounds().IntegerHeight() + 1;
 
-	int widthPercent = videoWidth * 100 / viewWidth;
-	int heightPercent = videoHeight * 100 / viewHeight;
+	int widthPercent = viewWidth * 100 / videoWidth;
+	int heightPercent = viewHeight * 100 / videoHeight;
 
 	if (widthPercent > heightPercent)
 		return widthPercent;
 	return heightPercent;
+}
+
+
+void
+MainWin::_ZoomVideoView(int percentDiff)
+{
+	if (!fHasVideo)
+		return;
+
+	int percent = _CurrentVideoSizeInPercent();
+	int newSize = percent * (100 + percentDiff) / 100;
+
+	if (newSize < 25)
+		newSize = 25;
+	if (newSize > 400)
+		newSize = 400;
+	if (newSize != percent) {
+		BMessage message(M_VIEW_SIZE);
+		message.AddInt32("size", newSize);
+		PostMessage(&message);
+	}
 }
 
 
@@ -1587,9 +1823,6 @@ MainWin::_ResizeWindow(int percent, bool useNoVideoWidth, bool stayOnScreen)
 void
 MainWin::_ResizeVideoView(int x, int y, int width, int height)
 {
-	printf("_ResizeVideoView: %d,%d, width %d, height %d\n", x, y,
-		width, height);
-
 	// Keep aspect ratio, place video view inside
 	// the background area (may create black bars).
 	int videoWidth;
@@ -1605,11 +1838,17 @@ MainWin::_ResizeVideoView(int x, int y, int width, int height)
 	if (renderHeight > height)
 		renderHeight = height;
 
-	int xOffset = x + (width - renderWidth) / 2;
-	int yOffset = y + (height - renderHeight) / 2;
+	int xOffset = (width - renderWidth) / 2;
+	int yOffset = (height - renderHeight) / 2;
 
-	fVideoView->MoveTo(xOffset, yOffset);
-	fVideoView->ResizeTo(renderWidth - 1, renderHeight - 1);
+	fVideoView->MoveTo(x, y);
+	fVideoView->ResizeTo(width - 1, height - 1);
+
+	BRect videoFrame(xOffset, yOffset,
+		xOffset + renderWidth - 1, yOffset + renderHeight - 1);
+
+	fVideoView->SetVideoFrame(videoFrame);
+	fVideoView->SetSubTitleMaxBottom(height - 1);
 }
 
 
@@ -1684,18 +1923,18 @@ MainWin::_MouseMoved(BMessage* msg, BView* originalHandler)
 
 	BPoint mousePos;
 	uint32 buttons = msg->FindInt32("buttons");
+	// On Zeta, only "screen_where" is reliable, "where"
+	// and "be:view_where" seem to be broken
+	if (msg->FindPoint("screen_where", &mousePos) != B_OK) {
+		// TODO: remove
+		// Workaround for BeOS R5, it has no "screen_where"
+		if (!originalHandler || msg->FindPoint("where", &mousePos) < B_OK)
+			return;
+		originalHandler->ConvertToScreen(&mousePos);
+	}
 
 	if (buttons == B_PRIMARY_MOUSE_BUTTON && fMouseDownTracking
 		&& !fIsFullscreen) {
-		// On Zeta, only "screen_where" is reliable, "where"
-		// and "be:view_where" seem to be broken
-		if (msg->FindPoint("screen_where", &mousePos) != B_OK) {
-			// TODO: remove
-			// Workaround for BeOS R5, it has no "screen_where"
-			if (!originalHandler || msg->FindPoint("where", &mousePos) < B_OK)
-				return;
-			originalHandler->ConvertToScreen(&mousePos);
-		}
 //		printf("screen where: %.0f, %.0f => ", mousePos.x, mousePos.y);
 		float delta_x = mousePos.x - fMouseDownMousePos.x;
 		float delta_y = mousePos.y - fMouseDownMousePos.y;
@@ -1704,6 +1943,25 @@ MainWin::_MouseMoved(BMessage* msg, BView* originalHandler)
 //		printf("move window to %.0f, %.0f\n", x, y);
 		MoveTo(x, y);
 	}
+
+	bigtime_t eventTime;
+	if (msg->FindInt64("when", &eventTime) != B_OK)
+		eventTime = system_time();
+
+	if (buttons == 0 && fIsFullscreen) {
+		BPoint moveDelta = mousePos - fLastMousePos;
+		float moveDeltaDist
+			= sqrtf(moveDelta.x * moveDelta.x + moveDelta.y * moveDelta.y);
+		if (eventTime - fLastMouseMovedTime < 200000)
+			fMouseMoveDist += moveDeltaDist;
+		else
+			fMouseMoveDist = moveDeltaDist;
+		if (fMouseMoveDist > 5)
+			_ShowFullscreenControls(true);
+	}
+
+	fLastMousePos = mousePos;
+	fLastMouseMovedTime =eventTime;
 }
 
 
@@ -1731,8 +1989,8 @@ MainWin::_ShowContextMenu(const BPoint& screenPoint)
 	menu->AddItem(item = new BMenuItem(aspectSubMenu));
 	item->SetEnabled(fHasVideo);
 
-	menu->AddItem(item = new BMenuItem("No interface",
-		new BMessage(M_TOGGLE_NO_INTERFACE), 'B'));
+	menu->AddItem(item = new BMenuItem("Hide interface",
+		new BMessage(M_TOGGLE_NO_INTERFACE), 'H'));
 	item->SetMarked(fNoInterface);
 	item->SetEnabled(fHasVideo);
 
@@ -1741,10 +1999,12 @@ MainWin::_ShowContextMenu(const BPoint& screenPoint)
 	// Add track selector menus
 	BMenu* audioTrackMenu = new BMenu("Audio track");
 	BMenu* videoTrackMenu = new BMenu("Video track");
-	_SetupTrackMenus(audioTrackMenu, videoTrackMenu);
+	BMenu* subTitleTrackMenu = new BMenu("Subtitles");
+	_SetupTrackMenus(audioTrackMenu, videoTrackMenu, subTitleTrackMenu);
 
 	audioTrackMenu->SetTargetForItems(this);
 	videoTrackMenu->SetTargetForItems(this);
+	subTitleTrackMenu->SetTargetForItems(this);
 
 	menu->AddItem(item = new BMenuItem(audioTrackMenu));
 	item->SetEnabled(fHasAudio);
@@ -1752,10 +2012,9 @@ MainWin::_ShowContextMenu(const BPoint& screenPoint)
 	menu->AddItem(item = new BMenuItem(videoTrackMenu));
 	item->SetEnabled(fHasVideo);
 
-	menu->AddSeparatorItem();
+	menu->AddItem(item = new BMenuItem(subTitleTrackMenu));
+	item->SetEnabled(fHasVideo);
 
-	menu->AddItem(new BMenuItem("About " NAME B_UTF8_ELLIPSIS,
-		new BMessage(B_ABOUT_REQUESTED)));
 	menu->AddSeparatorItem();
 	menu->AddItem(new BMenuItem("Quit", new BMessage(M_FILE_QUIT), 'Q'));
 
@@ -1772,14 +2031,12 @@ MainWin::_ShowContextMenu(const BPoint& screenPoint)
 bool
 MainWin::_KeyDown(BMessage* msg)
 {
-	// TODO: use the shortcut mechanism instead!
-
 	uint32 key = msg->FindInt32("key");
 	uint32 rawChar = msg->FindInt32("raw_char");
 	uint32 modifier = msg->FindInt32("modifiers");
 
-	printf("key 0x%lx, rawChar 0x%lx, modifiers 0x%lx\n", key, rawChar,
-		modifier);
+//	printf("key 0x%lx, rawChar 0x%lx, modifiers 0x%lx\n", key, rawChar,
+//		modifier);
 
 	// ignore the system modifier namespace
 	if ((modifier & (B_CONTROL_KEY | B_COMMAND_KEY))
@@ -1789,6 +2046,10 @@ MainWin::_KeyDown(BMessage* msg)
 	switch (rawChar) {
 		case B_SPACE:
 			fController->TogglePlaying();
+			return true;
+
+		case 'm':
+			fController->ToggleMute();
 			return true;
 
 		case B_ESCAPE:
@@ -1829,16 +2090,34 @@ MainWin::_KeyDown(BMessage* msg)
 
 		case B_RIGHT_ARROW:
 			if ((modifier & B_COMMAND_KEY) != 0)
-				PostMessage(M_VOLUME_UP);
-			else
 				PostMessage(M_SKIP_NEXT);
+			else if (fAllowWinding) {
+				BMessage windMessage(M_WIND);
+				if ((modifier & B_SHIFT_KEY) != 0) {
+					windMessage.AddInt64("how much", 30000000LL);
+					windMessage.AddInt64("frames", 5);
+				} else {
+					windMessage.AddInt64("how much", 5000000LL);
+					windMessage.AddInt64("frames", 1);
+				}
+				PostMessage(&windMessage);
+			}
 			return true;
 
 		case B_LEFT_ARROW:
 			if ((modifier & B_COMMAND_KEY) != 0)
-				PostMessage(M_VOLUME_DOWN);
-			else
 				PostMessage(M_SKIP_PREV);
+			else if (fAllowWinding) {
+				BMessage windMessage(M_WIND);
+				if ((modifier & B_SHIFT_KEY) != 0) {
+					windMessage.AddInt64("how much", -30000000LL);
+					windMessage.AddInt64("frames", -5);
+				} else {
+					windMessage.AddInt64("how much", -5000000LL);
+					windMessage.AddInt64("frames", -1);
+				}
+				PostMessage(&windMessage);
+			}
 			return true;
 
 		case B_PAGE_UP:
@@ -1848,19 +2127,46 @@ MainWin::_KeyDown(BMessage* msg)
 		case B_PAGE_DOWN:
 			PostMessage(M_SKIP_PREV);
 			return true;
+
+		case '+':
+			if ((modifier & B_COMMAND_KEY) == 0) {
+				_ZoomVideoView(10);
+				return true;
+			}
+			break;
+
+		case '-':
+			if ((modifier & B_COMMAND_KEY) == 0) {
+				_ZoomVideoView(-10);
+				return true;
+			}
+			break;
+
+		case B_DELETE:
+		case 'd': 			// d for delete
+		case 't':			// t for Trash
+			if ((modifiers() & B_COMMAND_KEY) != 0) {
+				BAutolock _(fPlaylist);
+				BMessage removeMessage(M_PLAYLIST_REMOVE_AND_PUT_INTO_TRASH);
+				removeMessage.AddInt32("playlist index",
+					fPlaylist->CurrentItemIndex());
+				fPlaylistWindow->PostMessage(&removeMessage);
+				return true;
+			}
+			break;
 	}
 
 	switch (key) {
 		case 0x3a:  		// numeric keypad +
 			if ((modifier & B_COMMAND_KEY) == 0) {
-				PostMessage(M_VOLUME_UP);
+				_ZoomVideoView(10);
 				return true;
 			}
 			break;
 
 		case 0x25:  		// numeric keypad -
 			if ((modifier & B_COMMAND_KEY) == 0) {
-				PostMessage(M_VOLUME_DOWN);
+				_ZoomVideoView(-10);
 				return true;
 			}
 			break;
@@ -1883,18 +2189,23 @@ MainWin::_KeyDown(BMessage* msg)
 			PostMessage(M_SKIP_PREV);
 			return true;
 
-		case 0x34:			// delete button
-		case 0x3e: 			// d for delete
-		case 0x2b:			// t for Trash
-			if ((modifiers() & B_COMMAND_KEY) != 0) {
-				BAutolock _(fPlaylist);
-				BMessage removeMessage(M_PLAYLIST_REMOVE_AND_PUT_INTO_TRASH);
-				removeMessage.AddInt32("playlist index",
-					fPlaylist->CurrentItemIndex());
-				fPlaylistWindow->PostMessage(&removeMessage);
-				return true;
-			}
-			break;
+		// Playback controls along the bottom of the keyboard:
+		// Z X C V B  for US International
+		case 0x4c:
+			PostMessage(M_SKIP_PREV);
+			return true;
+		case 0x4d:
+			fController->Play();
+			return true;
+		case 0x4e:
+			fController->Pause();
+			return true;
+		case 0x4f:
+			fController->Stop();
+			return true;
+		case 0x50:
+			PostMessage(M_SKIP_NEXT);
+			return true;
 	}
 
 	return false;
@@ -1933,6 +2244,7 @@ MainWin::_ToggleFullscreen()
 
 	} else {
 		// switch back from full screen mode
+		_ShowFullscreenControls(false, false);
 
 		Hide();
 		MoveTo(fSavedFrame.left, fSavedFrame.top);
@@ -1942,7 +2254,7 @@ MainWin::_ToggleFullscreen()
 
 	fVideoView->SetFullscreen(fIsFullscreen);
 
-	_MarkItem(fSettingsMenu, M_TOGGLE_FULLSCREEN, fIsFullscreen);
+	_MarkItem(fFileMenu, M_TOGGLE_FULLSCREEN, fIsFullscreen);
 
 	printf("_ToggleFullscreen leave\n");
 }
@@ -1953,7 +2265,7 @@ MainWin::_ToggleAlwaysOnTop()
 	fAlwaysOnTop = !fAlwaysOnTop;
 	SetFeel(fAlwaysOnTop ? B_FLOATING_ALL_WINDOW_FEEL : B_NORMAL_WINDOW_FEEL);
 
-	_MarkItem(fSettingsMenu, M_TOGGLE_ALWAYS_ON_TOP, fAlwaysOnTop);
+	_MarkItem(fFileMenu, M_TOGGLE_ALWAYS_ON_TOP, fAlwaysOnTop);
 }
 
 
@@ -1983,7 +2295,7 @@ MainWin::_ToggleNoInterface()
 		SetLook(B_TITLED_WINDOW_LOOK);
 	}
 
-	_MarkItem(fSettingsMenu, M_TOGGLE_NO_INTERFACE, fNoInterface);
+	_MarkItem(fFileMenu, M_TOGGLE_NO_INTERFACE, fNoInterface);
 
 	printf("_ToggleNoInterface leave\n");
 }
@@ -1995,6 +2307,12 @@ MainWin::_ShowIfNeeded()
 	if (find_thread(NULL) != Thread())
 		return;
 
+	if (!fHasVideo && fNoVideoFrame.IsValid()) {
+		MoveTo(fNoVideoFrame.LeftTop());
+		ResizeTo(fNoVideoFrame.Width(), fNoVideoFrame.Height());
+	}
+	fNoVideoFrame = BRect();
+
 	if (IsHidden()) {
 		Show();
 		UpdateIfNeeded();
@@ -2002,14 +2320,63 @@ MainWin::_ShowIfNeeded()
 }
 
 
+void
+MainWin::_ShowFullscreenControls(bool show, bool animate)
+{
+	if (fShowsFullscreenControls == show)
+		return;
+
+	fShowsFullscreenControls = show;
+
+	if (show) {
+		fControls->RemoveSelf();
+		fControls->MoveTo(fVideoView->Bounds().left,
+			fVideoView->Bounds().bottom + 1);
+		fVideoView->AddChild(fControls);
+		if (fScaleFullscreenControls)
+			fControls->SetSymbolScale(1.5f);
+		while (fControls->IsHidden())
+			fControls->Show();
+	}
+
+	if (animate) {
+		// Slide the controls into view. We need to do this with
+		// messages, otherwise we block the video playback for the
+		// time of the animation.
+		const float kAnimationOffsets[] = { 0.05, 0.2, 0.5, 0.2, 0.05 };
+		const int32 steps = sizeof(kAnimationOffsets) / sizeof(float);
+		float height = fControls->Bounds().Height();
+		float moveDist = show ? -height : height;
+		float originalY = fControls->Frame().top;
+		for (int32 i = 0; i < steps; i++) {
+			BMessage message(M_SLIDE_CONTROLS);
+			message.AddFloat("offset",
+				floorf(moveDist * kAnimationOffsets[i]));
+			PostMessage(&message, this);
+		}
+		BMessage finalMessage(M_FINISH_SLIDING_CONTROLS);
+		finalMessage.AddFloat("offset", originalY + moveDist);
+		finalMessage.AddBool("show", show);
+		PostMessage(&finalMessage, this);
+	} else {
+		if (!show) {
+			fControls->RemoveSelf();
+			fControls->MoveTo(fVideoView->Frame().left,
+				fVideoView->Frame().bottom + 1);
+			fBackground->AddChild(fControls);
+			fControls->SetSymbolScale(1.0f);
+			while (!fControls->IsHidden())
+				fControls->Hide();
+		}
+	}
+}
+
+
 // #pragma mark -
 
 
-/*!	Sets some standard attributes of the currently played file.
-	This should only be a temporary solution.
-*/
 void
-MainWin::_SetFileAttributes()
+MainWin::_UpdatePlaylistItemFile()
 {
 	BAutolock locker(fPlaylist);
 	const FilePlaylistItem* item
@@ -2017,35 +2384,38 @@ MainWin::_SetFileAttributes()
 	if (item == NULL)
 		return;
 
-	if (!fHasVideo && fHasAudio) {
-		BNode node(&item->Ref());
-		if (node.InitCheck())
-			return;
+	if (!fHasVideo && !fHasAudio)
+		return;
 
-		locker.Unlock();
+	BNode node(&item->Ref());
+	if (node.InitCheck())
+		return;
 
-		// write duration
+	locker.Unlock();
 
-		attr_info info;
-		status_t status = node.GetAttrInfo("Audio:Length", &info);
-		if (status != B_OK || info.size == 0) {
-			time_t duration = fController->TimeDuration() / 1000000L;
+	// Set some standard attributes of the currently played file.
+	// This should only be a temporary solution.
 
-			char text[256];
-			snprintf(text, sizeof(text), "%02ld:%02ld", duration / 60,
-				duration % 60);
-			node.WriteAttr("Audio:Length", B_STRING_TYPE, 0, text,
-				strlen(text) + 1);
-		}
+	// Write duration
+	const char* kDurationAttrName = "Media:Length";
+	attr_info info;
+	status_t status = node.GetAttrInfo(kDurationAttrName, &info);
+	if (status != B_OK || info.size == 0) {
+		bigtime_t duration = fController->TimeDuration();
+		// TODO: Tracker does not seem to care about endian for scalar types
+		node.WriteAttr(kDurationAttrName, B_INT64_TYPE, 0, &duration,
+			sizeof(int64));
+	}
 
-		// write bitrate
-
+	// Write audio bitrate
+	if (fHasAudio) {
 		status = node.GetAttrInfo("Audio:Bitrate", &info);
 		if (status != B_OK || info.size == 0) {
 			media_format format;
 			if (fController->GetEncodedAudioFormat(&format) == B_OK
 				&& format.type == B_MEDIA_ENCODED_AUDIO) {
-				int32 bitrate = (int32)(format.u.encoded_audio.bit_rate / 1000);
+				int32 bitrate = (int32)(format.u.encoded_audio.bit_rate
+					/ 1000);
 				char text[256];
 				snprintf(text, sizeof(text), "%ld kbit", bitrate);
 				node.WriteAttr("Audio:Bitrate", B_STRING_TYPE, 0, text,
@@ -2053,6 +2423,73 @@ MainWin::_SetFileAttributes()
 			}
 		}
 	}
+
+	// Write video bitrate
+	if (fHasVideo) {
+		status = node.GetAttrInfo("Video:Bitrate", &info);
+		if (status != B_OK || info.size == 0) {
+			media_format format;
+			if (fController->GetEncodedVideoFormat(&format) == B_OK
+				&& format.type == B_MEDIA_ENCODED_VIDEO) {
+				int32 bitrate = (int32)(format.u.encoded_video.avg_bit_rate
+					/ 1000);
+				char text[256];
+				snprintf(text, sizeof(text), "%ld kbit", bitrate);
+				node.WriteAttr("Video:Bitrate", B_STRING_TYPE, 0, text,
+					strlen(text) + 1);
+			}
+		}
+	}
+
+	_UpdateAttributesMenu(node);
+}
+
+
+void
+MainWin::_UpdateAttributesMenu(const BNode& node)
+{
+	int32 rating = -1;
+
+	attr_info info;
+	status_t status = node.GetAttrInfo(kRatingAttrName, &info);
+	if (status == B_OK && info.type == B_INT32_TYPE) {
+		// Node has the Rating attribute.
+		node.ReadAttr(kRatingAttrName, B_INT32_TYPE, 0, &rating,
+			sizeof(rating));
+	}
+
+	for (int32 i = 0; BMenuItem* item = fRatingMenu->ItemAt(i); i++)
+		item->SetMarked(i + 1 == rating);
+}
+
+
+void
+MainWin::_SetRating(int32 rating)
+{
+	BAutolock locker(fPlaylist);
+	const FilePlaylistItem* item
+		= dynamic_cast<const FilePlaylistItem*>(fController->Item());
+	if (item == NULL)
+		return;
+
+	BNode node(&item->Ref());
+	if (node.InitCheck())
+		return;
+
+	locker.Unlock();
+
+	node.WriteAttr(kRatingAttrName, B_INT32_TYPE, 0, &rating, sizeof(rating));
+
+	// TODO: The whole mechnism should work like this:
+	// * There is already an attribute API for PlaylistItem, flesh it out!
+	// * FilePlaylistItem node-monitors it's file somehow.
+	// * FilePlaylistItem keeps attributes in sync and sends notications.
+	// * MainWin updates the menu according to FilePlaylistItem notifications.
+	// * PlaylistWin shows columns with attribute and other info.
+	// * PlaylistWin updates also upon FilePlaylistItem notifications.
+	// * This keeps attributes in sync when another app changes them.
+
+	_UpdateAttributesMenu(node);
 }
 
 
@@ -2078,6 +2515,7 @@ MainWin::_UpdateControlsEnabledStatus()
 	fControls->SetEnabled(enabledButtons);
 
 	fNoInterfaceMenuItem->SetEnabled(fHasVideo);
+	fAttributesMenu->SetEnabled(fHasAudio || fHasVideo);
 }
 
 
@@ -2149,6 +2587,9 @@ MainWin::_AdoptGlobalSettings()
 
 	fCloseWhenDonePlayingMovie = settings.closeWhenDonePlayingMovie;
 	fCloseWhenDonePlayingSound = settings.closeWhenDonePlayingSound;
+	fLoopMovies = settings.loopMovie;
+	fLoopSounds = settings.loopSound;
+	fScaleFullscreenControls = settings.scaleFullscreenControls;
 }
 
 

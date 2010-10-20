@@ -1,8 +1,8 @@
-1	russian	x-vnd.Be-PSRV	101881708
-Undefined	ConfigWindow		Неопределено
+1	russian	x-vnd.Be-PSRV	219268753
+Undefined	ConfigWindow		не определены
 Cancel	PrintServerApp		Отмена
 Page setup:	ConfigWindow		Настройка печати:
-OK	ConfigWindow		Ok
+OK	ConfigWindow		ОК
 Cancel	ConfigWindow		Отмена
 Yes	PrintServerApp		Да
 Would you like to set one up now?	PrintServerApp		Хотите настроить принтер сейчас?
@@ -16,8 +16,14 @@ No	PrintServerApp		Нет
 Landscape	ConfigWindow		Альбом
 There are no printers set up.	PrintServerApp		Нет настроенных принтеров.
 There already exists a printer you are going to create, but it's not usable at all! Replace?	PrintServerApp		Принтер, который вы собираетесь создать, уже существует, но он не используется! Заменить?
-OK	PrintServerApp		Oк
+OK	PrintServerApp		ОК
 Print setup	ConfigWindow		Настройка печати
 Would you like to make @ the default printer?	PrintServerApp		Вы хотите сделать @ принтером по умолчанию?
 Page setup	ConfigWindow		Настройка печати
 Paper setup:	ConfigWindow		Параметры бумаги:
+Page %1 to %2	ConfigWindow		Страница %1 из %2
+Page %1 to %2, %3 copies	ConfigWindow		Страница %1 из %2, копий: %3
+Show configuration window	PrintServerApp Scripting		Показать окно настройки
+All pages, %1 copies	ConfigWindow		Все страницы, копий: %1
+Delete a specific printer	PrintServerApp Scripting		Удалить выбранный принтер
+Create a new printer	PrintServerApp Scripting		Создать новый принтер

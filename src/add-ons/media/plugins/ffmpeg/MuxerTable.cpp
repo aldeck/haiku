@@ -31,6 +31,22 @@ const media_file_format gMuxerTable[] = {
 			| media_file_format::B_KNOWS_ENCODED_VIDEO
 			| media_file_format::B_KNOWS_ENCODED_AUDIO,
 		{ 0 },
+		B_MISC_FORMAT_FAMILY,
+		100,
+		{ 0 },
+		"video/x-msvideo",
+		"DV video format",
+		"dv",
+		"dv",
+		{ 0 }
+	},
+	{
+		media_file_format::B_WRITABLE
+			| media_file_format::B_KNOWS_RAW_VIDEO
+			| media_file_format::B_KNOWS_RAW_AUDIO
+			| media_file_format::B_KNOWS_ENCODED_VIDEO
+			| media_file_format::B_KNOWS_ENCODED_AUDIO,
+		{ 0 },
 		B_AVI_FORMAT_FAMILY,
 		100,
 		{ 0 },
@@ -57,20 +73,20 @@ const media_file_format gMuxerTable[] = {
 // TODO: This one rejects unknown codecs. We probably need to define
 // a media_format_family for it so that Encoders can announce their support
 // for it specifically.
-//	{
-//		media_file_format::B_WRITABLE
-//			| media_file_format::B_KNOWS_ENCODED_VIDEO
-//			| media_file_format::B_KNOWS_ENCODED_AUDIO,
-//		{ 0 },
-//		B_AVI_FORMAT_FAMILY,
-//		100,
-//		{ 0 },
-//		"application/ogg",
-//		"Ogg (Xiph.Org Foundation)",
-//		"ogg",
-//		"ogg",
-//		{ 0 }
-//	},
+	{
+		media_file_format::B_WRITABLE
+			| media_file_format::B_KNOWS_ENCODED_VIDEO
+			| media_file_format::B_KNOWS_ENCODED_AUDIO,
+		{ 0 },
+		B_MISC_FORMAT_FAMILY,
+		100,
+		{ 0 },
+		"application/ogg",
+		"Ogg (Xiph.Org Foundation)",
+		"ogg",
+		"ogg",
+		{ 0 }
+	},
 	{
 		media_file_format::B_WRITABLE
 			| media_file_format::B_KNOWS_ENCODED_AUDIO,

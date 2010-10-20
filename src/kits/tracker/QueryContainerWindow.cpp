@@ -54,7 +54,7 @@ All rights reserved.
 
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "QueryContainerWindow"
 
 BQueryContainerWindow::BQueryContainerWindow(Model* model, LockingList<BWindow> *windowList,
 	uint32 containerWindowFlags, window_look look,
@@ -157,7 +157,7 @@ BQueryContainerWindow::AddWindowMenu(BMenu *menu)
 void 
 BQueryContainerWindow::AddWindowContextMenus(BMenu *menu)
 {
-	BMenuItem* resizeItem = new BMenuItem(B_TRANSLATE("Resize to Fit"),
+	BMenuItem* resizeItem = new BMenuItem(B_TRANSLATE("Resize to fit"),
 		new BMessage(kResizeToFit), 'Y');
 	menu->AddItem(resizeItem);
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Select"B_UTF8_ELLIPSIS),

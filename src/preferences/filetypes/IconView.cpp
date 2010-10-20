@@ -431,17 +431,20 @@ Icon::GetIcon(BBitmap* bitmap) const
 	if (bitmap == NULL)
 		return B_BAD_VALUE;
 
-	if (fData != NULL && BIconUtils::GetVectorIcon(fData, fSize, bitmap) == B_OK)
+	if (fData != NULL
+		&& BIconUtils::GetVectorIcon(fData, fSize, bitmap) == B_OK)
 		return B_OK;
 
 	int32 width = bitmap->Bounds().IntegerWidth() + 1;
 
 	if (width == B_LARGE_ICON && fLarge != NULL) {
-		bitmap->SetBits(fLarge->Bits(), fLarge->BitsLength(), 0, fLarge->ColorSpace());
+		bitmap->SetBits(fLarge->Bits(), fLarge->BitsLength(), 0,
+			fLarge->ColorSpace());
 		return B_OK;
 	}
 	if (width == B_MINI_ICON && fMini != NULL) {
-		bitmap->SetBits(fMini->Bits(), fMini->BitsLength(), 0, fMini->ColorSpace());
+		bitmap->SetBits(fMini->Bits(), fMini->BitsLength(), 0,
+			fMini->ColorSpace());
 		return B_OK;
 	}
 
@@ -693,12 +696,12 @@ IconView::AcceptsDrag(const BMessage* message)
 		return true;
 	}
 
-	if (message->GetInfo("icon/large", &type) == B_OK
-			&& type == B_MESSAGE_TYPE
-		|| message->GetInfo("icon", &type) == B_OK
-			&& type == B_VECTOR_ICON_TYPE
-		|| message->GetInfo("icon/mini", &type) == B_OK
+	if ((message->GetInfo("icon/large", &type) == B_OK
 			&& type == B_MESSAGE_TYPE)
+		|| (message->GetInfo("icon", &type) == B_OK
+			&& type == B_VECTOR_ICON_TYPE)
+		|| (message->GetInfo("icon/mini", &type) == B_OK
+			&& type == B_MESSAGE_TYPE))
 		return true;
 
 	return false;
@@ -798,7 +801,8 @@ IconView::MouseDown(BPoint where)
 			clicks = 1;
 	}
 
-	if ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0 && BitmapRect().Contains(where)) {
+	if ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0
+		&& BitmapRect().Contains(where)) {
 		if (clicks == 2) {
 			// double click - open Icon-O-Matic
 			Invoke();
@@ -879,7 +883,8 @@ IconView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
 
 		BBitmap *dragBitmap = new BBitmap(fIcon->Bounds(), B_RGBA32, true);
 		dragBitmap->Lock();
-		BView *view = new BView(dragBitmap->Bounds(), B_EMPTY_STRING, B_FOLLOW_NONE, 0);
+		BView *view
+			= new BView(dragBitmap->Bounds(), B_EMPTY_STRING, B_FOLLOW_NONE, 0);
 		dragBitmap->AddChild(view);
 
 		view->SetHighColor(B_TRANSPARENT_COLOR);
@@ -1088,10 +1093,14 @@ IconView::ShowIconHeap(bool show)
 			if (data == NULL) {
 				// no vector icon or failed to get bitmap
 				// try bitmap icon
-				data = resources->LoadResource(B_LARGE_ICON_TYPE, "icon heap", NULL);
+				data = resources->LoadResource(B_LARGE_ICON_TYPE, "icon heap",
+					NULL);
 				if (data != NULL) {
 					fHeapIcon = Icon::AllocateBitmap(B_LARGE_ICON, B_CMAP8);
-					memcpy(fHeapIcon->Bits(), data, fHeapIcon->BitsLength());
+					if (fHeapIcon != NULL) {
+						memcpy(fHeapIcon->Bits(), data,
+							fHeapIcon->BitsLength());
+					}
 				}
 			}
 		}
@@ -1135,7 +1144,7 @@ IconView::Invoke(BMessage* message)
 {
 	if (message == NULL)
 		fTarget.SendMessage(kMsgIconInvoked);
-	else 
+	else
 		fTarget.SendMessage(message);
 	return B_OK;
 }
@@ -1206,6 +1215,9 @@ IconView::_AddOrEditIcon()
 			// can be preserved. Maybe in a second (optional) attribute
 			// where ever a vector icon attribute is present?
 		}
+
+		if (icon != fIconData)
+			delete icon;
 	}
 
 	be_roster->Launch("application/x-vnd.haiku-icon_o_matic", &message);
@@ -1213,7 +1225,8 @@ IconView::_AddOrEditIcon()
 
 
 void
-IconView::_SetIcon(BBitmap* large, BBitmap* mini, const uint8* data, size_t size, bool force)
+IconView::_SetIcon(BBitmap* large, BBitmap* mini, const uint8* data,
+	size_t size, bool force)
 {
 	if (fHasRef) {
 		BFile file(&fRef, B_READ_WRITE);
@@ -1310,9 +1323,11 @@ IconView::_SetIcon(entry_ref* ref)
 		BMimeType mimeType(type);
 		if (icon_for_type(mimeType, &data, &size) != B_OK) {
 			// only try large/mini icons when there is no vector icon
-			if (large != NULL && icon_for_type(mimeType, *large, B_LARGE_ICON) == B_OK)
+			if (large != NULL
+				&& icon_for_type(mimeType, *large, B_LARGE_ICON) == B_OK)
 				hasLarge = true;
-			if (mini != NULL && icon_for_type(mimeType, *mini, B_MINI_ICON) == B_OK)
+			if (mini != NULL
+				&& icon_for_type(mimeType, *mini, B_MINI_ICON) == B_OK)
 				hasMini = true;
 		}
 	}
@@ -1362,4 +1377,23 @@ IconView::_StopWatching()
 	else if (fHasType)
 		BMimeType::StopWatching(this);
 }
+
+
+#if __GNUC__ == 2
+
+status_t
+IconView::SetTarget(BMessenger target)
+{
+	return BControl::SetTarget(target);
+}
+
+
+status_t
+IconView::SetTarget(const BHandler* handler, const BLooper* looper = NULL)
+{
+	return BControl::SetTarget(handler,
+		looper);
+}
+
+#endif
 

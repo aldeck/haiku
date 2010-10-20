@@ -67,6 +67,8 @@ LocaleSettings::UpdateFrom(BMessage* message)
 {
 	BString messageContent;
 
+	BLocale locale(*be_locale);
+
 	if (message->FindString("language", &messageContent) == B_OK) {
 		fMessage.RemoveName("language");
 
@@ -78,32 +80,29 @@ LocaleSettings::UpdateFrom(BMessage* message)
 		gMutableLocaleRoster->SetPreferredLanguages(message);
 	}
 
-	BLocale defaultLocale;
-	gMutableLocaleRoster->GetDefaultLocale(&defaultLocale);
-
-	bool countryChanged = false;
+	bool localeChanged = false;
 	if (message->FindString("country", &messageContent) == B_OK) {
 		fMessage.ReplaceString("country", messageContent);
 		fMessage.RemoveName("shortTimeFormat");
 		fMessage.RemoveName("longTimeFormat");
-		defaultLocale = BLocale(messageContent.String());
-		countryChanged = true;
+		locale.SetCountry(messageContent.String());
+		localeChanged = true;
 	}
 
 	if (message->FindString("shortTimeFormat", &messageContent) == B_OK) {
 		fMessage.RemoveName("shortTimeFormat");
 		fMessage.AddString("shortTimeFormat", messageContent);
-		defaultLocale.SetTimeFormat(messageContent, false);
-		countryChanged = true;
+		locale.SetTimeFormat(messageContent, false);
+		localeChanged = true;
 	}
 
 	if (message->FindString("longTimeFormat", &messageContent) == B_OK) {
 		fMessage.RemoveName("longTimeFormat");
 		fMessage.AddString("longTimeFormat", messageContent);
-		defaultLocale.SetTimeFormat(messageContent, true);
-		countryChanged = true;
+		locale.SetTimeFormat(messageContent, true);
+		localeChanged = true;
 	}
 
-	if (countryChanged)
-		gMutableLocaleRoster->SetDefaultLocale(defaultLocale);
+	if (localeChanged)
+		gMutableLocaleRoster->SetDefaultLocale(locale);
 }

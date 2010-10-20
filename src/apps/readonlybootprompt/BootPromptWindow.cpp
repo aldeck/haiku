@@ -63,6 +63,18 @@ private:
 };
 
 
+static int
+compare_void_list_items(const void* _a, const void* _b)
+{
+	static BCollator collator;
+
+	LanguageItem* a = *(LanguageItem**)_a;
+	LanguageItem* b = *(LanguageItem**)_b;
+
+	return collator.Compare(a->Text(), b->Text());
+}
+
+
 BootPromptWindow::BootPromptWindow()
 	:
 	BWindow(BRect(0, 0, 450, 380), "",
@@ -70,7 +82,7 @@ BootPromptWindow::BootPromptWindow()
 			| B_AUTO_UPDATE_SIZE_LIMITS)
 {
 	// Get the list of all known languages (suffice to do it only once)
-	be_locale_roster->GetInstalledLanguages(&fInstalledLanguages);
+	be_locale_roster->GetAvailableLanguages(&fInstalledLanguages);
 
 	fInfoTextView = new BTextView("info", be_plain_font, NULL, B_WILL_DRAW);
 	fInfoTextView->SetInsets(10, 10, 10, 10);
@@ -260,42 +272,49 @@ BootPromptWindow::_PopulateLanguages()
 	be_locale_roster->GetInstalledCatalogs(&installedCatalogs,
 		"x-vnd.Haiku-ReadOnlyBootPrompt");
 
+	BFont font;
+	fLanguagesListView->GetFont(&font);
+
 	// Try to instantiate a BCatalog for each language, it will only work
 	// for translations of this application. So the list of languages will be
 	//  limited to catalogs written for this application, which is on purpose!
 
-	const char* languageString;
-	for (int32 i = 0; installedCatalogs.FindString("langs", i, &languageString)
+	const char* languageID;
+	LanguageItem* currentItem = NULL;
+	for (int32 i = 0; installedCatalogs.FindString("language", i, &languageID)
 			== B_OK; i++) {
 		BLanguage* language;
-		if (be_locale_roster->GetLanguage(languageString, &language) == B_OK) {
+		if (be_locale_roster->GetLanguage(languageID, &language) == B_OK) {
 			BString name;
-			language->GetName(name);
+			language->GetNativeName(name);
 
-			// TODO: as long as the app_server doesn't support font overlays,
-			// use the translated name if problematic characters are used...
-			const char* string = name.String();
-			while (uint32 code = BUnicodeChar::FromUTF8(&string)) {
-				if (code > 1424) {
-					language->GetTranslatedName(name);
+			// TODO: the following block fails to detect a couple of language
+			// names as containing glyphs we can't render. Why's that?
+			bool hasGlyphs[name.CountChars()];
+			font.GetHasGlyphs(name.String(), name.CountChars(), hasGlyphs);
+			for (int32 i = 0; i < name.CountChars(); ++i) {
+				if (!hasGlyphs[i]) {
+					// replace by name translated to current language
+					language->GetName(name);
 					break;
 				}
 			}
 
 			LanguageItem* item = new LanguageItem(name.String(),
-				languageString);
+				languageID);
 			fLanguagesListView->AddItem(item);
 			// Select this item if it is the first preferred language
-			if (strcmp(firstPreferredLanguage, languageString) == 0) {
-				fLanguagesListView->Select(
-					fLanguagesListView->CountItems() - 1);
-			}
+			if (strcmp(firstPreferredLanguage, languageID) == 0)
+				currentItem = item;
 
 			delete language;
 		} else
-			printf("failed to get BLanguage for %s\n", languageString);
+			printf("failed to get BLanguage for %s\n", languageID);
 	}
 
+	fLanguagesListView->SortItems(compare_void_list_items);
+	if (currentItem != NULL)
+		fLanguagesListView->Select(fLanguagesListView->IndexOf(currentItem));
 	fLanguagesListView->ScrollToSelection();
 
 	// Re-enable sending the selection message.

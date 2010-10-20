@@ -59,7 +59,8 @@ device_reader_thread(void* _interface)
 			if (atomic_get(&interface->monitor_count) > 0)
 				device_interface_monitor_receive(interface, buffer);
 
-			buffer->interface_address = NULL;
+			ASSERT(buffer->interface_address == NULL);
+
 			if (interface->deframe_func(interface->device, buffer) != B_OK) {
 				gNetBufferModule.free(buffer);
 				continue;
@@ -103,8 +104,11 @@ device_consumer_thread(void* _interface)
 				buffer = NULL;
 		} else {
 			sockaddr_dl& linkAddress = *(sockaddr_dl*)buffer->source;
+			int32 genericType = buffer->type;
 			int32 specificType = B_NET_FRAME_TYPE(linkAddress.sdl_type,
 				linkAddress.sdl_e_type);
+
+			buffer->index = interface->device->index;
 
 			// Find handler for this packet
 
@@ -117,7 +121,7 @@ device_consumer_thread(void* _interface)
 
 				// If the handler returns B_OK, it consumed the buffer - first
 				// handler wins.
-				if ((handler->type == buffer->type
+				if ((handler->type == genericType
 						|| handler->type == specificType)
 					&& handler->func(handler->cookie, device, buffer) == B_OK)
 					buffer = NULL;
@@ -307,7 +311,7 @@ get_device_interface_address(net_device_interface* interface,
 	address.sdl_alen = interface->device->address.length;
 	memcpy(LLADDR(&address), interface->device->address.data, address.sdl_alen);
 
-	address.sdl_len = sizeof(sockaddr_dl) - sizeof(address.sdl_data) 
+	address.sdl_len = sizeof(sockaddr_dl) - sizeof(address.sdl_data)
 		+ address.sdl_nlen + address.sdl_alen;
 }
 

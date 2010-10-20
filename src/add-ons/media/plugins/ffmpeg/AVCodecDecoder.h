@@ -15,6 +15,7 @@
 #include <MediaFormats.h>
 
 extern "C" {
+	#include "avcodec.h"
 	#include "swscale.h"
 }
 
@@ -22,6 +23,7 @@ extern "C" {
 #include "ReaderPlugin.h"
 
 #include "CodecTable.h"
+#include "gfx_util.h"
 
 
 class AVCodecDecoder : public Decoder {
@@ -42,9 +44,7 @@ public:
 									media_header* mediaHeader,
 									media_decode_info* info);
 
-	virtual	status_t			Seek(uint32 seekTo, int64 seekFrame,
-									int64* frame, bigtime_t seekTime,
-									bigtime_t* time);
+	virtual	status_t			SeekedTo(int64 trame, bigtime_t time);
 
 
 private:
@@ -71,9 +71,6 @@ private:
 
 			int64				fFrame;
 			bool				fIsAudio;
-
-			int					fCodecIndexInTable;
-									// helps to find codecpretty
 
 			// FFmpeg related members
 			AVCodec*			fCodec;
@@ -105,6 +102,7 @@ private:
 			int32				fOutputBufferOffset;
 			int32				fOutputBufferSize;
 
+			AVPacket			fTempPacket;
 };
 
 #endif // AVCODEC_DECODER_H

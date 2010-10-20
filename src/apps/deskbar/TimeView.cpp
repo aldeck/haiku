@@ -41,7 +41,6 @@ All rights reserved.
 #include <Country.h>
 #include <Debug.h>
 #include <Locale.h>
-#include <LocaleRoster.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
 #include <PopUpMenu.h>
@@ -69,7 +68,7 @@ enum {
 #define B_TRANSLATE_CONTEXT "TimeView"
 
 TTimeView::TTimeView(float maxWidth, float height, bool showSeconds,
-	bool fullDate, bool)
+	bool)
 	:
 	BView(BRect(-100, -100, -90, -90), "_deskbar_tv_",
 	B_FOLLOW_RIGHT | B_FOLLOW_TOP,
@@ -77,21 +76,18 @@ TTimeView::TTimeView(float maxWidth, float height, bool showSeconds,
 	fParent(NULL),
 	fShowInterval(true), // ToDo: defaulting this to true until UI is in place
 	fShowSeconds(showSeconds),
-	fFullDate(fullDate),
-	fCanShowFullDate(false),
 	fMaxWidth(maxWidth),
 	fHeight(height),
 	fOrientation(true),
 	fLongClickMessageRunner(NULL)
 {
-	fShowingDate = false;
 	fTime = fLastTime = time(NULL);
 	fSeconds = fMinute = fHour = 0;
 	fLastTimeStr[0] = 0;
 	fLastDateStr[0] = 0;
 	fNeedToUpdate = true;
 
-	be_locale_roster->GetDefaultLocale(&fLocale);
+	fLocale = *be_locale;
 }
 
 
@@ -101,11 +97,9 @@ TTimeView::TTimeView(BMessage* data)
 {
 	fTime = fLastTime = time(NULL);
 	data->FindBool("seconds", &fShowSeconds);
-	data->FindBool("fulldate", &fFullDate);
 	data->FindBool("interval", &fInterval);
-	fShowingDate = false;
 
-	be_locale_roster->GetDefaultCountry(&fLocale);
+	fLocale = *be_locale;
 }
 #endif
 
@@ -132,7 +126,6 @@ TTimeView::Archive(BMessage* data, bool deep) const
 {
 	BView::Archive(data, deep);
 	data->AddBool("seconds", fShowSeconds);
-	data->AddBool("fulldate", fFullDate);
 	data->AddBool("interval", fInterval);
 	data->AddInt32("deskbar:private_align", B_ALIGN_RIGHT);
 
@@ -164,20 +157,13 @@ TTimeView::GetPreferredSize(float* width, float* height)
 	*height = fHeight;
 
 	GetCurrentTime();
-	GetCurrentDate();
 
 	// TODO: SetOrientation never gets called, fix that
 	// When in vertical mode, we want to limit the width so that it can't
 	// overlap the bevels in the parent view.
-	if (ShowingDate())
-		*width = fOrientation ?
-			min_c(fMaxWidth - kHMargin, kHMargin + StringWidth(fDateStr))
-			: kHMargin + StringWidth(fDateStr);
-	else {
-		*width = fOrientation ?
-			min_c(fMaxWidth - kHMargin, kHMargin + StringWidth(fTimeStr))
-			: kHMargin + StringWidth(fTimeStr);
-	}
+	*width = fOrientation ?
+		min_c(fMaxWidth - kHMargin, kHMargin + StringWidth(fTimeStr))
+		: kHMargin + StringWidth(fTimeStr);
 }
 
 
@@ -207,10 +193,6 @@ void
 TTimeView::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case kFullDate:
-			ShowFullDate(!ShowingFullDate());
-			break;
-
 		case kShowSeconds:
 			ShowSeconds(!ShowingSeconds());
 			break;
@@ -306,13 +288,6 @@ TTimeView::StopLongClickNotifier()
 void
 TTimeView::GetCurrentTime()
 {
-	// TODO : should this be another function ?
-	tm time = *localtime(&fTime);
-
-	fSeconds = time.tm_sec;
-	fMinute = time.tm_min;
-	fHour = time.tm_hour;
-
 	fLocale.FormatTime(fTimeStr, 64, fTime, fShowSeconds);
 }
 
@@ -322,7 +297,7 @@ TTimeView::GetCurrentDate()
 {
 	char tmp[64];
 
-	fLocale.FormatDate(tmp, 64, fTime, fFullDate && CanShowFullDate());
+	fLocale.FormatDate(tmp, 64, fTime, true);
 
 	//	remove leading 0 from date when month is less than 10 (MM/DD/YY)
 	//  or remove leading 0 from date when day is less than 10 (DD/MM/YY)
@@ -344,10 +319,7 @@ TTimeView::Draw(BRect /*updateRect*/)
 	FillRect(Bounds());
 	SetHighColor(0, 0, 0, 255);
 
-	if (fShowingDate)
-		DrawString(fDateStr, fDateLocation);
-	else
-		DrawString(fTimeStr, fTimeLocation);
+	DrawString(fTimeStr, fTimeLocation);
 
 	PopState();
 }
@@ -365,11 +337,6 @@ TTimeView::MouseDown(BPoint point)
 	} else if (buttons == B_PRIMARY_MOUSE_BUTTON) {
 		StartLongClickNotifier(point);
 	}
-
-	//	flip to/from showing date or time
-	fShowingDate = !fShowingDate;
-	if (fShowingDate)
-		fLastTime = time(NULL);
 
 	// invalidate last time/date strings and call the pulse
 	// method directly to change the display instantly
@@ -390,19 +357,20 @@ void
 TTimeView::Pulse()
 {
 	time_t curTime = time(NULL);
-	tm	ct = *localtime(&curTime);
+	tm* ct = localtime(&curTime);
+	if (ct == NULL)
+		return;
+
 	fTime = curTime;
 
 	GetCurrentTime();
 	GetCurrentDate();
-	if ((!fShowingDate && strcmp(fTimeStr, fLastTimeStr) != 0)
-		|| 	(fShowingDate && strcmp(fDateStr, fLastDateStr) != 0)) {
+	if (strcmp(fTimeStr, fLastTimeStr) != 0) {
 		// Update bounds when the size of the strings has changed
 		// For dates, Update() could be called two times in a row,
 		// but that should only happen very rarely
-		if ((!fShowingDate && fLastTimeStr[1] != fTimeStr[1]
+		if ((fLastTimeStr[1] != fTimeStr[1]
 				&& (fLastTimeStr[1] == ':' || fTimeStr[1] == ':'))
-			|| (fShowingDate && strlen(fDateStr) != strlen(fLastDateStr))
 			|| !fLastTimeStr[0])
 			Update();
 
@@ -411,16 +379,11 @@ TTimeView::Pulse()
 		fNeedToUpdate = true;
 	}
 
-	if (fShowingDate && (fLastTime + 5 <= time(NULL))) {
-		fShowingDate = false;
-		Update();	// Needs to happen since size can change here
-	}
-
 	if (fNeedToUpdate) {
-		fSeconds = ct.tm_sec;
-		fMinute = ct.tm_min;
-		fHour = ct.tm_hour;
-		fInterval = ct.tm_hour >= 12;
+		fSeconds = ct->tm_sec;
+		fMinute = ct->tm_min;
+		fHour = ct->tm_hour;
+		fInterval = ct->tm_hour >= 12;
 
 		Draw(Bounds());
 		fNeedToUpdate = false;
@@ -437,37 +400,13 @@ TTimeView::ShowSeconds(bool on)
 
 
 void
-TTimeView::ShowDate(bool on)
-{
-	fShowingDate = on;
-	Update();
-}
-
-
-void
-TTimeView::ShowFullDate(bool on)
-{
-	fFullDate = on;
-	Update();
-}
-
-
-void
-TTimeView::AllowFullDate(bool allow)
-{
-	fCanShowFullDate = allow;
-
-	if (allow != ShowingFullDate())
-		Update();
-}
-
-
-void
 TTimeView::Update()
 {
-	be_locale_roster->GetDefaultLocale(&fLocale);
+	fLocale = *be_locale;
 	GetCurrentTime();
 	GetCurrentDate();
+
+	SetToolTip(fDateStr);
 
 	ResizeToPreferred();
 	CalculateTextPlacement();

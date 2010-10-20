@@ -143,7 +143,7 @@ static const rgb_color kColor[B_COLOR_TOTAL] =
 
 static const int32 kMaxDepth = 1024;
 static const float kLeftMargin = kLatchWidth;
-static const float kRightMargin = kLatchWidth;
+static const float kRightMargin = 8;
 static const float kOutlineLevelIndent = kLatchWidth;
 static const float kColumnResizeAreaWidth = 10.0;
 static const float kRowDragSensitivity = 5.0;
@@ -184,6 +184,8 @@ public:
 
 			void				SetEditMode(bool state)
 									{ fEditMode = state; }
+
+			float				MarginWidth() const;
 
 private:
 			void				GetTitleRect(BColumn* column, BRect* _rect);
@@ -1846,10 +1848,22 @@ BColumnListView::PreferredSize()
 	BSize size = MinSize();
 	size.height += ceilf(be_plain_font->Size()) * 20;
 
+	// return MinSize().width if there are no columns.
 	int32 count = CountColumns();
 	if (count > 0) {
-		// return MinSize().width if there are no columns.
-		size.width = 40.0f;
+		BRect titleRect;
+		BRect outlineRect;
+		BRect vScrollBarRect;
+		BRect hScrollBarRect;
+		_GetChildViewRects(Bounds(), !fHorizontalScrollBar->IsHidden(),
+			titleRect, outlineRect, vScrollBarRect, hScrollBarRect);
+		// Start with the extra width for border and scrollbars etc.
+		size.width = titleRect.left - Bounds().left;
+		size.width += Bounds().right - titleRect.right;
+		// If we want all columns to be visible at their preferred width,
+		// we also need to add the extra margin width that the TitleView
+		// uses to compute its _VirtualWidth() for the horizontal scroll bar.
+		size.width += fTitleView->MarginWidth();
 		for (int32 i = 0; i < count; i++) {
 			BColumn* column = ColumnAt(i);
 			if (column != NULL)
@@ -2243,6 +2257,13 @@ TitleView::SetColumnFlags(column_flags flags)
 }
 
 
+float
+TitleView::MarginWidth() const
+{
+	return MAX(kLeftMargin, fMasterView->LatchWidth()) + kRightMargin;
+}
+
+
 void
 TitleView::ResizeSelectedColumn(BPoint position, bool preferred)
 {
@@ -2502,7 +2523,7 @@ TitleView::DrawTitle(BView* view, BRect rect, BColumn* column, bool depressed)
 float
 TitleView::_VirtualWidth() const
 {
-	float width = 0.0f;
+	float width = MarginWidth();
 
 	int32 count = fColumns->CountItems();
 	for (int32 i = 0; i < count; i++) {
@@ -2510,8 +2531,7 @@ TitleView::_VirtualWidth() const
 		width += column->Width();
 	}
 
-	return width + MAX(kLeftMargin,
-		fMasterView->LatchWidth()) + kRightMargin * 2;
+	return width;
 }
 
 
@@ -4042,42 +4062,49 @@ OutlineView::RemoveRow(BRow* row)
 
 	BRow* parentRow;
 	bool parentIsVisible;
-	float subTreeHeight = row->Height();
-	if (FindParent(row, &parentRow, &parentIsVisible)) {
-		// adjust height
-		if (parentIsVisible && (parentRow == 0 || parentRow->fIsExpanded)) {
-			if (row->fIsExpanded) {
-				for (RecursiveOutlineIterator iterator(row->fChildList);
-					iterator.CurrentRow(); iterator.GoToNext())
-					subTreeHeight += iterator.CurrentRow()->Height();
-			}
+	FindParent(row, &parentRow, &parentIsVisible);
+		// NOTE: This could be a root row without a parent, in which case
+		// it is always visible, though.
+
+	// Adjust height for the visible sub-tree that is going to be removed.
+	float subTreeHeight = 0.0f;
+	if (parentIsVisible && (parentRow == NULL || parentRow->fIsExpanded)) {
+		// The row itself is visible at least.
+		subTreeHeight = row->Height() + 1;
+		if (row->fIsExpanded) {
+			// Adjust for the height of visible sub-items as well.
+			// (By default, the iterator follows open branches only.)
+			for (RecursiveOutlineIterator iterator(row->fChildList);
+				iterator.CurrentRow(); iterator.GoToNext())
+				subTreeHeight += iterator.CurrentRow()->Height() + 1;
+		}
+		BRect invalid;
+		if (FindRect(row, &invalid)) {
+			invalid.bottom = Bounds().bottom;
+			if (invalid.IsValid())
+				Invalidate(invalid);
 		}
 	}
-	if (parentRow) {
-		if (parentRow->fIsExpanded)
-			fItemsHeight -= subTreeHeight + 1;
-	} else {
-		fItemsHeight -= subTreeHeight + 1;
-	}
+
+	fItemsHeight -= subTreeHeight;
+
 	FixScrollBar(false);
-	if (parentRow)
+	if (parentRow != NULL) {
 		parentRow->fChildList->RemoveItem(row);
-	else
+		if (parentRow->fChildList->CountItems() == 0) {
+			delete parentRow->fChildList;
+			parentRow->fChildList = 0;
+			// It was the last child row of the parent, which also means the
+			// latch disappears.
+			BRect parentRowRect;
+			if (parentIsVisible && FindRect(parentRow, &parentRowRect))
+				Invalidate(parentRowRect);
+		}
+	} else
 		fRows.RemoveItem(row);
 
-	if (parentRow != 0 && parentRow->fChildList->CountItems() == 0) {
-		delete parentRow->fChildList;
-		parentRow->fChildList = 0;
-		if (parentIsVisible)
-			Invalidate();	// xxx crude way of redrawing latch
-	}
-
-	if (parentIsVisible && (parentRow == 0 || parentRow->fIsExpanded))
-		Invalidate();	// xxx make me smarter.
-
-
 	// Adjust focus row if necessary.
-	if (fFocusRow && FindRect(fFocusRow, &fFocusRowRect) == false) {
+	if (fFocusRow && !FindRect(fFocusRow, &fFocusRowRect)) {
 		// focus row is in a subtree that is gone, move it up to the parent.
 		fFocusRow = parentRow;
 		if (fFocusRow)
@@ -4688,24 +4715,25 @@ OutlineView::SelectRange(BRow* start, BRow* end)
 
 
 bool
-OutlineView::FindParent(BRow* row, BRow** outParent, bool* out_parentIsVisible)
+OutlineView::FindParent(BRow* row, BRow** outParent, bool* outParentIsVisible)
 {
 	bool result = false;
-	if (row && outParent) {
+	if (row != NULL && outParent != NULL) {
 		*outParent = row->fParent;
 
-		// Walk up the parent chain to determine if this row is visible
-		bool isVisible = true;
-		for (BRow* currentRow = row->fParent; currentRow; currentRow = currentRow->fParent) {
-			if (!currentRow->fIsExpanded) {
-				isVisible = false;
-				break;
+		if (outParentIsVisible != NULL) {
+			// Walk up the parent chain to determine if this row is visible
+			*outParentIsVisible = true;
+			for (BRow* currentRow = row->fParent; currentRow != NULL;
+				currentRow = currentRow->fParent) {
+				if (!currentRow->fIsExpanded) {
+					*outParentIsVisible = false;
+					break;
+				}
 			}
 		}
 
-		if (out_parentIsVisible)
-			*out_parentIsVisible = isVisible;
-		result = (NULL != *outParent);
+		result = *outParent != NULL;
 	}
 
 	return result;

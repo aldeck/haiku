@@ -40,8 +40,11 @@
 #include <Roster.h>
 #include <String.h>
 
+#include <QueryFile.h>
+
 #include "FilePlaylistItem.h"
 #include "FileReadWrite.h"
+#include "MainApp.h"
 
 using std::nothrow;
 
@@ -53,6 +56,7 @@ void Playlist::Listener::ItemAdded(PlaylistItem* item, int32 index) {}
 void Playlist::Listener::ItemRemoved(int32 index) {}
 void Playlist::Listener::ItemsSorted() {}
 void Playlist::Listener::CurrentItemChanged(int32 newIndex) {}
+void Playlist::Listener::ImportFailed() {}
 
 
 // #pragma mark -
@@ -241,6 +245,13 @@ int32
 Playlist::CountItems() const
 {
 	return fItems.CountItems();
+}
+
+
+bool
+Playlist::IsEmpty() const
+{
+	return fItems.IsEmpty();
 }
 
 
@@ -435,18 +446,30 @@ Playlist::AppendRefs(const BMessage* refsReceivedMessage, int32 appendIndex)
 	for (int i = 0; refsReceivedMessage->FindRef("refs", i, &ref) == B_OK;
 			i++) {
 		Playlist subPlaylist;
-		if (_IsPlaylist(_MIMEString(&ref))) {
+		BString type = _MIMEString(&ref);
+
+		if (_IsPlaylist(type)) {
 			AppendPlaylistToPlaylist(ref, &subPlaylist);
 			// Do not sort the whole playlist anymore, as that
 			// will screw up the ordering in the saved playlist.
 			sortPlaylist = false;
 		} else {
-			AppendToPlaylistRecursive(ref, &subPlaylist);
+			if (_IsQuery(type))
+				AppendQueryToPlaylist(ref, &subPlaylist);
+			else
+				AppendToPlaylistRecursive(ref, &subPlaylist);
+
 			// At least sort this subsection of the playlist
 			// if the whole playlist is not sorted anymore.
 			if (!sortPlaylist)
 				subPlaylist.Sort();
 		}
+
+		if (!subPlaylist.IsEmpty()) {
+			// Add to recent documents
+			be_roster->AddToRecentDocuments(&ref, kAppSig);
+		}
+
 		int32 subPlaylistCount = subPlaylist.CountItems();
 		AdoptPlaylist(subPlaylist, subAppendIndex);
 		subAppendIndex += subPlaylistCount;
@@ -537,6 +560,30 @@ Playlist::AppendPlaylistToPlaylist(const entry_ref& ref, Playlist* playlist)
 }
 
 
+/*static*/ void
+Playlist::AppendQueryToPlaylist(const entry_ref& ref, Playlist* playlist)
+{
+	BQueryFile query(&ref);
+	if (query.InitCheck() != B_OK)
+		return;
+
+	entry_ref foundRef;
+	while (query.GetNextRef(&foundRef) == B_OK) {
+		PlaylistItem* item = new (std::nothrow) FilePlaylistItem(foundRef);
+		if (item == NULL || !playlist->AddItem(item))
+			delete item;
+	}
+}
+
+
+void
+Playlist::NotifyImportFailed()
+{
+	BAutolock _(this);
+	_NotifyImportFailed();
+}
+
+
 // #pragma mark - private
 
 
@@ -593,6 +640,13 @@ Playlist::_IsBinaryPlaylist(const BString& mimeString)
 Playlist::_IsPlaylist(const BString& mimeString)
 {
 	return _IsTextPlaylist(mimeString) || _IsBinaryPlaylist(mimeString);
+}
+
+
+/*static*/ bool
+Playlist::_IsQuery(const BString& mimeString)
+{
+	return mimeString.Compare(BQueryFile::MimeType()) == 0;
 }
 
 
@@ -664,3 +718,14 @@ Playlist::_NotifyCurrentItemChanged(int32 newIndex) const
 	}
 }
 
+
+void
+Playlist::_NotifyImportFailed() const
+{
+	BList listeners(fListeners);
+	int32 count = listeners.CountItems();
+	for (int32 i = 0; i < count; i++) {
+		Listener* listener = (Listener*)listeners.ItemAtFast(i);
+		listener->ImportFailed();
+	}
+}

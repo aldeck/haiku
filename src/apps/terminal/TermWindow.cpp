@@ -104,7 +104,7 @@ struct TermWindow::Session {
 		id(id),
 		containerView(containerView)
 	{
-		name = "Shell ";
+		name = B_TRANSLATE("Shell ");
 		name << id;
 	}
 };
@@ -135,10 +135,11 @@ private:
 };
 
 
-TermWindow::TermWindow(BRect frame, const char* title, Arguments* args)
+TermWindow::TermWindow(BRect frame, const char* title, uint32 workspaces,
+	Arguments* args)
 	:
 	BWindow(frame, title, B_DOCUMENT_WINDOW,
-		B_CURRENT_WORKSPACE | B_QUIT_ON_WINDOW_CLOSE),
+		B_CURRENT_WORKSPACE | B_QUIT_ON_WINDOW_CLOSE, workspaces),
 	fInitialTitle(title),
 	fTabView(NULL),
 	fMenubar(NULL),
@@ -257,6 +258,11 @@ TermWindow::QuitRequested()
 			return false;
 	}
 
+	BMessage position = BMessage(MSG_SAVE_WINDOW_POSITION);
+	position.AddRect("rect", Frame());
+	position.AddInt32("workspaces", Workspaces());
+	be_app->PostMessage(&position);
+
 	return BWindow::QuitRequested();
 }
 
@@ -342,7 +348,7 @@ TermWindow::_SetupMenu()
 	fMenubar->AddItem(fFilemenu);
 
 	// Make Edit Menu.
-	fEditmenu = new BMenu("Edit");
+	fEditmenu = new BMenu(B_TRANSLATE("Edit"));
 	fEditmenu->AddItem(new BMenuItem(B_TRANSLATE("Copy"),
 		new BMessage(B_COPY),'C'));
 	fEditmenu->AddItem(new BMenuItem(B_TRANSLATE("Paste"),
@@ -578,8 +584,7 @@ TermWindow::MessageReceived(BMessage *message)
 				float mbHeight = fMenubar->Bounds().Height() + 1;
 				fSavedFrame = Frame();
 				BScreen screen(this);
-				if (fTabView->CountTabs() == 1)
-					_ActiveTermView()->ScrollBar()->Hide();
+				_ActiveTermView()->ScrollBar()->ResizeBy(0, (B_H_SCROLL_BAR_HEIGHT - 2));
 
 				fMenubar->Hide();
 				fTabView->ResizeBy(0, mbHeight);
@@ -594,7 +599,7 @@ TermWindow::MessageReceived(BMessage *message)
 				_ActiveTermView()->DisableResizeView();
 				float mbHeight = fMenubar->Bounds().Height() + 1;
 				fMenubar->Show();
-				_ActiveTermView()->ScrollBar()->Show();
+				_ActiveTermView()->ScrollBar()->ResizeBy(0, -(B_H_SCROLL_BAR_HEIGHT - 2));
 				ResizeTo(fSavedFrame.Width(), fSavedFrame.Height());
 				MoveTo(fSavedFrame.left, fSavedFrame.top);
 				fTabView->ResizeBy(0, -mbHeight);
@@ -836,6 +841,10 @@ TermWindow::_AddTab(Arguments* args)
 		session->windowTitle = fInitialTitle;
 		fSessions.AddItem(session);
 
+		BFont font;
+		_GetPreferredFont(font);
+		view->SetTermFont(&font);
+
 		int width, height;
 		view->GetFontSize(&width, &height);
 
@@ -872,10 +881,6 @@ TermWindow::_AddTab(Arguments* args)
 		view->SetMouseClipboard(gMouseClipboard);
 		view->SetEncoding(EncodingID(
 			PrefHandler::Default()->getString(PREF_TEXT_ENCODING)));
-
-		BFont font;
-		_GetPreferredFont(font);
-		view->SetTermFont(&font);
 
 		_SetTermColors(containerView);
 

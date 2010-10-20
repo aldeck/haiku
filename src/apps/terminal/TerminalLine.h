@@ -12,7 +12,7 @@
 
 struct TerminalCell {
 	UTF8Char		character;
-	uint16			attributes;
+	uint32			attributes;
 };
 
 
@@ -30,7 +30,7 @@ struct TerminalLine {
 
 
 struct AttributesRun {
-	uint16	attributes;
+	uint32	attributes;
 	uint16	offset;			// character offset
 	uint16	length;			// length of the run in characters
 };

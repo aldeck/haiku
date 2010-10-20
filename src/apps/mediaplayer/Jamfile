@@ -1,10 +1,9 @@
 SubDir HAIKU_TOP src apps mediaplayer ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
 # for BRecentItems
 UsePublicHeaders [ FDirName be_apps Tracker ] ;
 UsePrivateHeaders interface shared ;
+UseLibraryHeaders agg ;
 
 # source directories
 local sourceDirs =
@@ -25,11 +24,14 @@ for sourceDir in $(sourceDirs) {
 
 Application MediaPlayer :
 	# interface
-	DrawingTidbits.cpp
+	DurationView.cpp
 	PeakView.cpp
+	PlayPauseButton.cpp
 	PositionToolTip.cpp
 	SeekSlider.cpp
-	TransportButton.cpp
+	SubtitleBitmap.cpp
+	SymbolButton.cpp
+	TransportControlGroup.cpp
 	VolumeSlider.cpp
 
 	# media_node_framework
@@ -75,10 +77,14 @@ Application MediaPlayer :
 
 	# supplier
 	AudioTrackSupplier.cpp
+	MediaFileTrackSupplier.cpp
 	MediaTrackAudioSupplier.cpp
 	MediaTrackVideoSupplier.cpp
 	ProxyAudioSupplier.cpp
 	ProxyVideoSupplier.cpp
+	TrackSupplier.cpp
+	SubTitles.cpp
+	SubTitlesSRT.cpp
 	VideoTrackSupplier.cpp
 
 	# support
@@ -86,6 +92,7 @@ Application MediaPlayer :
 	ColorSpaceToString.cpp
 	Command.cpp
 	CommandStack.cpp
+	DurationToString.cpp
 	Event.cpp
 	EventQueue.cpp
 	FileReadWrite.cpp
@@ -95,6 +102,7 @@ Application MediaPlayer :
 	Notifier.cpp
 	RWLocker.cpp
 	SettingsMessage.cpp
+	StackBlurFilter.cpp
 
 	# .
 	Controller.cpp
@@ -103,10 +111,10 @@ Application MediaPlayer :
 	InfoWin.cpp
 	MainApp.cpp
 	MainWin.cpp
-	TransportControlGroup.cpp
 	VideoView.cpp
 
-	: be game media tracker translation textencoding $(TARGET_LIBSTDC++)
+	: be game locale media tracker translation textencoding $(TARGET_LIBSTDC++)
+		libshared.a
 	: MediaPlayer.rdef
 ;
 

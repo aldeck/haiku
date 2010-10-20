@@ -83,6 +83,8 @@ acpi_std_ops(int32 op,...)
 		case B_MODULE_INIT:
 		{
 			ACPI_STATUS status;
+			ACPI_OBJECT arg;
+			ACPI_OBJECT_LIST parameter;
 			uint32 flags;
 			void *settings;
 			bool acpiDisabled = false;
@@ -171,6 +173,14 @@ acpi_std_ops(int32 op,...)
 					AcpiFormatException(status));
 				goto err;
 			}
+
+			arg.Integer.Type = ACPI_TYPE_INTEGER;
+			arg.Integer.Value = 0;
+
+			parameter.Count = 1;
+			parameter.Pointer = &arg;
+	
+			AcpiEvaluateObject(NULL, "\\_PIC", &parameter, NULL);
 
 			flags = acpiAvoidFullInit ?
 					ACPI_NO_DEVICE_INIT | ACPI_NO_OBJECT_INIT :
@@ -567,6 +577,14 @@ get_irq_routing_table(acpi_handle busDeviceHandle, acpi_data *retBuffer)
 
 
 status_t
+get_current_resources(acpi_handle busDeviceHandle, acpi_data *retBuffer)
+{
+	return AcpiGetCurrentResources(busDeviceHandle, (ACPI_BUFFER*)retBuffer)
+		== AE_OK ? B_OK : B_ERROR;
+}
+
+
+status_t
 prepare_sleep_state(uint8 state, void (*wakeFunc)(void), size_t size)
 {
 	ACPI_STATUS acpiStatus;
@@ -680,6 +698,7 @@ struct acpi_module_info gACPIModule = {
 	evaluate_object,
 	evaluate_method,
 	get_irq_routing_table,
+	get_current_resources,
 	prepare_sleep_state,
 	enter_sleep_state,
 	reboot

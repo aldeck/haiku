@@ -21,7 +21,7 @@ typedef struct net_buffer {
 
 	struct sockaddr*		source;
 	struct sockaddr*		destination;
-	struct net_interface_address*	interface_address;
+	struct net_interface_address* interface_address;
 	union {
 		struct {
 			uint16			start;
@@ -29,6 +29,7 @@ typedef struct net_buffer {
 		}					fragment;
 		uint32				sequence;
 		uint32				offset;
+		uint32				index;
 		int32				type;
 	};
 	uint32					flags;

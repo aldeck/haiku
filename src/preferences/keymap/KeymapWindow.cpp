@@ -244,7 +244,7 @@ KeymapWindow::MessageReceived(BMessage* message)
 			if (item != NULL) {
 				BFont font;
 				font.SetFamilyAndStyle(item->Label(), NULL);
-				fKeyboardLayoutView->SetFont(font);
+				fKeyboardLayoutView->SetBaseFont(font);
 				fTextControl->TextView()->SetFontAndColor(&font);
 			}
 			break;
@@ -508,7 +508,8 @@ KeymapWindow::_CreateMapLists()
 		.Add(new BStringView("system", B_TRANSLATE("System:")))
 		.Add(systemScroller, 3)
 		.Add(new BStringView("user", B_TRANSLATE("User:")))
-		.Add(userScroller);
+		.Add(userScroller)
+		.TopView();
 }
 
 

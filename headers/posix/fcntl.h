@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2009, Haiku Inc. All Rights Reserved.
+ * Copyright 2002-2010, Haiku Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _FCNTL_H
@@ -48,8 +48,6 @@
 #define	O_NONBLOCK		0x00000080	/* non blocking io */
 #define	O_NDELAY		O_NONBLOCK
 #define O_APPEND		0x00000800	/* to end of file */
-#define O_TEXT			0x00004000	/* CR-LF translation */
-#define O_BINARY		0x00008000	/* no translation */
 #define O_SYNC			0x00010000	/* write synchronized I/O file integrity */
 #define O_RSYNC			0x00020000	/* read synchronized I/O file integrity */
 #define O_DSYNC			0x00040000	/* write synchronized I/O data integrity */
@@ -59,9 +57,7 @@
 #define O_DIRECT		O_NOCACHE
 #define O_DIRECTORY		0x00200000	/* fail if not a directory */
 
-/* TODO: currently not implemented additions: */
-#define O_TEMPORARY		0x00400000	/* used to avoid writing temporary files to disk */
-
+/* flags for the *at() functions */
 #define AT_FDCWD		(-1)		/* CWD FD for the *at() functions */
 
 #define AT_SYMLINK_NOFOLLOW	0x01	/* fstatat(), fchmodat(), fchownat(),

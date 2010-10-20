@@ -77,6 +77,9 @@ ControllerView::MessageReceived(BMessage* message)
 			_CheckSkippable();
 			break;
 
+		case MSG_PLAYLIST_IMPORT_FAILED:
+			break;
+
 		default:
 			TransportControlGroup::MessageReceived(message);
 	}
@@ -135,7 +138,10 @@ void
 ControllerView::SkipBackward()
 {
 	BAutolock _(fPlaylist);
-	fPlaylist->SetCurrentItemIndex(fPlaylist->CurrentItemIndex() - 1);
+	int32 index = fPlaylist->CurrentItemIndex() - 1;
+	if (index < 0)
+		index = 0;
+	fPlaylist->SetCurrentItemIndex(index);
 }
 
 
@@ -143,7 +149,10 @@ void
 ControllerView::SkipForward()
 {
 	BAutolock _(fPlaylist);
-	fPlaylist->SetCurrentItemIndex(fPlaylist->CurrentItemIndex() + 1);
+	int32 index = fPlaylist->CurrentItemIndex() + 1;
+	if (index >= fPlaylist->CountItems())
+		index = fPlaylist->CountItems() - 1;
+	fPlaylist->SetCurrentItemIndex(index);
 }
 
 

@@ -10,6 +10,7 @@
 /* int sigsetjmp(jmp_buf buffer, int saveMask) */
 FUNCTION(__sigsetjmp):
 FUNCTION(sigsetjmp):
+	stmdb   sp!, {r4, lr}
         stmia   r0, {r0-r14}
         str     lr,[r0, #60]
         mrs     r1,cpsr
@@ -18,6 +19,7 @@ FUNCTION(sigsetjmp):
         mov     r0, #0
 
 	bl		__setjmp_save_sigs
+	ldmia   sp!, {r4, pc}
 FUNCTION_END(__sigsetjmp)
 FUNCTION_END(sigsetjmp)
 
@@ -30,7 +32,7 @@ FUNCTION(setjmp):
         str     r1,[r0,#64]
         ldr     r1,[r0,#4]
         mov     r0, #0
-	bl	__sigsetjmp
+	bx	lr
 FUNCTION_END(setjmp)
 
 #pragma weak _setjmp=setjmp

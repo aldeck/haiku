@@ -27,7 +27,7 @@ static const BString skDefaultString;
 TimeZoneListItem::TimeZoneListItem(const char* text, BCountry* country,
 	BTimeZone* timeZone)
 	:
-	BStringItem(text),
+	BStringItem(text, 0, false),
 	fIcon(NULL),
 	fTimeZone(timeZone)
 {
@@ -109,12 +109,12 @@ TimeZoneListItem::TimeZone() const
 
 
 const BString&
-TimeZoneListItem::Code() const
+TimeZoneListItem::ID() const
 {
 	if (fTimeZone == NULL)
 		return skDefaultString;
 
-	return fTimeZone->Code();
+	return fTimeZone->ID();
 }
 
 

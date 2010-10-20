@@ -77,7 +77,7 @@ All rights reserved.
 
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "FindPanel"
 
 const char *kAllMimeTypes = "mime/ALLTYPES";
 
@@ -1220,7 +1220,8 @@ FindPanel::BuildAttrQuery(BQuery *query, bool &dynamicDate) const
 						DEBUG_ONLY(time_t result =)
 						parsedate_etc(textControl->TextView()->Text(), -1, &flags);
 						dynamicDate = (flags & PARSEDATE_RELATIVE_TIME) != 0;
-						PRINT(("parsedate_etc - date is %srelative, %l\n",
+						PRINT(("parsedate_etc - date is %srelative, %"
+							B_PRIdTIME "\n",
 							dynamicDate ? "" : "not ", result));
 
 						query->PushDate(textControl->TextView()->Text());
@@ -2802,7 +2803,7 @@ TAttrView::GetDefaultName(BString &result) const
 	if (item != NULL)
 		result << item->Label();
 	else
-		result << "Name";
+		result << B_TRANSLATE("Name");
 
 	if (item->Submenu() != NULL)
 		item = item->Submenu()->FindMarked();

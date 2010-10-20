@@ -183,7 +183,7 @@ icmp_to_net_error(uint8 type, uint8 code)
 					return B_NET_ERROR_REASSEMBLY_TIME_EXCEEDED;
 			}
 			break;
-		
+
 		default:
 			break;
 	}
@@ -397,7 +397,7 @@ icmp_read_avail(net_protocol* protocol)
 }
 
 
-struct net_domain* 
+struct net_domain*
 icmp_get_domain(net_protocol* protocol)
 {
 	return protocol->next->module->get_domain(protocol->next);
@@ -533,7 +533,8 @@ icmp_error_reply(net_protocol* protocol, net_buffer* buffer, net_error error,
 {
 	TRACE("icmp_error_reply(code %s)\n", net_error_to_string(error));
 
-	uint8 icmpType, icmpCode;
+	uint8 icmpType = 0;
+	uint8 icmpCode = 0;
 	net_error_to_icmp(error, icmpType, icmpCode);
 
 	TRACE("  icmp type %u, code %u\n", icmpType, icmpCode);
@@ -561,7 +562,7 @@ icmp_error_reply(net_protocol* protocol, net_buffer* buffer, net_error error,
 	}
 
 	// a datagram to an IP multicast or broadcast address,
-	if ((buffer->flags & (MSG_BCAST | MSG_MCAST)) != 0) 
+	if ((buffer->flags & (MSG_BCAST | MSG_MCAST)) != 0)
 		return B_ERROR;
 
 	// a non-initial fragment
@@ -571,7 +572,7 @@ icmp_error_reply(net_protocol* protocol, net_buffer* buffer, net_error error,
 	net_buffer* reply = gBufferModule->create(256);
 	if (reply == NULL)
 		return B_NO_MEMORY;
-	
+
 	if (buffer->destination->sa_family == AF_INET) {
 		memcpy(reply->source, buffer->destination, buffer->destination->sa_len);
 		memcpy(reply->destination, buffer->source, buffer->source->sa_len);

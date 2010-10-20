@@ -85,6 +85,22 @@ static AddressTable sAddressTable;
 static uint32 sInterfaceIndex;
 
 
+#if 0
+//! For debugging purposes only
+void
+dump_interface_refs(void)
+{
+	MutexLocker locker(sLock);
+
+	InterfaceList::Iterator iterator = sInterfaces.GetIterator();
+	while (Interface* interface = iterator.Next()) {
+		dprintf("%p: %s, %ld\n", interface, interface->name,
+			interface->CountReferences());
+	}
+}
+#endif
+
+
 #if ENABLE_DEBUGGER_COMMANDS
 
 
@@ -92,11 +108,21 @@ static int
 dump_interface(int argc, char** argv)
 {
 	if (argc != 2) {
-		kprintf("usage: %s [address]\n", argv[0]);
+		kprintf("usage: %s [name|address]\n", argv[0]);
 		return 0;
 	}
 
-	Interface* interface = (Interface*)parse_expression(argv[1]);
+	Interface* interface = NULL;
+
+	InterfaceList::Iterator iterator = sInterfaces.GetIterator();
+	while ((interface = iterator.Next()) != NULL) {
+		if (!strcmp(argv[1], interface->name))
+			break;
+	}
+
+	if (interface == NULL)
+		interface = (Interface*)parse_expression(argv[1]);
+
 	interface->Dump();
 
 	return 0;
@@ -183,7 +209,7 @@ InterfaceAddress::SetTo(const ifaliasreq& request)
 {
 	status_t status = SetLocal((const sockaddr*)&request.ifra_addr);
 	if (status == B_OK)
-		status = SetDestination((const sockaddr*)&request.ifra_broadaddr);	
+		status = SetDestination((const sockaddr*)&request.ifra_broadaddr);
 	if (status == B_OK)
 		status = SetMask((const sockaddr*)&request.ifra_mask);
 
@@ -295,7 +321,7 @@ InterfaceAddress::Dump(size_t index, bool hideInterface)
 		kprintf("%2zu. ", index);
 	else
 		kprintf("    ");
-	
+
 	if (!hideInterface) {
 		kprintf("interface:   %p (%s)\n    ", interface,
 			interface != NULL ? interface->name : "-");
@@ -325,6 +351,8 @@ InterfaceAddress::Dump(size_t index, bool hideInterface)
 	} else
 		strcpy(buffer, "-");
 	kprintf("    destination: %s\n", buffer);
+
+	kprintf("    ref count:   %" B_PRId32 "\n", CountReferences());
 }
 
 
@@ -533,6 +561,28 @@ Interface::AddressForDestination(net_domain* domain,
 }
 
 
+/*!	Returns a reference to the InterfaceAddress that has the specified
+	\a local address.
+*/
+InterfaceAddress*
+Interface::AddressForLocal(net_domain* domain, const sockaddr* local)
+{
+	RecursiveLocker locker(fLock);
+
+	AddressList::Iterator iterator = fAddresses.GetIterator();
+	while (InterfaceAddress* address = iterator.Next()) {
+		if (address->domain == domain
+			&& address->local != NULL
+			&& domain->address_module->equal_addresses(address->local, local)) {
+			address->AcquireReference();
+			return address;
+		}
+	}
+
+	return NULL;
+}
+
+
 status_t
 Interface::AddAddress(InterfaceAddress* address)
 {
@@ -543,7 +593,7 @@ Interface::AddAddress(InterfaceAddress* address)
 	RecursiveLocker locker(fLock);
 	fAddresses.Add(address);
 	locker.Unlock();
-	
+
 	MutexLocker hashLocker(sHashLock);
 	sAddressTable.Insert(address);
 	return B_OK;
@@ -563,7 +613,7 @@ Interface::RemoveAddress(InterfaceAddress* address)
 	address->GetDoublyLinkedListLink()->next = NULL;
 
 	locker.Unlock();
-	
+
 	MutexLocker hashLocker(sHashLock);
 	sAddressTable.Remove(address);
 }
@@ -599,10 +649,10 @@ InterfaceAddress*
 Interface::AddressAt(size_t index)
 {
 	RecursiveLocker locker(fLock);
-	
+
 	AddressList::Iterator iterator = fAddresses.GetIterator();
 	size_t i = 0;
-	
+
 	while (InterfaceAddress* address = iterator.Next()) {
 		if (i++ == index) {
 			address->AcquireReference();
@@ -611,6 +661,25 @@ Interface::AddressAt(size_t index)
 	}
 
 	return NULL;
+}
+
+
+int32
+Interface::IndexOfAddress(InterfaceAddress* address)
+{
+	RecursiveLocker locker(fLock);
+
+	AddressList::Iterator iterator = fAddresses.GetIterator();
+	int32 index = 0;
+
+	while (iterator.HasNext()) {
+		if (address == iterator.Next())
+			return index;
+
+		index++;
+	}
+
+	return -1;
 }
 
 
@@ -647,6 +716,9 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 	switch (option) {
 		case SIOCSIFFLAGS:
 		{
+			if (length != sizeof(ifreq))
+				return B_BAD_VALUE;
+
 			uint32 requestFlags = request.ifr_flags;
 			uint32 oldFlags = flags;
 			status_t status = B_OK;
@@ -672,9 +744,12 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 
 			return status;
 		}
-		
+
 		case B_SOCKET_SET_ALIAS:
 		{
+			if (length != sizeof(ifaliasreq))
+				return B_BAD_VALUE;
+
 			RecursiveLocker locker(fLock);
 
 			ifaliasreq aliasRequest;
@@ -682,14 +757,41 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 					!= B_OK)
 				return B_BAD_ADDRESS;
 
-			InterfaceAddress* address = AddressAt(aliasRequest.ifra_index);
+			InterfaceAddress* address = NULL;
+			if (aliasRequest.ifra_index < 0) {
+				if (!domain->address_module->is_empty_address(
+						(const sockaddr*)&aliasRequest.ifra_addr, false)) {
+					// Find first address that matches the local address
+					address = AddressForLocal(domain,
+						(const sockaddr*)&aliasRequest.ifra_addr);
+				}
+				if (address == NULL) {
+					// Find first address for family
+					address = FirstForFamily(domain->family);
+				}
+				if (address == NULL) {
+					// Create new on the fly
+					address = new(std::nothrow) InterfaceAddress(this, domain);
+					if (address == NULL)
+						return B_NO_MEMORY;
+
+					status_t status = AddAddress(address);
+					if (status != B_OK) {
+						delete address;
+						return status;
+					}
+
+					// Note, even if setting the address failed, the empty
+					// address added here will still be added to the interface.
+					address->AcquireReference();
+				}
+			} else
+				address = AddressAt(aliasRequest.ifra_index);
+
 			if (address == NULL)
 				return B_BAD_VALUE;
 
 			status_t status = B_OK;
-			address->AcquireReference();
-				// _ChangeAddress() currently unlocks, so we need another
-				// reference to make sure "address" is not going away.
 
 			if (!domain->address_module->equal_addresses(
 					(sockaddr*)&aliasRequest.ifra_addr, address->local)) {
@@ -698,14 +800,18 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 			}
 
 			if (status == B_OK && !domain->address_module->equal_addresses(
-					(sockaddr*)&aliasRequest.ifra_mask, address->mask)) {
+					(sockaddr*)&aliasRequest.ifra_mask, address->mask)
+				&& !domain->address_module->is_empty_address(
+					(sockaddr*)&aliasRequest.ifra_mask, false)) {
 				status = _ChangeAddress(locker, address, SIOCSIFNETMASK,
 					address->mask, (sockaddr*)&aliasRequest.ifra_mask);
 			}
 
 			if (status == B_OK && !domain->address_module->equal_addresses(
 					(sockaddr*)&aliasRequest.ifra_destination,
-					address->destination)) {
+					address->destination)
+				&& !domain->address_module->is_empty_address(
+					(sockaddr*)&aliasRequest.ifra_destination, false)) {
 				status = _ChangeAddress(locker, address,
 					(domain->address_module->flags
 						& NET_ADDRESS_MODULE_FLAG_BROADCAST_ADDRESS) != 0
@@ -724,8 +830,11 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 		case SIOCSIFDSTADDR:
 		case SIOCDIFADDR:
 		{
+			if (length != sizeof(ifreq))
+				return B_BAD_VALUE;
+
 			RecursiveLocker locker(fLock);
-			
+
 			InterfaceAddress* address = NULL;
 			sockaddr_storage newAddress;
 
@@ -746,13 +855,28 @@ Interface::Control(net_domain* domain, int32 option, ifreq& request,
 							address->local, (sockaddr*)&newAddress))
 						break;
 				}
+
+				if (address == NULL)
+					return B_BAD_VALUE;
 			} else {
 				// Just use the first address for this family
 				address = _FirstForFamily(domain->family);
-			}
+				if (address == NULL) {
+					// Create new on the fly
+					address = new(std::nothrow) InterfaceAddress(this, domain);
+					if (address == NULL)
+						return B_NO_MEMORY;
 
-			if (address == NULL)
-				return B_BAD_VALUE;
+					status_t status = AddAddress(address);
+					if (status != B_OK) {
+						delete address;
+						return status;
+					}
+
+					// Note, even if setting the address failed, the empty
+					// address added here will still be added to the interface.
+				}
+			}
 
 			return _ChangeAddress(locker, address, option,
 				*address->AddressFor(option),
@@ -796,6 +920,8 @@ Interface::SetDown()
 void
 Interface::WentDown()
 {
+	TRACE("Interface %p: went down\n", this);
+
 	RecursiveLocker locker(fLock);
 
 	AddressList::Iterator iterator = fAddresses.GetIterator();
@@ -810,7 +936,7 @@ status_t
 Interface::CreateDomainDatalinkIfNeeded(net_domain* domain)
 {
 	RecursiveLocker locker(fLock);
-	
+
 	if (fDatalinkTable.Lookup(domain->family) != NULL)
 		return B_OK;
 
@@ -820,6 +946,8 @@ Interface::CreateDomainDatalinkIfNeeded(net_domain* domain)
 	if (datalink == NULL)
 		return B_NO_MEMORY;
 
+	datalink->first_protocol = NULL;
+	datalink->first_info = NULL;
 	datalink->domain = domain;
 
 	// setup direct route for bound devices
@@ -859,7 +987,7 @@ Interface::DomainDatalink(uint8 family)
 	// Note: domain datalinks cannot be removed while the interface is alive,
 	// since this would require us either to hold the lock while calling this
 	// function, or introduce reference counting for the domain_datalink
-	// structure. 
+	// structure.
 	RecursiveLocker locker(fLock);
 	return fDatalinkTable.Lookup(family);
 }
@@ -879,6 +1007,7 @@ Interface::Dump() const
 	kprintf("type:                %u\n", type);
 	kprintf("mtu:                 %" B_PRIu32 "\n", mtu);
 	kprintf("metric:              %" B_PRIu32 "\n", metric);
+	kprintf("ref count:           %" B_PRId32 "\n", CountReferences());
 
 	kprintf("datalink protocols:\n");
 
@@ -1050,7 +1179,7 @@ add_interface(const char* name, net_domain_private* domain,
 	const ifaliasreq& request, net_device_interface* deviceInterface)
 {
 	MutexLocker locker(sLock);
-	
+
 	if (find_interface(name) != NULL)
 		return B_NAME_IN_USE;
 
@@ -1088,7 +1217,7 @@ remove_interface(Interface* interface)
 	locker.Unlock();
 
 	notify_interface_removed(interface);
-	
+
 	interface->ReleaseReference();
 }
 
@@ -1191,7 +1320,7 @@ update_interface_address(InterfaceAddress* interfaceAddress, int32 option,
 	if (status == B_OK) {
 		sockaddr* address = *_address;
 
-		if (option == SIOCSIFADDR || option == SIOCSIFNETMASK) {
+		if (option == SIOCSIFADDR) {
 			// Reset netmask and broadcast addresses to defaults
 			net_domain* domain = interfaceAddress->domain;
 			sockaddr* netmask = NULL;
@@ -1232,10 +1361,11 @@ get_interface(net_domain* domain, uint32 index)
 {
 	MutexLocker locker(sLock);
 
+	Interface* interface;
 	if (index == 0)
-		return sInterfaces.First();
-	
-	Interface* interface = find_interface(index);
+		interface = sInterfaces.First();
+	else
+		interface = find_interface(index);
 	if (interface == NULL)
 		return NULL;
 
@@ -1279,7 +1409,7 @@ get_interface_for_device(net_domain* domain, uint32 index)
 			return interface;
 		}
 	}
-	
+
 	return NULL;
 }
 
@@ -1340,7 +1470,7 @@ get_interface_address_for_destination(net_domain* domain,
 	const sockaddr* destination)
 {
 	MutexLocker locker(sLock);
-	
+
 	InterfaceList::Iterator iterator = sInterfaces.GetIterator();
 	while (Interface* interface = iterator.Next()) {
 		InterfaceAddress* address

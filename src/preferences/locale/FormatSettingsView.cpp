@@ -5,7 +5,9 @@
 
 
 #include "FormatSettingsView.h"
-#include "Locale.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 
 #include <Alert.h>
 #include <Application.h>
@@ -32,9 +34,8 @@
 #include <TextControl.h>
 #include <Window.h>
 
-#include <iostream>
+#include "LocalePreflet.h"
 
-#include <stdio.h>
 
 using BPrivate::gMutableLocaleRoster;
 
@@ -49,12 +50,12 @@ public:
 		:
 		BMenuItem(label, _MenuMessage(code, field))
 	{
-		fIcuCode = code;
+		fICUCode = code;
 	}
 
 	const BString& ICUCode() const
 	{
-		return fIcuCode;
+		return fICUCode;
 	}
 
 private:
@@ -68,7 +69,7 @@ private:
 	}
 
 private:
-	BString			fIcuCode;
+	BString			fICUCode;
 };
 
 
@@ -90,7 +91,7 @@ CreateDateMenu(BMenuField** field, bool longFormat = true)
 		dayMenu->AddItem(new DateMenuItem(B_TRANSLATE("Day in year"),
 			"D", *field));
 		dayMenu->AddItem(new DateMenuItem(B_TRANSLATE("Day in year (2 digits)"),
-			 "DD", *field));
+			"DD", *field));
 		dayMenu->AddItem(new DateMenuItem(B_TRANSLATE("Day in year (3 digits)"),
 			"DDD", *field));
 		*/
@@ -153,8 +154,6 @@ FormatView::FormatView(const BLocale& locale)
 	BView("WindowsSettingsView", B_FRAME_EVENTS),
 	fLocale(locale)
 {
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-
 	fLongDateExampleView = new BStringView("", "");
 
 	for (int i = 0; i < 4; i++) {
@@ -220,7 +219,7 @@ FormatView::FormatView(const BLocale& locale)
 		new BMessage(kSettingsContentsModified));
 	// Unit system (US/Metric) (radio)
 
-	BTextControl* currencySymbol = new BTextControl("",
+	fCurrencySymbolView = new BTextControl("",
 		B_TRANSLATE("Currency symbol:"), "",
 		new BMessage(kSettingsContentsModified));
 	menu = new BPopUpMenu(B_TRANSLATE("Negative marker"));
@@ -236,22 +235,17 @@ FormatView::FormatView(const BLocale& locale)
 	BCheckBox* currencyLeadingZero = new BCheckBox("",
 		B_TRANSLATE("Leading 0"), new BMessage(kSettingsContentsModified));
 
-	BBox* formatBox = new BBox("Symbol position");
-	formatBox->SetLabel(B_TRANSLATE("Symbol position"));
-
-	BRadioButton* beforeRadioButton = new BRadioButton("",
+	fCurrencySymbolBefore = new BRadioButton("CurrencySymbolPosition",
 		B_TRANSLATE("Before"), new BMessage(kSettingsContentsModified));
 
-	BRadioButton* afterRadioButton = new BRadioButton("",
+	fCurrencySymbolAfter = new BRadioButton("CurrencySymbolPosition",
 		B_TRANSLATE("After"), new BMessage(kSettingsContentsModified));
 
-	formatBox->AddChild(BGroupLayoutBuilder(B_VERTICAL)
-		.Add(beforeRadioButton)
-		.Add(afterRadioButton)
-		.SetInsets(spacing, 0, spacing, 0));
+	fMonetaryView = new BStringView("", "");
 
 	_UpdateExamples();
 	_ParseDateFormat();
+	_ParseCurrencyFormat();
 
 	fDateBox = new BBox(B_TRANSLATE("Date"));
 	fTimeBox = new BBox(B_TRANSLATE("Time"));
@@ -263,62 +257,60 @@ FormatView::FormatView(const BLocale& locale)
 	fNumbersBox->SetLabel(B_TRANSLATE("Numbers"));
 	fCurrencyBox->SetLabel(B_TRANSLATE("Currency"));
 
-	fDateBox->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL)
-		.AddGroup(B_VERTICAL, spacing / 2)
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(new BStringView("", B_TRANSLATE("Long format:")))
-				.Add(fLongDateExampleView)
-				.AddGlue()
-				.End()
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(fLongDateMenu[0])
-				.Add(fLongDateSeparator[0])
-				.End()
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(fLongDateMenu[1])
-				.Add(fLongDateSeparator[1])
-				.End()
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(fLongDateMenu[2])
-				.Add(fLongDateSeparator[2])
-				.End()
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(fLongDateMenu[3])
-				.Add(fLongDateSeparator[3])
-				.End()
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(new BStringView("", B_TRANSLATE("Short format:")))
-				.Add(fShortDateExampleView)
-				.AddGlue()
-				.End()
-			.Add(fDateMenu[0])
-			.Add(fDateMenu[1])
-			.Add(fDateMenu[2])
+	fDateBox->AddChild(BLayoutBuilder::Group<>(B_VERTICAL, spacing / 2)
+		.SetInsets(spacing, spacing, spacing, spacing)
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(new BStringView("", B_TRANSLATE("Long format:")))
+			.Add(fLongDateExampleView)
+			.AddGlue()
 			.End()
-		.SetInsets(spacing, spacing, spacing, spacing));
-
-	fTimeBox->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
-		.AddGroup(B_VERTICAL, spacing / 2)
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(new BStringView("", B_TRANSLATE("Long format:")))
-				.Add(fLongTimeExampleView)
-				.AddGlue()
-				.End()
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(new BStringView("", B_TRANSLATE("Short format:")))
-				.Add(fShortTimeExampleView)
-				.AddGlue()
-				.End()
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(f24HrRadioButton)
-				.Add(f12HrRadioButton)
-				.AddGlue()
-				.End()
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(fLongDateMenu[0])
+			.Add(fLongDateSeparator[0])
 			.End()
-		.SetInsets(spacing, spacing, spacing, spacing));
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(fLongDateMenu[1])
+			.Add(fLongDateSeparator[1])
+			.End()
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(fLongDateMenu[2])
+			.Add(fLongDateSeparator[2])
+			.End()
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(fLongDateMenu[3])
+			.Add(fLongDateSeparator[3])
+			.End()
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(new BStringView("", B_TRANSLATE("Short format:")))
+			.Add(fShortDateExampleView)
+			.AddGlue()
+			.End()
+		.Add(fDateMenu[0])
+		.Add(fDateMenu[1])
+		.Add(fDateMenu[2])
+		.View());
 
-	fNumbersBox->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
-		.AddGroup(B_VERTICAL, spacing / 2)
+	fTimeBox->AddChild(BLayoutBuilder::Group<>(B_VERTICAL, spacing / 2)
+		.SetInsets(spacing, spacing, spacing, spacing)
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(new BStringView("", B_TRANSLATE("Long format:")))
+			.Add(fLongTimeExampleView)
+			.AddGlue()
+			.End()
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(new BStringView("", B_TRANSLATE("Short format:")))
+			.Add(fShortTimeExampleView)
+			.AddGlue()
+			.End()
+		.AddGroup(B_HORIZONTAL, spacing)
+			.Add(f24HrRadioButton)
+			.Add(f12HrRadioButton)
+			.AddGlue()
+			.End()
+		.View());
+
+	fNumbersBox->AddChild(BLayoutBuilder::Group<>(B_VERTICAL, spacing / 2)
+		.SetInsets(spacing, spacing, spacing, spacing)
 			.AddGroup(B_HORIZONTAL, spacing)
 				.Add(new BStringView("", B_TRANSLATE("Example:")))
 				.Add(fNumberFormatExampleView)
@@ -328,23 +320,27 @@ FormatView::FormatView(const BLocale& locale)
 			.Add(numberDecimal)
 			.Add(numberLeadingZero)
 			.Add(numberList)
-			.End()
-		.SetInsets(spacing, spacing, spacing, spacing));
+			.View());
 
-	fCurrencyBox->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
-		.AddGroup(B_VERTICAL, spacing / 2)
-			.Add(currencySymbol)
-			.Add(currencyNegative)
-			.Add(currencyDecimal)
-			.Add(currencyLeadingZero)
-			.AddGroup(B_HORIZONTAL, spacing)
-				.Add(formatBox)
-				.AddGlue()
-				.End()
+	fCurrencyBox->AddChild(BLayoutBuilder::Group<>(B_VERTICAL, spacing / 2)
+		.SetInsets(spacing, spacing, spacing, spacing)
+		.Add(fMonetaryView)
+		.Add(fCurrencySymbolView)
+		.AddGroup(B_HORIZONTAL, spacing)
+			.AddGlue()
+			.Add(fCurrencySymbolBefore)
+			.Add(fCurrencySymbolAfter)
 			.End()
-		.SetInsets(spacing, spacing, spacing, spacing));
+		.Add(currencyNegative)
+		.Add(currencyDecimal)
+		.Add(currencyLeadingZero)
+		.View());
 
-	AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
+
+	BGroupLayout* rootLayout = new BGroupLayout(B_HORIZONTAL, spacing);
+	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+	SetLayout(rootLayout);
+	BLayoutBuilder::Group<>(rootLayout)
 		.AddGroup(B_VERTICAL, spacing)
 			.Add(fDateBox)
 			.Add(fTimeBox)
@@ -353,8 +349,7 @@ FormatView::FormatView(const BLocale& locale)
 		.AddGroup(B_VERTICAL, spacing)
 			.Add(fNumbersBox)
 			.Add(fCurrencyBox)
-			.AddGlue()
-			.End());
+			.AddGlue();
 }
 
 
@@ -419,31 +414,32 @@ FormatView::MessageReceived(BMessage* message)
 			menuField->MenuItem()->SetLabel(menuItem->Label());
 
 			_UpdateLongDateFormatString();
+			// fall through
 		}
-		// pass trough
+
 		case kSettingsContentsModified:
-			{
-				int32 separator = 0;
-				BMenuItem* item = fSeparatorMenuField->Menu()->FindMarked();
-				if (item) {
-					separator = fSeparatorMenuField->Menu()->IndexOf(item);
-					if (separator >= 0)
-						// settings.SetTimeFormatSeparator(
-						//	(FormatSeparator)separator);
-						;
-				}
-
-				// Make the notification message and send it to the tracker:
-				BMessage notificationMessage;
-				notificationMessage.AddInt32("TimeFormatSeparator", separator);
-				notificationMessage.AddBool("24HrClock",
-					f24HrRadioButton->Value() == 1);
-
-				_UpdateExamples();
-
-				Window()->PostMessage(kSettingsContentsModified);
-				break;
+		{
+			int32 separator = 0;
+			BMenuItem* item = fSeparatorMenuField->Menu()->FindMarked();
+			if (item) {
+				separator = fSeparatorMenuField->Menu()->IndexOf(item);
+				if (separator >= 0)
+					// settings.SetTimeFormatSeparator(
+					//	(FormatSeparator)separator);
+					;
 			}
+
+			// Make the notification message and send it to the tracker:
+			BMessage notificationMessage;
+			notificationMessage.AddInt32("TimeFormatSeparator", separator);
+			notificationMessage.AddBool("24HrClock",
+				f24HrRadioButton->Value() == 1);
+
+			_UpdateExamples();
+
+			Window()->PostMessage(kSettingsContentsModified);
+			break;
+		}
 
 		case kClockFormatChange:
 		{
@@ -498,41 +494,6 @@ FormatView::MessageReceived(BMessage* message)
 
 
 void
-FormatView::SetDefaults()
-{
-	/*
-	TrackerSettings settings;
-
-	settings.SetTimeFormatSeparator(kSlashSeparator);
-	settings.SetDateOrderFormat(kMDYFormat);
-	settings.SetClockTo24Hr(false);
-	*/
-
-	BLocale defaultLocale;
-	be_locale_roster->GetDefaultLocale(&defaultLocale);
-	fLocale = defaultLocale;
-		// We work on a copy of the default country and set the changes when
-		// closing the preflet
-	_UpdateExamples();
-	_SendNotices();
-}
-
-
-bool
-FormatView::IsDefaultable() const
-{
-	/*
-	TrackerSettings settings;
-
-	return settings.TimeFormatSeparator() != kSlashSeparator
-		|| settings.DateOrderFormat() != kMDYFormat
-		|| settings.ClockIs24Hr() != false;
-	*/
-	return true;
-}
-
-
-void
 FormatView::Revert()
 {
 	/*
@@ -570,8 +531,10 @@ FormatView::SetLocale(const BLocale& locale)
 	if (separator >= kNoSeparator && separator < kSeparatorsEnd)
 		fSeparatorMenuField->Menu()->ItemAt((int32)separator)->SetMarked(true);
 	*/
+
 	_UpdateExamples();
 	_ParseDateFormat();
+	_ParseCurrencyFormat();
 }
 
 
@@ -656,16 +619,50 @@ FormatView::_SendNotices()
 }
 
 
+void
+FormatView::_ParseCurrencyFormat()
+{
+	BString currencySample;
+	int* fieldPos = NULL;
+	int fieldCount;
+	BNumberElement* fieldID = NULL;
+	if (fLocale.FormatMonetary(&currencySample, fieldPos, fieldID, fieldCount,
+			-1234.56) != B_OK) {
+		fMonetaryView->SetText("ERROR");
+		return;
+	}
+
+	fMonetaryView->SetText(currencySample);
+
+	for (int i = 0; i < fieldCount; i++) {
+		BString currentSymbol;
+		currentSymbol.AppendChars(currencySample.CharAt(fieldPos[i]&0xFFFF),
+			(fieldPos[i]>>16) - (fieldPos[i]&0xFFFF));
+		switch (fieldID[i]) {
+			case B_NUMBER_ELEMENT_CURRENCY:
+				fCurrencySymbolView->SetText(currentSymbol);
+				if (i > fieldCount / 2)
+					fCurrencySymbolAfter->SetValue(1);
+				else
+					fCurrencySymbolBefore->SetValue(1);
+				break;
+			default:
+				break;
+		}
+	}
+
+	free(fieldPos);
+	free(fieldID);
+}
+
+
 //! Get the date format from ICU and set the date fields accordingly
 void
 FormatView::_ParseDateFormat()
 {
-	// TODO parse the short date too
 	BString dateFormatString;
 	fLocale.GetDateFormat(dateFormatString, true);
 	const char* dateFormat = dateFormatString.String();
-
-printf("FV::_ParseDateFormat: df='%s'\n", dateFormat);
 
 	// Travel through the string and parse it
 	const char* parsePointer = dateFormat;
@@ -674,7 +671,8 @@ printf("FV::_ParseDateFormat: df='%s'\n", dateFormat);
 	for (int i = 0; i < 4; i++)
 	{
 		fieldBegin = parsePointer;
-		while (*parsePointer == *(parsePointer + 1)) parsePointer++ ;
+		while (*parsePointer == *(parsePointer + 1))
+			parsePointer++;
 		parsePointer++;
 		BString str;
 		str.Append(fieldBegin, parsePointer - fieldBegin);
@@ -701,11 +699,13 @@ printf("FV::_ParseDateFormat: df='%s'\n", dateFormat);
 			fLongDateMenu[i]->MenuItem()->SetLabel(str.Append("*"));
 
 		fieldBegin = parsePointer;
-		while ((!IsSpecialDateChar(*parsePointer)) && *parsePointer != '\0'
-				&& *(parsePointer - 1) >= 0) {
+		while ((!IsSpecialDateChar(*parsePointer)) && *parsePointer != '\0') {
 			if (*parsePointer == '\'') {
 				parsePointer++;
-				while (*parsePointer != '\'') parsePointer++;
+				while (*parsePointer != '\0' && *parsePointer != '\'')
+					parsePointer++;
+				if (*parsePointer == '\0')
+					break;
 			}
 			parsePointer++;
 		}
@@ -724,7 +724,8 @@ printf("FV::_ParseDateFormat: df='%s'\n", dateFormat);
 
 	for (int i = 0; i < 3; i++) {
 		fieldBegin = parsePointer;
-		while (*parsePointer == *(parsePointer + 1)) parsePointer++ ;
+		while (*parsePointer == *(parsePointer + 1))
+			parsePointer++;
 		parsePointer++;
 		BString str;
 		str.Append(fieldBegin, parsePointer - fieldBegin);
@@ -753,11 +754,13 @@ printf("FV::_ParseDateFormat: df='%s'\n", dateFormat);
 		}
 
 		fieldBegin = parsePointer;
-		while ((!IsSpecialDateChar(*parsePointer)) && *parsePointer != '\0'
-				&& *(parsePointer - 1) >= 0) {
+		while ((!IsSpecialDateChar(*parsePointer)) && *parsePointer != '\0') {
 			if (*parsePointer == '\'') {
 				parsePointer++;
-				while (*parsePointer != '\'') parsePointer++;
+				while (*parsePointer != '\0' && *parsePointer != '\'')
+					parsePointer++;
+				if (*parsePointer == '\0')
+					break;
 			}
 			parsePointer++;
 		}

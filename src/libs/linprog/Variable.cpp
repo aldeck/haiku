@@ -1,18 +1,19 @@
 /*
  * Copyright 2007-2008, Christof Lutteroth, lutteroth@cs.auckland.ac.nz
  * Copyright 2007-2008, James Kim, jkim202@ec.auckland.ac.nz
+ * Copyright 2010, Clemens Zeidler <haiku@clemens-zeidler.de>
  * Distributed under the terms of the MIT License.
  */
 
-#include "Variable.h"
-#include "Constraint.h"
-#include "LinearSpec.h"
-#include "OperatorType.h"
 
-#include "lp_lib.h"
+#include "Variable.h"
 
 #include <float.h>	// for DBL_MAX
 
+#include <File.h>
+
+#include "Constraint.h"
+#include "LinearSpec.h"
 
 // Toggle debug output
 //#define DEBUG_VARIABLE
@@ -32,12 +33,7 @@
 int32
 Variable::Index() const
 {
-	int32 i = fLS->Variables()->IndexOf(this);
-	if (i == -1) {
-		printf("Variable not part of fLS->Variables().");
-		return -1;
-	}
-	return i + 1;
+	return fLS->IndexOf(this);
 }
 
 
@@ -97,11 +93,7 @@ Variable::Min() const
 void
 Variable::SetMin(double min)
 {
-	if (!fIsValid)
-		return;
-
-	fMin = min;
-	set_bounds(fLS->fLP, this->Index(), fMin, fMax);
+	SetRange(min, fMax);
 }
 
 
@@ -125,11 +117,7 @@ Variable::Max() const
 void
 Variable::SetMax(double max)
 {
-	if (!fIsValid)
-		return;
-
-	fMax = max;
-	set_bounds(fLS->fLP, this->Index(), fMin, fMax);
+	SetRange(fMin, max);
 }
 
 
@@ -147,22 +135,21 @@ Variable::SetRange(double min, double max)
 
 	fMin = min;
 	fMax = max;
-	set_bounds(fLS->fLP, this->Index(), fMin, fMax);
+	fLS->SetRange(this, fMin, fMax);
 }
 
 
 const char*
 Variable::Label()
 {
-	return fLabel;
+	return fLabel.String();
 }
 
 
 void
 Variable::SetLabel(const char* label)
 {
-	fLabel = (char*) malloc(strlen(label) + 1);
-	strcpy(fLabel, label);
+	fLabel = label;
 }
 
 
@@ -288,38 +275,35 @@ Variable::IsValid()
 void
 Variable::Invalidate()
 {
-	STRACE(("Variable::Invalidate() on %s\n", ToString()));
+	STRACE(("Variable::Invalidate() on %s\n", BString(*this).String()));
 
 	if (!fIsValid)
 		return;
 
 	fIsValid = false;
-	del_column(fLS->fLP, Index());
-	fLS->Variables()->RemoveItem(this);
+	
+	fLS->RemoveVariable(this, false);
 
 	// invalidate all constraints that use this variable
-	BList* markedForInvalidation = new BList();
-	BList* constraints = fLS->Constraints();
-	for (int i = 0; i < constraints->CountItems(); i++) {
-		Constraint* constraint = static_cast<Constraint*>(
-			constraints->ItemAt(i));
+	ConstraintList markedForInvalidation;
+	const ConstraintList& constraints = fLS->Constraints();
+	for (int i = 0; i < constraints.CountItems(); i++) {
+		Constraint* constraint = constraints.ItemAt(i);
 
 		if (!constraint->IsValid())
 			continue;
 
-		BList* summands = constraint->LeftSide();
+		SummandList* summands = constraint->LeftSide();
 		for (int j = 0; j < summands->CountItems(); j++) {
-			Summand* summand = static_cast<Summand*>(summands->ItemAt(j));
+			Summand* summand = summands->ItemAt(j);
 			if (summand->Var() == this) {
-				markedForInvalidation->AddItem(constraint);
+				markedForInvalidation.AddItem(constraint);
 				break;
 			}
 		}
 	}
-	for (int i = 0; i < markedForInvalidation->CountItems(); i++)
-		static_cast<Constraint*>(markedForInvalidation->ItemAt(i))
-			->Invalidate();
-	delete markedForInvalidation;
+	for (int i = 0; i < markedForInvalidation.CountItems(); i++)
+		markedForInvalidation.ItemAt(i)->Invalidate();
 }
 
 
@@ -327,22 +311,15 @@ Variable::Invalidate()
  * Constructor.
  */
 Variable::Variable(LinearSpec* ls)
-	: fLS(ls),
-	fUsingSummands(new BList()),
+	:
+	fLS(ls),
 	fValue(NAN),
 	fMin(0),
 	fMax(DBL_MAX),
 	fLabel(NULL),
-	fIsValid(true)
+	fIsValid(false)
 {
-	fLS->Variables()->AddItem(this);
 
-	if (fLS->Variables()->CountItems() > fLS->CountColumns()) {
-		double d = 0;
-		int i = 0;
-		if (!add_columnex(fLS->fLP, 0, &d, &i))
-			printf("Error in add_columnex.");
-	}
 }
 
 
@@ -352,8 +329,6 @@ Variable::Variable(LinearSpec* ls)
  */
 Variable::~Variable()
 {
-	Invalidate();
-	free(fLabel);
-	delete fUsingSummands;
+	fLS->RemoveVariable(this, false);
 }
 

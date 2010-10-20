@@ -23,9 +23,6 @@
 
 #include <string.h>
 
-#include <board_config.h>
-
-
 
 //#define TRACE_MMU
 #ifdef TRACE_MMU
@@ -80,72 +77,6 @@ struct memblock {
 };
 
 
-//Memory map of the whole memory
-static struct memblock MEMORYMAP[] = {
-        {
-                "ROM", 0x00000000, 0x12345467, MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_C,
-        },
-        {
-                "devices",
-		0x48000000,
-		0x48FFFFFF,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_B,
-        },
-        {
-                "RAM",
-		0x80000000,
-		0x9FFFFFFF,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_C,
-        },
-};
-
-
-//memory used by the loader that should be identity mapped
-#if 0/*BOARD_CPU_OMAP3*/
-static struct memblock LOADER_MEMORYMAP[] = {
-        {
-                "vectors",//interrupt vectors
-		0x00000000,
-		0x00000fff,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_B,
-        },
-        {
-                "devices",
-		0x48000000,
-		0x48FFFFFF,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_B,
-        },
-        {
-                "RAM_image",//15MB for the initrd should be enough..
-		0x80000000,
-		0x80ffffff,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_C,
-        },
-        {
-                "RAM_loader",//1MB loader
-		0x81000000,
-		0x810fffff,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_C,
-        },
-        {
-                "RAM_pt",//Page Table 1MB
-		0x81100000,
-		0x811FFFFF,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_C,
-        },
-        {
-                "RAM_free",//14MB free RAM (actually more but we don't identity map it automaticaly)
-		0x81200000,
-		0x82000000,
-		MMU_L2_FLAG_AP_RW | MMU_L2_FLAG_C,
-        },
-
-
-
-};
-
-#else
-
 static struct memblock LOADER_MEMORYMAP[] = {
         {
                 "vectors",//interrupt vectors
@@ -198,24 +129,10 @@ static struct memblock LOADER_MEMORYMAP[] = {
 		MMU_L2_FLAG_AP_RW|MMU_L2_FLAG_C,
         },
 #endif
-
-
 };
-#endif
-
-
-
-
-
-
-
-
-
 
 //static const uint32 kDefaultPageTableFlags = MMU_FLAG_READWRITE;	// not cached not buffered, R/W
 static const size_t kMaxKernelSize = 0x200000;		// 2 MB for the kernel
-
-
 
 static addr_t sNextPhysicalAddress = 0; //will be set by mmu_init
 static addr_t sNextVirtualAddress = KERNEL_BASE + kMaxKernelSize;
@@ -225,19 +142,10 @@ static addr_t sNextPageTableAddress = 0;
 //the page directory is in front of the pagetable
 static uint32 kPageTableRegionEnd = 0;
 
-
 // working page directory and page table
 static uint32 *sPageDirectory = 0 ;
 //page directory has to be on a multiple of 16MB for
 //some arm processors
-
-
-
-
-
-
-
-
 
 
 static addr_t
@@ -249,11 +157,11 @@ get_next_virtual_address(size_t size)
 	return address;
 }
 
+
 static addr_t
 get_next_virtual_address_alligned (size_t size, uint32 mask)
 {
-	TRACE(("MUH"));
-	TRACE(("\n\n NEXT VIRRUADRSSS: %lx\n", sNextVirtualAddress));
+	TRACE(("\n NEXT VIRRUADRSSS: %lx\n", sNextVirtualAddress));
 
 	addr_t address = (sNextVirtualAddress) & mask ;
 	TRACE(("ADDR: %lx\n", address));
@@ -297,7 +205,6 @@ get_next_physical_page(size_t pagesize)
 }
 
 
-
 void
 mmu_set_TTBR(uint32  ttb)
 {
@@ -313,6 +220,7 @@ mmu_flush_TLB()
 	asm volatile("MCR p15, 0, %[c8format], c8, c7, 0"::[c8format] "r" (bla) ); /* flush TLB */
 }
 
+
 uint32
 mmu_read_C1()
 {
@@ -321,11 +229,13 @@ mmu_read_C1()
 	return bla;
 }
 
+
 void
 mmu_write_C1(uint32 value)
 {
 	asm volatile("MCR p15, 0, %[c1in], c1, c0, 0"::[c1in] "r" (value));
 }
+
 
 void
 mmu_write_DACR(uint32 value)
@@ -375,15 +285,14 @@ init_page_directory()
         TRACE(("init_page_directory2\n"));
 
         // clear out the pgdir
-        for (uint32 i = 0; i < 4096; i++) {
+        for (uint32 i = 0; i < 4096; i++)
                sPageDirectory[i] = 0;
-        }
 
 	 uint32 *pageTable = NULL;
 	for (uint32 i=0; i < ARRAY_SIZE(LOADER_MEMORYMAP);i++){
 
 		pageTable = get_next_page_table(MMU_L1_TYPE_COARSEPAGETABLE);
-		TRACE(("BLOCK: %s START: %lx END %lx",LOADER_MEMORYMAP[i].name,LOADER_MEMORYMAP[i].start,LOADER_MEMORYMAP[i].end));
+		TRACE(("BLOCK: %s START: %lx END %lx\n",LOADER_MEMORYMAP[i].name,LOADER_MEMORYMAP[i].start,LOADER_MEMORYMAP[i].end));
 		addr_t pos = LOADER_MEMORYMAP[i].start;
 		int c=0;
 		while(pos< LOADER_MEMORYMAP[i].end){
@@ -416,8 +325,6 @@ init_page_directory()
 		}
 	}
 
-
-
 	mmu_flush_TLB();
 
         /* set up the translation table base */
@@ -428,15 +335,8 @@ init_page_directory()
         /* set up the domain access register */
         mmu_write_DACR(0xFFFFFFFF);
 
-	dprintf("hallo1\n");
-
-
         /* turn on the mmu */
         mmu_write_C1(mmu_read_C1() | 0x1);
-
-
-
-	dprintf("hallo\n");
 }
 
 /*!     Adds a new page table for the specified base address */
@@ -464,9 +364,6 @@ add_page_table(addr_t base)
 }
 
 
-
-
-
 /*!	Creates an entry to map the specified virtualAddress to the given
 	physicalAddress.
 	If the mapping goes beyond the current page table, it will allocate
@@ -484,7 +381,6 @@ map_page(addr_t virtualAddress, addr_t physicalAddress, uint32 flags)
 
 	if (virtualAddress >= sMaxVirtualAddress) {
 		// we need to add a new page table
-
 		add_page_table(sMaxVirtualAddress);
 		sMaxVirtualAddress += B_PAGE_SIZE * 256;
 
@@ -517,15 +413,10 @@ map_page(addr_t virtualAddress, addr_t physicalAddress, uint32 flags)
 
 	pageTable[tableEntry] = physicalAddress | flags;
 
-
-
-
 	mmu_flush_TLB();
 
 	TRACE(("map_page: done\n"));
 }
-
-
 
 
 //	#pragma mark -
@@ -545,7 +436,6 @@ mmu_map_physical_memory(addr_t physicalAddress, size_t size, uint32 flags)
 
 	return address + pageOffset;
 }
-
 
 
 static void
@@ -568,7 +458,6 @@ unmap_page(addr_t virtualAddress)
 }
 
 
-
 extern "C" void *
 mmu_allocate(void *virtualAddress, size_t size)
 {
@@ -589,8 +478,9 @@ mmu_allocate(void *virtualAddress, size_t size)
 		// is the address within the valid range?
 		if (address < KERNEL_BASE
 			|| address + size >= KERNEL_BASE + kMaxKernelSize){
-			TRACE(("mmu_allocate in illegal range\n address: %lx  KERNELBASE: %lx KERNEL_BASE + kMaxKernelSize: %lx  address + size : %lx \n ",     (uint32)address , KERNEL_BASE,  KERNEL_BASE 
-+ kMaxKernelSize,(uint32)(address + size)       ));	
+			TRACE(("mmu_allocate in illegal range\n address: %lx"
+				"  KERNELBASE: %lx KERNEL_BASE + kMaxKernelSize: %lx  address + size : %lx \n ",
+				(uint32)address , KERNEL_BASE,  KERNEL_BASE + kMaxKernelSize,(uint32)(address + size)));
 			return NULL;
 		}
 		for (uint32 i = 0; i < size; i++) {
@@ -652,7 +542,7 @@ mmu_free(void *virtualAddress, size_t size)
 extern "C" void
 mmu_init_for_kernel(void)
 {
-/*	TRACE(("mmu_init_for_kernel\n"));
+	TRACE(("mmu_init_for_kernel\n"));
 
 	// save the memory we've physically allocated
 	gKernelArgs.physical_allocated_range[0].size
@@ -664,7 +554,7 @@ mmu_init_for_kernel(void)
 	gKernelArgs.virtual_allocated_range[0].size
 		= sNextVirtualAddress - KERNEL_BASE;
 	gKernelArgs.num_virtual_allocated_ranges = 1;
-
+/*
 	// sort the address ranges
 	sort_addr_range(gKernelArgs.physical_memory_range,
 		gKernelArgs.num_physical_memory_ranges);
@@ -680,28 +570,36 @@ extern "C" void
 mmu_init(void)
 {
 	TRACE(("mmu_init\n"));
-	mmu_write_C1(mmu_read_C1() & ~((1<<29)|(1<<28)|(1<<0)));// access flag disabled, TEX remap disabled, mmu disabled
-	//calculate lowest RAM adress from MEMORYMAP
-	for(int i=0;i<ARRAY_SIZE(LOADER_MEMORYMAP);i++){
-		if(strcmp("RAM_free",LOADER_MEMORYMAP[i].name)==0){
-			sNextPhysicalAddress=LOADER_MEMORYMAP[i].start;
-		}
-		if(strcmp("RAM_pt",LOADER_MEMORYMAP[i].name)==0){
-			sNextPageTableAddress=LOADER_MEMORYMAP[i].start + MMU_L1_TABLE_SIZE;
-			kPageTableRegionEnd = LOADER_MEMORYMAP[i].end;
-			sPageDirectory = (uint32 *) LOADER_MEMORYMAP[i].start ;
 
+	mmu_write_C1(mmu_read_C1() & ~((1<<29)|(1<<28)|(1<<0)));// access flag disabled, TEX remap disabled, mmu disabled
+
+	uint32 highestRAMAddress = SDRAM_BASE;
+
+	//calculate lowest RAM adress from MEMORYMAP
+	for(int i = 0; i < ARRAY_SIZE(LOADER_MEMORYMAP); i++) {
+		if (strcmp("RAM_free", LOADER_MEMORYMAP[i].name) == 0)
+			sNextPhysicalAddress = LOADER_MEMORYMAP[i].start;
+
+		if (strcmp("RAM_pt", LOADER_MEMORYMAP[i].name) == 0) {
+			sNextPageTableAddress = LOADER_MEMORYMAP[i].start + MMU_L1_TABLE_SIZE;
+			kPageTableRegionEnd = LOADER_MEMORYMAP[i].end;
+			sPageDirectory = (uint32 *) LOADER_MEMORYMAP[i].start;
+		}
+
+		if (strncmp("RAM_", LOADER_MEMORYMAP[i].name, 4) == 0) {
+			if (LOADER_MEMORYMAP[i].end > highestRAMAddress)
+				highestRAMAddress = LOADER_MEMORYMAP[i].end;
 		}
 	}
 
+	gKernelArgs.physical_memory_range[0].start = SDRAM_BASE;
+	gKernelArgs.physical_memory_range[0].size = highestRAMAddress - SDRAM_BASE;
+	gKernelArgs.num_physical_memory_ranges = 1;
 
 	gKernelArgs.physical_allocated_range[0].start = sNextPhysicalAddress;
 	gKernelArgs.physical_allocated_range[0].size = 0;
 	gKernelArgs.num_physical_allocated_ranges = 1;
 		// remember the start of the allocated physical pages
-
-
-
 
 	init_page_directory();
 

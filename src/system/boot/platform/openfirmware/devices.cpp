@@ -1,22 +1,29 @@
 /*
- * Copyright 2003-2006, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
- * Distributed under the terms of the MIT License.
+ * Copyright 2003-2006, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2010, Andreas Färber <andreas.faerber@web.de>
+ * All rights reserved. Distributed under the terms of the MIT License.
  */
 
-#include "Handle.h"
-#include "machine.h"
+
+#include <string.h>
 
 #include <boot/platform.h>
 #include <boot/vfs.h>
 #include <boot/stdio.h>
 #include <boot/stage2.h>
+#include <boot/net/IP.h>
+#include <boot/net/iSCSITarget.h>
 #include <boot/net/NetStack.h>
 #include <boot/net/RemoteDisk.h>
 #include <platform/openfirmware/devices.h>
 #include <platform/openfirmware/openfirmware.h>
 #include <util/kernel_cpp.h>
 
-#include <string.h>
+#include "Handle.h"
+#include "machine.h"
+
+
+#define ENABLE_ISCSI
 
 
 char sBootPath[192];
@@ -45,14 +52,45 @@ platform_add_boot_device(struct stage2_args *args, NodeList *devicesList)
 			status_t error = net_stack_init();
 			if (error != B_OK)
 				return error;
-		
+
+			ip_addr_t bootAddress = 0;
+			char* bootArgs = strrchr(sBootPath, ':');
+			if (bootArgs != NULL) {
+				bootArgs++;
+				char* comma = strchr(bootArgs, ',');
+				if (comma != NULL && comma - bootArgs > 0) {
+					comma[0] = '\0';
+					bootAddress = ip_parse_address(bootArgs);
+					comma[0] = ',';
+				}
+			}
+			if (bootAddress == 0) {
+				int package = of_finddevice("/options");
+				char defaultServerIP[16];
+				int bytesRead = of_getprop(package, "default-server-ip",
+					defaultServerIP, sizeof(defaultServerIP) - 1);
+				if (bytesRead != OF_FAILED && bytesRead > 1) {
+					defaultServerIP[bytesRead] = '\0';
+					bootAddress = ip_parse_address(defaultServerIP);
+				}
+			}
+
 			// init a remote disk, if possible
 			RemoteDisk *remoteDisk = RemoteDisk::FindAnyRemoteDisk();
-			if (!remoteDisk)
-				return B_ENTRY_NOT_FOUND;
+			if (remoteDisk != NULL) {
+				devicesList->Add(remoteDisk);
+				return B_OK;
+			}
 
-			devicesList->Add(remoteDisk);
-			return B_OK;
+#ifdef ENABLE_ISCSI
+			if (bootAddress != 0) {
+				if (iSCSITarget::DiscoverTargets(bootAddress, ISCSI_PORT,
+						devicesList))
+					return B_OK;
+			}
+#endif
+
+			return B_ENTRY_NOT_FOUND;
 		}
 
 		if (strcmp("block", type) != 0) {
@@ -175,7 +213,8 @@ platform_add_block_devices(stage2_args *args, NodeList *devicesList)
 		}
 
 		Handle *device = new(nothrow) Handle(handle);
-		printf("\t\t(could open device, handle = %p, node = %p)\n", (void *)handle, device);
+		printf("\t\t(could open device, handle = %p, node = %p)\n",
+			(void *)handle, device);
 
 		devicesList->Add(device);
 	}
@@ -183,6 +222,7 @@ platform_add_block_devices(stage2_args *args, NodeList *devicesList)
 
 	return B_OK;
 }
+
 
 status_t 
 platform_register_boot_device(Node *device)

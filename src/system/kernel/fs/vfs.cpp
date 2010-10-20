@@ -1563,8 +1563,6 @@ release_advisory_lock(struct vnode* vnode, struct flock* flock)
 
 				// we've detached the locking from the vnode, so we can
 				// safely delete it
-				delete_sem(locking->lock);
-				delete_sem(locking->wait_sem);
 				delete locking;
 			} else {
 				// the locking is in use again
@@ -1601,7 +1599,6 @@ acquire_advisory_lock(struct vnode* vnode, pid_t session, struct flock* flock,
 	// TODO: do deadlock detection!
 
 	struct advisory_locking* locking;
-	sem_id waitForLock;
 
 	while (true) {
 		// if this vnode has an advisory_locking structure attached,
@@ -1612,7 +1609,7 @@ acquire_advisory_lock(struct vnode* vnode, pid_t session, struct flock* flock,
 
 		locking = vnode->advisory_locking;
 		team_id team = team_get_current_team_id();
-		waitForLock = -1;
+		sem_id waitForLock = -1;
 
 		// test for collisions
 		LockList::Iterator iterator = locking->locks.GetIterator();
@@ -1654,9 +1651,7 @@ acquire_advisory_lock(struct vnode* vnode, pid_t session, struct flock* flock,
 	struct advisory_lock* lock = (struct advisory_lock*)malloc(
 		sizeof(struct advisory_lock));
 	if (lock == NULL) {
-		if (waitForLock >= B_OK)
-			release_sem_etc(waitForLock, 1, B_RELEASE_ALL);
-		release_sem(locking->lock);
+		put_advisory_locking(locking);
 		return B_NO_MEMORY;
 	}
 
@@ -5361,13 +5356,15 @@ file_open_entry_ref(dev_t mountID, ino_t directoryID, const char* name,
 		return B_LINK_LIMIT;
 	}
 
-	int fd = open_vnode(vnode, openMode, kernel);
-	if (fd < 0)
+	int newFD = open_vnode(vnode, openMode, kernel);
+	if (newFD >= 0) {
+		// The vnode reference has been transferred to the FD
+		cache_node_opened(vnode, FDTYPE_FILE, vnode->cache, mountID,
+			directoryID, vnode->id, name);
+	} else
 		put_vnode(vnode);
 
-	cache_node_opened(vnode, FDTYPE_FILE, vnode->cache, mountID, directoryID,
-		vnode->id, name);
-	return fd;
+	return newFD;
 }
 
 
@@ -5394,12 +5391,12 @@ file_open(int fd, char* path, int openMode, bool kernel)
 
 	// open the vnode
 	int newFD = open_vnode(vnode, openMode, kernel);
-	// put only on error -- otherwise our reference was transferred to the FD
-	if (newFD < 0)
+	if (newFD >= 0) {
+		// The vnode reference has been transferred to the FD
+		cache_node_opened(vnode, FDTYPE_FILE, vnode->cache,
+			vnode->device, parentID, vnode->id, NULL);
+	} else
 		put_vnode(vnode);
-
-	cache_node_opened(vnode, FDTYPE_FILE, vnode->cache,
-		vnode->device, parentID, vnode->id, NULL);
 
 	return newFD;
 }
@@ -5631,13 +5628,15 @@ dir_open_entry_ref(dev_t mountID, ino_t parentID, const char* name, bool kernel)
 	if (status != B_OK)
 		return status;
 
-	int fd = open_dir_vnode(vnode, kernel);
-	if (fd < 0)
+	int newFD = open_dir_vnode(vnode, kernel);
+	if (newFD >= 0) {
+		// The vnode reference has been transferred to the FD
+		cache_node_opened(vnode, FDTYPE_DIR, vnode->cache, mountID, parentID,
+			vnode->id, name);
+	} else
 		put_vnode(vnode);
 
-	cache_node_opened(vnode, FDTYPE_DIR, vnode->cache, mountID, parentID,
-		vnode->id, name);
-	return fd;
+	return newFD;
 }
 
 
@@ -5657,11 +5656,13 @@ dir_open(int fd, char* path, bool kernel)
 
 	// open the dir
 	int newFD = open_dir_vnode(vnode, kernel);
-	if (newFD < 0)
+	if (newFD >= 0) {
+		// The vnode reference has been transferred to the FD
+		cache_node_opened(vnode, FDTYPE_DIR, vnode->cache, vnode->device,
+			parentID, vnode->id, NULL);
+	} else
 		put_vnode(vnode);
 
-	cache_node_opened(vnode, FDTYPE_DIR, vnode->cache, vnode->device, parentID,
-		vnode->id, NULL);
 	return newFD;
 }
 

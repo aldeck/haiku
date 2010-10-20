@@ -5,14 +5,9 @@
  */
 
 
-#include "ExpanderApp.h"
 #include "ExpanderWindow.h"
-#include "ExpanderThread.h"
-#include "ExpanderPreferences.h"
-
 
 #include <Alert.h>
-#include <Application.h>
 #include <Box.h>
 #include <Button.h>
 #include <Catalog.h>
@@ -31,6 +26,11 @@
 #include <ScrollView.h>
 #include <StringView.h>
 #include <TextView.h>
+
+#include "ExpanderApp.h"
+#include "ExpanderThread.h"
+#include "ExpanderPreferences.h"
+#include "PasswordAlert.h"
 
 
 const uint32 MSG_SOURCE			= 'mSOU';
@@ -62,7 +62,7 @@ ExpanderWindow::ExpanderWindow(BRect frame, const entry_ref* ref,
 	fSettings(*settings),
 	fPreferences(NULL)
 {
-	BGroupLayout* layout = new BGroupLayout(B_VERTICAL);
+	BGroupLayout* layout = new BGroupLayout(B_VERTICAL, 0);
 	SetLayout(layout);
 
 	_AddMenuBar(layout);
@@ -335,9 +335,49 @@ ExpanderWindow::MessageReceived(BMessage* msg)
 					fListingText->Insert(string.String());
 				}
 				fListingText->ScrollToSelection();
+			} else if (fExpandingStarted) {
+				BString string;
+				int32 i = 0;
+				while (msg->FindString("output", i++, &string) == B_OK) {
+					if (strstr(string.String(), "Enter password") != NULL) {
+						fExpandingThread->SuspendExternalExpander();
+						BString password;
+						PasswordAlert* alert = 
+							new PasswordAlert("passwordAlert", string);
+						alert->Go(password);
+						fExpandingThread->ResumeExternalExpander();
+						fExpandingThread->PushInput(password);
+					}
+				}
 			}
 			break;
-
+		
+		case 'errp': 
+		{
+			BString string;
+			if (msg->FindString("error", &string) == B_OK
+				&& fExpandingStarted) {
+				fExpandingThread->SuspendExternalExpander();
+				if (strstr(string.String(), "password") != NULL) {
+					BString password;
+					PasswordAlert* alert = new PasswordAlert("passwordAlert",
+						string);
+					alert->Go(password);
+					fExpandingThread->ResumeExternalExpander();
+					fExpandingThread->PushInput(password);
+				} else {
+					BAlert* alert = new BAlert("stopAlert", string,
+						B_TRANSLATE("Stop"), B_TRANSLATE("Continue"), NULL,
+						B_WIDTH_AS_USUAL, B_EVEN_SPACING, B_WARNING_ALERT);
+					if (alert->Go() == 0) {
+						fExpandingThread->ResumeExternalExpander();
+						StopExpanding();
+					} else
+						fExpandingThread->ResumeExternalExpander();
+				}
+			}
+			break;
+		}
 		case 'exit':
 			// thread has finished		(finished, quit, killed, we don't know)
 			// reset window state

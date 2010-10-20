@@ -25,14 +25,15 @@ using std::nothrow;
 // constructor
 MediaTrackVideoSupplier::MediaTrackVideoSupplier(BMediaTrack* track,
 		int32 trackIndex, status_t& initStatus)
-	: VideoTrackSupplier()
-	, fVideoTrack(track)
+	:
+	VideoTrackSupplier(),
+	fVideoTrack(track),
 
-	, fPerformanceTime(0)
-	, fDuration(0)
-	, fCurrentFrame(0)
+	fPerformanceTime(0),
+	fDuration(0),
+	fCurrentFrame(0),
 
-	, fTrackIndex(trackIndex)
+	fTrackIndex(trackIndex)
 {
 	if (!fVideoTrack) {
 		printf("MediaTrackVideoSupplier() - no video track\n");
@@ -84,7 +85,7 @@ MediaTrackVideoSupplier::GetCodecInfo(media_codec_info* info) const
 
 status_t
 MediaTrackVideoSupplier::ReadFrame(void* buffer, bigtime_t* performanceTime,
-	const media_format* format, bool& wasCached)
+	const media_raw_video_format& format, bool& wasCached)
 {
 	if (!fVideoTrack)
 		return B_NO_INIT;
@@ -92,12 +93,12 @@ MediaTrackVideoSupplier::ReadFrame(void* buffer, bigtime_t* performanceTime,
 		return B_BAD_VALUE;
 
 	status_t ret = B_OK;
-	if (format->u.raw_video.display.format
+	if (format.display.format
 			!= fFormat.u.raw_video.display.format
 		|| fFormat.u.raw_video.display.bytes_per_row
-			!= format->u.raw_video.display.bytes_per_row) {
-		ret = _SwitchFormat(format->u.raw_video.display.format,
-			format->u.raw_video.display.bytes_per_row);
+			!= format.display.bytes_per_row) {
+		ret = _SwitchFormat(format.display.format,
+			format.display.bytes_per_row);
 		if (ret < B_OK) {
 			fprintf(stderr, "MediaTrackVideoSupplier::ReadFrame() - "
 				"unable to switch media format: %s\n", strerror(ret));
@@ -116,9 +117,8 @@ MediaTrackVideoSupplier::ReadFrame(void* buffer, bigtime_t* performanceTime,
 			fprintf(stderr, "MediaTrackVideoSupplier::ReadFrame() - "
 				"error while reading frame of track: %s\n", strerror(ret));
 		}
-	} else {
+	} else
 		fPerformanceTime = mediaHeader.start_time;
-	}
 
 	fCurrentFrame = fVideoTrack->CurrentFrame();
 	if (performanceTime)
@@ -137,6 +137,20 @@ delete bitmap;
 }
 #endif // DEBUG_DECODED_FRAME
 
+	return ret;
+}
+
+
+status_t
+MediaTrackVideoSupplier::FindKeyFrameForFrame(int64* frame)
+{
+	if (!fVideoTrack)
+		return B_NO_INIT;
+
+//int64 wantedFrame = *frame;
+	status_t ret = fVideoTrack->FindKeyFrameForFrame(frame,
+		B_MEDIA_SEEK_CLOSEST_BACKWARD);
+//printf("found keyframe for frame %lld -> %lld\n", wantedFrame, *frame);
 	return ret;
 }
 
@@ -172,31 +186,49 @@ MediaTrackVideoSupplier::SeekToFrame(int64* frame)
 		return B_NO_INIT;
 
 	int64 wantFrame = *frame;
-	int64 currentFrame = fVideoTrack->CurrentFrame();
 
-	if (wantFrame == currentFrame)
+	if (wantFrame == fCurrentFrame)
 		return B_OK;
 
 	status_t ret = fVideoTrack->FindKeyFrameForFrame(frame,
 		B_MEDIA_SEEK_CLOSEST_BACKWARD);
-	if (ret < B_OK)
+	if (ret != B_OK)
 		return ret;
+	if (wantFrame > *frame) {
+		// Work around a rounding problem with some extractors and
+		// converting frames <-> time <-> internal time.
+		int64 nextWantFrame = wantFrame + 1;
+		if (fVideoTrack->FindKeyFrameForFrame(&nextWantFrame,
+			B_MEDIA_SEEK_CLOSEST_BACKWARD) == B_OK) {
+			if (nextWantFrame == wantFrame) {
+				wantFrame++;
+				*frame = wantFrame;
+			}
+		}
+	}
 
-	if (*frame < currentFrame && wantFrame > currentFrame) {
-		*frame = currentFrame;
+//if (wantFrame != *frame) {
+//	printf("keyframe for frame: %lld -> %lld\n", wantFrame, *frame);
+//}
+
+	if (*frame <= fCurrentFrame && wantFrame >= fCurrentFrame) {
+		// The current frame is already closer to the wanted frame
+		// than the next keyframe before it.
+		*frame = fCurrentFrame;
 		return B_OK;
 	}
 
-if (wantFrame != *frame) {
-	printf("seeked by frame: %lld -> %lld, was %lld\n", wantFrame, *frame,
-		currentFrame);
-}
-
 	ret = fVideoTrack->SeekToFrame(frame);
-	if (ret == B_OK) {
-		fCurrentFrame = *frame;
-		fPerformanceTime = fVideoTrack->CurrentTime();
-	}
+	if (ret != B_OK)
+		return ret;
+
+//if (wantFrame != *frame) {
+//	printf("seeked by frame: %lld -> %lld, was %lld\n", wantFrame, *frame,
+//		fCurrentFrame);
+//}
+
+	fCurrentFrame = *frame;
+	fPerformanceTime = fVideoTrack->CurrentTime();
 
 	return ret;
 }

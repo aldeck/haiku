@@ -46,15 +46,17 @@ class Playlist : public BLocker {
 public:
 	class Listener {
 	public:
-						Listener();
-		virtual			~Listener();
+								Listener();
+		virtual					~Listener();
 
-		virtual	void	ItemAdded(PlaylistItem* item, int32 index);
-		virtual	void	ItemRemoved(int32 index);
+		virtual	void			ItemAdded(PlaylistItem* item, int32 index);
+		virtual	void			ItemRemoved(int32 index);
 
-		virtual	void	ItemsSorted();
+		virtual	void			ItemsSorted();
 
-		virtual	void	CurrentItemChanged(int32 newIndex);
+		virtual	void			CurrentItemChanged(int32 newIndex);
+
+		virtual	void			ImportFailed();
 	};
 
 public:
@@ -71,6 +73,7 @@ public:
 			// list functionality
 			void				MakeEmpty(bool deleteItems = true);
 			int32				CountItems() const;
+			bool				IsEmpty() const;
 
 			void				Sort();
 
@@ -105,6 +108,10 @@ public:
 									Playlist* playlist);
 	static	void				AppendPlaylistToPlaylist(const entry_ref& ref,
 									Playlist* playlist);
+	static	void				AppendQueryToPlaylist(const entry_ref& ref,
+									Playlist* playlist);
+
+			void				NotifyImportFailed();
 
 private:
 								Playlist(const Playlist& other);
@@ -115,6 +122,7 @@ private:
 	static	bool				_IsTextPlaylist(const BString& mimeString);
 	static	bool				_IsBinaryPlaylist(const BString& mimeString);
 	static	bool				_IsPlaylist(const BString& mimeString);
+	static	bool				_IsQuery(const BString& mimeString);
 	static	BString				_MIMEString(const entry_ref* ref);
 
 			void				_NotifyItemAdded(PlaylistItem*,
@@ -122,6 +130,7 @@ private:
 			void				_NotifyItemRemoved(int32 index) const;
 			void				_NotifyItemsSorted() const;
 			void				_NotifyCurrentItemChanged(int32 newIndex) const;
+			void				_NotifyImportFailed() const;
 
 private:
 			BList				fItems;

@@ -129,7 +129,6 @@ BMediaFile::InitCheck() const
 }
 
 
-// Get info about the underlying file format.
 status_t
 BMediaFile::GetFileFormatInfo(media_file_format* mfi) const
 {
@@ -140,6 +139,20 @@ BMediaFile::GetFileFormatInfo(media_file_format* mfi) const
 		return B_ERROR;
 	*mfi = fMFI;
 	return B_OK;
+}
+
+
+status_t
+BMediaFile::GetMetaData(BMessage* _data) const
+{
+	if (fExtractor == NULL)
+		return B_NO_INIT;
+	if (_data == NULL)
+		return B_BAD_VALUE;
+
+	_data->MakeEmpty();
+
+	return fExtractor->GetMetaData(_data);
 }
 
 
@@ -433,22 +446,28 @@ BMediaFile::_InitReader(BDataIO* source, int32 flags)
 		return;
 	}
 
+	fSource = source;
+
+	if (BFile* file = dynamic_cast<BFile*>(source)) {
+		fErr = file->InitCheck();
+		if (fErr != B_OK)
+			return;
+	}
+
 	if (dynamic_cast<BBufferIO *>(source)) {
 		// Already buffered
-		fSource = source;
 	} else {
 		// Source needs to be at least a BPositionIO to wrap with a BBufferIO
 		if (dynamic_cast<BPositionIO *>(source)) {
-			fSource = new(std::nothrow) BBufferIO(dynamic_cast<BPositionIO *>(source), 65536, fDeleteSource);
+			fSource = new(std::nothrow) BBufferIO(dynamic_cast<BPositionIO *>(
+				source), 65536, fDeleteSource);
 			if (fSource == NULL) {
 				fErr = B_NO_MEMORY;
 				return;
 			}
 			fDeleteSource = true;
-		} else {
+		} else
 			TRACE("Unable to improve performance with a BufferIO\n");
-			fSource = source;
-		}
 	}
 
 	fExtractor = new(std::nothrow) MediaExtractor(fSource, flags);

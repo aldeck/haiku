@@ -14,12 +14,14 @@
 #include <View.h>
 
 
-class BMessage;
-class BPopUpMenu;
-class BOutlineListView;
 class BButton;
-class TTZDisplay;
+class BMessage;
+class BOutlineListView;
+class BPopUpMenu;
+class BTextToolTip;
+class BTimeZone;
 class TimeZoneListItem;
+class TTZDisplay;
 
 
 class TimeZoneView : public BView {
@@ -28,8 +30,12 @@ public:
 	virtual						~TimeZoneView();
 
 	virtual	void				AttachedToWindow();
+	virtual	void				AllAttached();
 	virtual	void				MessageReceived(BMessage* message);
 			bool				CheckCanRevert();
+
+protected:
+	virtual	bool				GetToolTipAt(BPoint point, BToolTip** _tip);
 
 private:
 			void				_UpdateDateTime(BMessage* message);
@@ -38,10 +44,10 @@ private:
 
 			void				_UpdatePreview();
 			void				_UpdateCurrent();
-			BString				_FormatTime(TimeZoneListItem* zoneItem);
+			BString				_FormatTime(const BTimeZone& timeZone);
 
 			void				_InitView();
-			void				_BuildRegionMenu();
+			void				_BuildZoneMenu();
 
 			void				_Revert();
 
@@ -50,6 +56,8 @@ private:
 			BButton*			fSetZone;
 			TTZDisplay*			fCurrent;
 			TTZDisplay*			fPreview;
+
+			BTextToolTip*		fToolTip;
 
 			int32				fLastUpdateMinute;
 

@@ -1,16 +1,21 @@
 /*
- * Copyright 2003-2005, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
- * Distributed under the terms of the MIT License.
+ * Copyright 2003-2005, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2010 Andreas Färber <andreas.faerber@web.de>
+ * All rights reserved. Distributed under the terms of the MIT License.
  */
 
 
-#include <SupportDefs.h>
+#include "console.h"
+
 #include <string.h>
+
+#include <SupportDefs.h>
+
+#include <boot/stage2.h>
 #include <platform/openfirmware/openfirmware.h>
 #include <util/kernel_cpp.h>
 
 #include "Handle.h"
-#include "console.h"
 
 
 class ConsoleHandle : public Handle {
@@ -49,7 +54,8 @@ FILE *stdin, *stdout, *stderr;
 
 
 ConsoleHandle::ConsoleHandle()
-	: Handle()
+	:
+	Handle()
 {
 }
 
@@ -68,6 +74,11 @@ ConsoleHandle::WriteAt(void */*cookie*/, off_t /*pos*/, const void *buffer,
 	size_t bufferSize)
 {
 	const char *string = (const char *)buffer;
+
+	// If the frame buffer is enabled, don't write to the chosen stdout.
+	// On Apple's OpenFirmware this would overwrite parts of the frame buffer.
+	if (gKernelArgs.frame_buffer.enabled)
+		return bufferSize;
 
 	// be nice to our audience and replace single "\n" with "\r\n"
 
@@ -107,9 +118,10 @@ ConsoleHandle::WriteAt(void */*cookie*/, off_t /*pos*/, const void *buffer,
 
 
 InputConsoleHandle::InputConsoleHandle()
-	: ConsoleHandle()
-	, fStart(0)
-	, fCount(0)
+	:
+	ConsoleHandle(),
+	fStart(0),
+	fCount(0)
 {
 }
 
@@ -281,6 +293,31 @@ console_set_color(int32 foreground, int32 background)
 }
 
 
+static int
+translate_key(char escapeCode)
+{
+	switch (escapeCode) {
+		case 65:
+			return TEXT_CONSOLE_KEY_UP;
+		case 66:
+			return TEXT_CONSOLE_KEY_DOWN;
+		case 67:
+			return TEXT_CONSOLE_KEY_RIGHT;
+		case 68:
+			return TEXT_CONSOLE_KEY_LEFT;
+// TODO: Translate the codes for the following keys. Unfortunately my OF just
+// returns a '\0' character. :-/
+// 			TEXT_CONSOLE_KEY_PAGE_UP,
+// 			TEXT_CONSOLE_KEY_PAGE_DOWN,
+// 			TEXT_CONSOLE_KEY_HOME,
+// 			TEXT_CONSOLE_KEY_END,
+
+		default:
+			return 0;
+	}
+}
+
+
 int
 console_wait_for_key(void)
 {
@@ -294,26 +331,10 @@ console_wait_for_key(void)
 	} while (bytesRead == 0);
 
 	// translate the ESC sequences for cursor keys
-	if (bytesRead == 3 && buffer[0] == 27 && buffer [1] == 91) {
-		switch (buffer[2]) {
-			case 65:
-				return TEXT_CONSOLE_KEY_UP;
-			case 66:
-				return TEXT_CONSOLE_KEY_DOWN;
-			case 67:
-				return TEXT_CONSOLE_KEY_RIGHT;
-			case 68:
-				return TEXT_CONSOLE_KEY_LEFT;
-// TODO: Translate the codes for the following keys. Unfortunately my OF just
-// returns a '\0' character. :-/
-// 			TEXT_CONSOLE_KEY_PAGE_UP,
-// 			TEXT_CONSOLE_KEY_PAGE_DOWN,
-// 			TEXT_CONSOLE_KEY_HOME,
-// 			TEXT_CONSOLE_KEY_END,
-
-			default:
-				break;
-		}
+	if (bytesRead == 3 && buffer[0] == 27 && buffer[1] == 91) {
+		int key = translate_key(buffer[2]);
+		if (key != 0)
+			return key;
 	}
 
 	// put back unread chars
@@ -323,3 +344,25 @@ console_wait_for_key(void)
 	return buffer[0];
 }
 
+
+int
+console_check_for_key(void)
+{
+	char buffer[3];
+	ssize_t bytesRead = sInput.ReadAt(NULL, 0, buffer, 3);
+	if (bytesRead <= 0)
+		return 0;
+
+	// translate the ESC sequences for cursor keys
+	if (bytesRead == 3 && buffer[0] == 27 && buffer[1] == 91) {
+		int key = translate_key(buffer[2]);
+		if (key != 0)
+			return key;
+	}
+
+	// put back unread chars
+	if (bytesRead > 1)
+		sInput.PutChars(buffer + 1, bytesRead - 1);
+
+	return buffer[0];
+}

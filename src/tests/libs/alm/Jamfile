@@ -1,36 +1,41 @@
 SubDir HAIKU_TOP src tests libs alm ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
 UseLibraryHeaders lp_solve linprog alm ;
+UsePrivateHeaders shared ;
+
 
 Application ALMHelloWorld :
 	HelloWorld.cpp
 	:
-	be liblpsolve55.so liblinprog.so libalm.so $(TARGET_LIBSUPC++)
+	be liblpsolve55.so libalm.so $(TARGET_LIBSUPC++)
 ;
 
-Application ALMTwoViews :
-	TwoViews.cpp
+Application ALMViews :
+	Views.cpp
 	:
-	be liblpsolve55.so be liblinprog.so libalm.so $(TARGET_LIBSUPC++)
+	be liblpsolve55.so be libalm.so $(TARGET_LIBSUPC++)
 ;
 
 Application ALMPinwheel :
 	Pinwheel.cpp
 	:
-	be liblpsolve55.so be liblinprog.so libalm.so $(TARGET_LIBSUPC++)
+	be liblpsolve55.so be libalm.so $(TARGET_LIBSUPC++)
 ;
 
 Application ALMAreas :
 	Areas.cpp
 	:
-	be liblpsolve55.so be liblinprog.so libalm.so $(TARGET_LIBSUPC++)
+	be liblpsolve55.so be libalm.so $(TARGET_LIBSUPC++)
 ;
 
 Application ALMTableDemo :
 	TableDemo.cpp
 	:
-	be liblpsolve55.so be liblinprog.so libalm.so $(TARGET_LIBSUPC++)
+	be liblpsolve55.so be libalm.so $(TARGET_LIBSUPC++)
 ;
 
+Application ALMOperator :
+	OperatorLayout.cpp
+	:
+	be liblpsolve55.so be libalm.so $(TARGET_LIBSTDC++)
+;

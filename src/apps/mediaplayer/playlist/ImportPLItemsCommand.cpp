@@ -9,7 +9,6 @@
 #include <new>
 #include <stdio.h>
 
-#include <Alert.h>
 #include <Autolock.h>
 
 #include "Playlist.h"
@@ -43,12 +42,8 @@ ImportPLItemsCommand::ImportPLItemsCommand(Playlist* playlist,
 	temp.AppendRefs(refsMessage);
 
 	fNewCount = temp.CountItems();
-	if (fNewCount <= 0) {
-		BAlert* alert = new BAlert("Nothing to Play", "None of the files "
-			"you wanted to play appear to be media files.", "OK");
-		alert->Go(NULL);
+	if (fNewCount <= 0)
 		return;
-	}
 
 	fNewItems = new (nothrow) PlaylistItem*[fNewCount];
 	if (!fNewItems)
@@ -74,8 +69,8 @@ ImportPLItemsCommand::ImportPLItemsCommand(Playlist* playlist,
 			if (!fOldItems) {
 				// indicate bad object init
 				_CleanUp(fNewItems, fNewCount, true);
-			}
-			memset(fOldItems, 0, fOldCount * sizeof(PlaylistItem*));
+			} else
+				memset(fOldItems, 0, fOldCount * sizeof(PlaylistItem*));
 		}
 	}
 

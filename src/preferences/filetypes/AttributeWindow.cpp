@@ -15,6 +15,7 @@
 #include <ControlLook.h>
 #include <GridLayoutBuilder.h>
 #include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <Locale.h>
 #include <MenuField.h>
 #include <MenuItem.h>
@@ -67,9 +68,9 @@ compare_display_as(const char* a, const char* b)
 	if (emptyA || emptyB)
 		return false;
 
-	const char* end = strstr(a, ": ");
+	const char* end = strchr(a, ':');
 	int32 lengthA = end ? end - a : strlen(a);
-	end = strstr(b, ": ");
+	end = strchr(b, ':');
 	int32 lengthB = end ? end - b : strlen(b);
 
 	if (lengthA != lengthB)
@@ -82,9 +83,9 @@ compare_display_as(const char* a, const char* b)
 static const char*
 display_as_parameter(const char* special)
 {
-	const char* parameter = strstr(special, ": ");
+	const char* parameter = strchr(special, ':');
 	if (parameter != NULL)
-		return parameter + 2;
+		return parameter + 1;
 
 	return NULL;
 }
@@ -142,6 +143,10 @@ AttributeWindow::AttributeWindow(FileTypesWindow* target, BMimeType& mimeType,
 	BMenuField* typeMenuField = new BMenuField("types" , B_TRANSLATE("Type:"),
 		fTypeMenu);
 	typeMenuField->SetAlignment(B_ALIGN_RIGHT);
+	// we must set the color manually when adding a menuField directly
+	// into a window.
+	typeMenuField->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+	typeMenuField->SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 
 	fVisibleCheckBox = new BCheckBox("visible", B_TRANSLATE("Visible"),
 		new BMessage(kMsgVisibilityChanged));
@@ -238,18 +243,18 @@ AttributeWindow::AttributeWindow(FileTypesWindow* target, BMimeType& mimeType,
 		new BMessage(B_QUIT_REQUESTED));
 
 	BBox* visibleBox;
-	SetLayout(new BGroupLayout(B_VERTICAL));
-	AddChild(BGroupLayoutBuilder(B_VERTICAL, padding)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, padding)
 		.SetInsets(padding, padding, padding, padding)
-		.Add(BGridLayoutBuilder(padding, padding / 2)
+		.AddGrid(padding, padding / 2)
 			.Add(fPublicNameControl->CreateLabelLayoutItem(), 0, 0)
 			.Add(fPublicNameControl->CreateTextViewLayoutItem(), 1, 0)
 			.Add(fAttributeControl->CreateLabelLayoutItem(), 0, 1)
 			.Add(fAttributeControl->CreateTextViewLayoutItem(), 1, 1)
 			.Add(typeMenuField->CreateLabelLayoutItem(), 0, 2)
-			.Add(typeMenuField->CreateMenuBarLayoutItem(), 1, 2))
+			.Add(typeMenuField->CreateMenuBarLayoutItem(), 1, 2)
+			.End()
 		.Add(visibleBox = new BBox(B_FANCY_BORDER,
-			BGridLayoutBuilder(padding, padding / 2)
+			BLayoutBuilder::Grid<>(padding, padding / 2)
 				.Add(fDisplayAsMenuField->CreateLabelLayoutItem(), 0, 0)
 				.Add(fDisplayAsMenuField->CreateMenuBarLayoutItem(), 1, 0)
 				.Add(fEditableCheckBox, 3, 0)
@@ -259,12 +264,15 @@ AttributeWindow::AttributeWindow(FileTypesWindow* target, BMimeType& mimeType,
 				.Add(fWidthControl->CreateTextViewLayoutItem(), 1, 2, 3)
 				.Add(fAlignmentMenuField->CreateLabelLayoutItem(), 0, 3)
 				.Add(fAlignmentMenuField->CreateMenuBarLayoutItem(), 1, 3, 3)
-				.SetInsets(padding, padding, padding, padding)))
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL, padding)
+				.SetInsets(padding, padding, padding, padding)
+				.View())
+			)
+		.AddGroup(B_HORIZONTAL, padding)
 			.Add(BSpaceLayoutItem::CreateGlue())
 			.Add(BSpaceLayoutItem::CreateGlue())
 			.Add(cancelButton)
-			.Add(fAcceptButton)));
+			.Add(fAcceptButton);
+
 	visibleBox->SetLabel(fVisibleCheckBox);
 
 	fAcceptButton->MakeDefault(true);
@@ -272,6 +280,9 @@ AttributeWindow::AttributeWindow(FileTypesWindow* target, BMimeType& mimeType,
 
 	target->PlaceSubWindow(this);
 	AddToSubset(target);
+
+	_CheckDisplayAs();
+	_CheckAcceptable();
 }
 
 
@@ -381,7 +392,7 @@ AttributeWindow::_NewItemFromCurrent()
 			displayAs = identifier;
 
 			if (fSpecialControl->Text() && fSpecialControl->Text()[0]) {
-				displayAs += ": ";
+				displayAs += ":";
 				displayAs += fSpecialControl->Text();
 			}
 		}

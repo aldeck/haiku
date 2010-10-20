@@ -13,6 +13,9 @@
 
 #include <Point.h>
 
+#include <ServerLink.h>
+#include "Window.h"
+
 
 class BMessage;
 class Desktop;
@@ -23,13 +26,18 @@ class DesktopListener : public DoublyLinkedListLinkImpl<DesktopListener> {
 public:
 	virtual						~DesktopListener();
 
+	virtual int32				Identifier() = 0;
+
 	virtual	void				ListenerRegistered(Desktop* desktop) = 0;
 	virtual	void				ListenerUnregistered() = 0;
 
-	virtual void				AddWindow(Window* window) = 0;
-	virtual void				RemoveWindow(Window* window) = 0;
+	virtual bool				HandleMessage(Window* sender,
+									BPrivate::ServerLink& link) = 0;
+
+	virtual void				WindowAdded(Window* window) = 0;
+	virtual void				WindowRemoved(Window* window) = 0;
 	
-	virtual void				KeyEvent(uint32 what, int32 key,
+	virtual void				KeyPressed(uint32 what, int32 key,
 									int32 modifiers) = 0;
 	virtual void				MouseEvent(BMessage* message) = 0;
 	virtual void				MouseDown(Window* window, BMessage* message,
@@ -39,17 +47,23 @@ public:
 	virtual void				MouseMoved(Window* window, BMessage* message,
 									const BPoint& where) = 0;
 
-	virtual void				MoveWindow(Window* window) = 0;
-	virtual void				ResizeWindow(Window* window) = 0;
-	virtual void				ActivateWindow(Window* window) = 0;
-	virtual void				SendWindowBehind(Window* window,
+	virtual void				WindowMoved(Window* window) = 0;
+	virtual void				WindowResized(Window* window) = 0;
+	virtual void				WindowActitvated(Window* window) = 0;
+	virtual void				WindowSentBehind(Window* window,
 									Window* behindOf) = 0;
-	virtual void				SetWindowWorkspaces(Window* window,
+	virtual void				WindowWorkspacesChanged(Window* window,
 									uint32 workspaces) = 0;
-	virtual void				ShowWindow(Window* window) = 0;
-	virtual void				HideWindow(Window* window) = 0;
-	virtual void				MinimizeWindow(Window* window,
+	virtual void				WindowMinimized(Window* window,
 									bool minimize) = 0;
+
+	virtual void				WindowTabLocationChanged(Window* window,
+									float location) = 0;
+	virtual void				SizeLimitsChanged(Window* window,
+									int32 minWidth, int32 maxWidth,
+									int32 minHeight, int32 maxHeight) = 0;
+	virtual void				WindowLookChanged(Window* window,
+									window_look look) = 0;
 
 	virtual bool				SetDecoratorSettings(Window* window,
 									const BMessage& settings) = 0;
@@ -63,41 +77,51 @@ typedef DoublyLinkedList<DesktopListener> DesktopListenerDLList;
 
 class DesktopObservable {
 public:
-							DesktopObservable();
+								DesktopObservable();
 
-		void				RegisterListener(DesktopListener* listener,
-								Desktop* desktop);
-		void				UnregisterListener(DesktopListener* listener);
+			void				RegisterListener(DesktopListener* listener,
+									Desktop* desktop);
+			void				UnregisterListener(DesktopListener* listener);
 	const DesktopListenerDLList&	GetDesktopListenerList();
 
-		void				InvokeAddWindow(Window* window);
-		void				InvokeRemoveWindow(Window* window);
+			bool				MessageForListener(Window* sender,
+									BPrivate::ServerLink& link);
 
-		void				InvokeKeyEvent(uint32 what, int32 key,
-								int32 modifiers);
-		void				InvokeMouseEvent(BMessage* message);
-		void				InvokeMouseDown(Window* window, BMessage* message,
-									const BPoint& where);
-		void				InvokeMouseUp(Window* window, BMessage* message,
-									const BPoint& where);
-		void				InvokeMouseMoved(Window* window, BMessage* message,
-									const BPoint& where);
+			void				NotifyWindowAdded(Window* window);
+			void				NotifyWindowRemoved(Window* window);
 
-		void				InvokeMoveWindow(Window* window);
-		void				InvokeResizeWindow(Window* window);
-		void				InvokeActivateWindow(Window* window);
-		void				InvokeSendWindowBehind(Window* window,
-								Window* behindOf);
-		void				InvokeSetWindowWorkspaces(Window* window,
+			void				NotifyKeyPressed(uint32 what, int32 key,
+									int32 modifiers);
+			void				NotifyMouseEvent(BMessage* message);
+			void				NotifyMouseDown(Window* window,
+									BMessage* message, const BPoint& where);
+			void				NotifyMouseUp(Window* window, BMessage* message,
+										const BPoint& where);
+			void				NotifyMouseMoved(Window* window,
+									BMessage* message, const BPoint& where);
+
+			void				NotifyWindowMoved(Window* window);
+			void				NotifyWindowResized(Window* window);
+			void				NotifyWindowActitvated(Window* window);
+			void				NotifyWindowSentBehind(Window* window,
+									Window* behindOf);
+			void				NotifyWindowWorkspacesChanged(Window* window,
 									uint32 workspaces);
-		void				InvokeShowWindow(Window* window);
-		void				InvokeHideWindow(Window* window);
-		void				InvokeMinimizeWindow(Window* window, bool minimize);
+			void				NotifyWindowMinimized(Window* window,
+									bool minimize);
 
-		bool				InvokeSetDecoratorSettings(Window* window,
-								const BMessage& settings);
-		void				InvokeGetDecoratorSettings(Window* window,
-								BMessage& settings);
+			void				NotifyWindowTabLocationChanged(Window* window,
+									float location);
+			void				NotifySizeLimitsChanged(Window* window,
+									int32 minWidth, int32 maxWidth,
+									int32 minHeight, int32 maxHeight);
+			void				NotifyWindowLookChanged(Window* window,
+									window_look look);
+
+			bool				SetDecoratorSettings(Window* window,
+									const BMessage& settings);
+			void				GetDecoratorSettings(Window* window,
+									BMessage& settings);
 
 private:
 		class InvokeGuard {

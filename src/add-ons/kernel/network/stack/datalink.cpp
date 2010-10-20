@@ -164,7 +164,17 @@ get_interface_name_or_index(net_domain* domain, int32 option, void* value,
 }
 
 
-status_t
+static void
+set_interface_address(net_interface_address*& target, InterfaceAddress* address)
+{
+	if (target != NULL)
+		static_cast<InterfaceAddress*>(target)->ReleaseReference();
+
+	target = address;
+}
+
+
+static status_t
 fill_address(const sockaddr* from, sockaddr* to, size_t maxLength)
 {
 	if (from != NULL) {
@@ -260,7 +270,7 @@ datalink_control(net_domain* _domain, int32 option, void* value,
 
 			return status;
 		}
-	
+
 		case SIOCGIFCOUNT:
 		{
 			// count number of interfaces
@@ -309,12 +319,15 @@ datalink_control(net_domain* _domain, int32 option, void* value,
 
 		default:
 		{
-			if (*_length < sizeof(struct ifreq))
+			// We also accept partial ifreqs as long as the name is complete.
+			if (*_length < IF_NAMESIZE)
 				return B_BAD_VALUE;
+
+			size_t length = min_c(sizeof(struct ifreq), *_length);
 
 			// try to pass the request to an existing interface
 			struct ifreq request;
-			if (user_memcpy(&request, value, sizeof(struct ifreq)) < B_OK)
+			if (user_memcpy(&request, value, length) != B_OK)
 				return B_BAD_ADDRESS;
 
 			Interface* interface = get_interface(domain, request.ifr_name);
@@ -337,7 +350,7 @@ datalink_send_routed_data(struct net_route* route, net_buffer* buffer)
 {
 	TRACE("%s(route %p, buffer %p)\n", __FUNCTION__, route, buffer);
 
-	net_interface_address* address = route->interface_address;
+	InterfaceAddress* address = (InterfaceAddress*)route->interface_address;
 	Interface* interface = (Interface*)address->interface;
 
 	//dprintf("send buffer (%ld bytes) to interface %s (route flags %lx)\n",
@@ -353,7 +366,8 @@ datalink_send_routed_data(struct net_route* route, net_buffer* buffer)
 
 		// We set the interface address here, so the buffer is delivered
 		// directly to the domain in interfaces.cpp:device_consumer_thread()
-		buffer->interface_address = address;
+		address->AcquireReference();
+		set_interface_address(buffer->interface_address, address);
 
 		// this one goes back to the domain directly
 		return fifo_enqueue_buffer(
@@ -400,12 +414,12 @@ datalink_send_data(net_protocol* protocol, net_domain* domain,
 	net_route* route = NULL;
 	status_t status;
 	if (protocol != NULL && protocol->socket != NULL
-		&& protocol->socket->bound_to_device > 0) {
+		&& protocol->socket->bound_to_device != 0) {
 		status = get_device_route(domain, protocol->socket->bound_to_device,
 			&route);
 	} else
 		status = get_buffer_route(domain, buffer, &route);
-	
+
 	TRACE("  route status: %s\n", strerror(status));
 
 	if (status != B_OK)
@@ -419,8 +433,10 @@ datalink_send_data(net_protocol* protocol, net_domain* domain,
 
 /*!	Tests if \a address is a local address in the domain.
 
-	\param _interface will be set to the interface belonging to that address
-		if non-NULL.
+	\param _interfaceAddress will be set to the interface address belonging to
+		that address if non-NULL. If the address \a _interfaceAddress points to
+		is not NULL, it is assumed that it already points to an address, which
+		is then released before the new address is assigned.
 	\param _matchedType will be set to either zero or MSG_BCAST if non-NULL.
 */
 static bool
@@ -454,7 +470,7 @@ datalink_is_local_address(net_domain* domain, const struct sockaddr* address,
 	TRACE("  it is, interface address %p\n", interfaceAddress);
 
 	if (_interfaceAddress != NULL)
-		*_interfaceAddress = interfaceAddress;
+		set_interface_address(*_interfaceAddress, interfaceAddress);
 	else
 		interfaceAddress->ReleaseReference();
 
@@ -469,7 +485,10 @@ datalink_is_local_address(net_domain* domain, const struct sockaddr* address,
 
 	\param unconfiguredOnly only unconfigured interfaces are taken into account.
 	\param _interfaceAddress will be set to the first address of the interface
-		and domain belonging to that address if non-NULL.
+		and domain belonging to that address if non-NULL. If the address
+		\a _interfaceAddress points to is not NULL, it is assumed that it
+		already points to an address, which is then released before the new
+		address is assigned.
 */
 static bool
 datalink_is_local_link_address(net_domain* domain, bool unconfiguredOnly,
@@ -493,7 +512,7 @@ datalink_is_local_link_address(net_domain* domain, bool unconfiguredOnly,
 	}
 
 	if (_interfaceAddress != NULL)
-		*_interfaceAddress = interfaceAddress;
+		set_interface_address(*_interfaceAddress, interfaceAddress);
 	else
 		interfaceAddress->ReleaseReference();
 
@@ -753,8 +772,12 @@ interface_protocol_control(net_datalink_protocol* _protocol, int32 option,
 
 			size_t maxLength = length - offsetof(ifreq, ifr_addr);
 
-			return fill_address(*interfaceAddress->AddressFor(option),
+			status_t status = fill_address(
+				*interfaceAddress->AddressFor(option),
 				&((struct ifreq*)argument)->ifr_addr, maxLength);
+
+			interfaceAddress->ReleaseReference();
+			return status;
 		}
 
 		case B_SOCKET_COUNT_ALIASES:
@@ -772,14 +795,37 @@ interface_protocol_control(net_datalink_protocol* _protocol, int32 option,
 			if (user_memcpy(&request, argument, sizeof(ifaliasreq)) != B_OK)
 				return B_BAD_ADDRESS;
 
-			InterfaceAddress* address
-				= interface->AddressAt(request.ifra_index);
+			InterfaceAddress* address = NULL;
+			if (request.ifra_index < 0) {
+				if (!protocol->domain->address_module->is_empty_address(
+						(const sockaddr*)&request.ifra_addr, false)) {
+					// Find first address that matches the local address
+					address = interface->AddressForLocal(protocol->domain,
+						(const sockaddr*)&request.ifra_addr);
+				}
+				if (address == NULL) {
+					// Find first address for family
+					address = interface->FirstForFamily(
+						protocol->domain->family);
+				}
+
+				request.ifra_index = interface->IndexOfAddress(address);
+			} else
+				address = interface->AddressAt(request.ifra_index);
 			if (address == NULL)
 				return B_BAD_VALUE;
 
-			status_t status = fill_address(address->local,
-				(sockaddr*)&((struct ifaliasreq*)argument)->ifra_addr,
-				sizeof(sockaddr_storage));
+			// Copy index (in case none was specified)
+			status_t status = user_memcpy(
+				&((struct ifaliasreq*)argument)->ifra_index,
+				&request.ifra_index, sizeof(request.ifra_index));
+
+			// Copy address info
+			if (status == B_OK) {
+				status = fill_address(address->local,
+					(sockaddr*)&((struct ifaliasreq*)argument)->ifra_addr,
+					sizeof(sockaddr_storage));
+			}
 			if (status == B_OK) {
 				status = fill_address(address->mask,
 					(sockaddr*)&((struct ifaliasreq*)argument)->ifra_mask,

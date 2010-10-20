@@ -108,7 +108,7 @@ AddOneShortcut(const Model *model, const char *, uint32 shortcut, bool /*primary
 // #pragma mark -
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "DeskWindow"
 
 BDeskWindow::BDeskWindow(Model* model, LockingList<BWindow> *windowList)
 	:
@@ -164,7 +164,7 @@ BDeskWindow::MenusBeginning()
 		// remove all current addon shortcuts
 		for (std::set<uint32>::iterator it= fCurrentAddonShortcuts.begin();
 			it != fCurrentAddonShortcuts.end(); it++) {
-			PRINT(("removing shortcut %c\n", *it));
+			PRINT(("removing shortcut %c\n", (int)*it));
 			RemoveShortcut(*it, B_OPTION_KEY | B_COMMAND_KEY);
 		}
 

@@ -10,24 +10,24 @@
 #include <SupportDefs.h>
 
 
-struct media_format;
+struct media_raw_video_format;
 
 
 class VideoSupplier {
- public:
+public:
 								VideoSupplier();
 	virtual						~VideoSupplier();
 
 	virtual	status_t			FillBuffer(int64 startFrame, void* buffer,
-									const media_format* format,
-									bool& wasCached) = 0;
+									const media_raw_video_format& format,
+									bool forceGeneration, bool& wasCached) = 0;
 
 	virtual	void				DeleteCaches();
 
  	inline	bigtime_t			ProcessingLatency() const
  									{ return fProcessingLatency; }
 
- protected:
+protected:
 		 	bigtime_t			fProcessingLatency;
 };
 

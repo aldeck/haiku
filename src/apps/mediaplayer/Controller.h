@@ -36,13 +36,11 @@
 
 
 class AudioTrackSupplier;
-class BBitmap;
-class BMediaFile;
-class BMediaTrack;
+class TrackSupplier;
 class PlaylistItem;
 class ProxyAudioSupplier;
 class ProxyVideoSupplier;
-class SoundOutput;
+class SubTitles;
 class VideoTrackSupplier;
 class VideoView;
 
@@ -60,12 +58,14 @@ public:
 
 		virtual	void			VideoTrackChanged(int32 index);
 		virtual	void			AudioTrackChanged(int32 index);
+		virtual	void			SubTitleTrackChanged(int32 index);
 
 		virtual	void			VideoStatsChanged();
 		virtual	void			AudioStatsChanged();
 
 		virtual	void			PlaybackStateChanged(uint32 state);
 		virtual	void			PositionChanged(float position);
+		virtual	void			SeekHandled(int64 seekFrame);
 		virtual	void			VolumeChanged(float volume);
 		virtual	void			MutedChanged(bool muted);
 	};
@@ -95,11 +95,16 @@ public:
 
 			int					AudioTrackCount();
 			int					VideoTrackCount();
+			int					SubTitleTrackCount();
 
 			status_t			SelectAudioTrack(int n);
 			int					CurrentAudioTrack();
+			int					AudioTrackChannelCount();
 			status_t			SelectVideoTrack(int n);
 			int					CurrentVideoTrack();
+			status_t			SelectSubTitleTrack(int n);
+			int					CurrentSubTitleTrack();
+			const char*			SubTitleTrackName(int n);
 
 			void				Stop();
 			void				Play();
@@ -116,9 +121,10 @@ public:
 			void				VolumeUp();
 			void				VolumeDown();
 			void				ToggleMute();
-			void				SetPosition(float value);
-			void				SetFramePosition(int32 frame);
-			void				SetTimePosition(bigtime_t position);
+
+			int64				SetPosition(float value);
+			int64				SetFramePosition(int64 frame);
+			int64				SetTimePosition(bigtime_t position);
 
 			bool				HasFile();
 			status_t			GetFileFormatInfo(
@@ -130,6 +136,12 @@ public:
 			status_t			GetVideoCodecInfo(media_codec_info* info);
 			status_t			GetEncodedAudioFormat(media_format* format);
 			status_t			GetAudioCodecInfo(media_codec_info* info);
+
+			status_t			GetMetaData(BMessage* metaData);
+			status_t			GetVideoMetaData(int32 track,
+									BMessage* metaData);
+			status_t			GetAudioMetaData(int32 track,
+									BMessage* metaData);
 
 	// video view
 			void				SetVideoView(VideoView *view);
@@ -144,18 +156,22 @@ private:
 			void				_AdoptGlobalSettings();
 
 			uint32				_PlaybackState(int32 playingMode) const;
+			int64				_FrameDuration() const;
+			bigtime_t			_TimePosition() const;
 
 			void				_NotifyFileChanged(PlaylistItem* item,
 									status_t result) const;
 			void				_NotifyFileFinished() const;
 			void				_NotifyVideoTrackChanged(int32 index) const;
 			void				_NotifyAudioTrackChanged(int32 index) const;
+			void				_NotifySubTitleTrackChanged(int32 index) const;
 
 			void				_NotifyVideoStatsChanged() const;
 			void				_NotifyAudioStatsChanged() const;
 
 			void				_NotifyPlaybackStateChanged(uint32 state) const;
 			void				_NotifyPositionChanged(float position) const;
+			void				_NotifySeekHandled(int64 seekFrame) const;
 			void				_NotifyVolumeChanged(float volume) const;
 			void				_NotifyMutedChanged(bool muted) const;
 
@@ -167,35 +183,36 @@ private:
 									bool enabled) const;
 	virtual	void				NotifyVideoBoundsChanged(BRect bounds) const;
 	virtual	void				NotifyFPSChanged(float fps) const;
-	virtual	void				NotifyCurrentFrameChanged(int32 frame) const;
+	virtual	void				NotifyCurrentFrameChanged(int64 frame) const;
 	virtual	void				NotifySpeedChanged(float speed) const;
 	virtual	void				NotifyFrameDropped() const;
 	virtual	void				NotifyStopFrameReached() const;
-	virtual	void				NotifySeekHandled() const;
+	virtual	void				NotifySeekHandled(int64 seekedFrame) const;
 
 
+private:
 			VideoView*			fVideoView;
 			float				fVolume;
 			float				fActiveVolume;
 			bool				fMuted;
 
 			PlaylistItemRef		fItem;
-			BMediaFile*			fMediaFile;
+			TrackSupplier*		fTrackSupplier;
 
 			ProxyVideoSupplier*	fVideoSupplier;
 			ProxyAudioSupplier*	fAudioSupplier;
 			VideoTrackSupplier*	fVideoTrackSupplier;
 			AudioTrackSupplier*	fAudioTrackSupplier;
+			const SubTitles*	fSubTitles;
+			int32				fSubTitlesIndex;
 
-			BList				fAudioTrackList;
-			BList				fVideoTrackList;
-
-	mutable	bigtime_t			fPosition;
+	mutable	int64				fCurrentFrame;
 			bigtime_t			fDuration;
 			float				fVideoFrameRate;
 
-	mutable	bool				fSeekRequested;
-	mutable int32				fSeekFrame;
+	mutable	int32				fPendingSeekRequests;
+	mutable int64				fSeekFrame;
+	mutable int64				fRequestedSeekFrame;
 
 			ListenerAdapter		fGlobalSettingsListener;
 

@@ -140,6 +140,7 @@ static const Translation gTranslations[] =
 	{ "pt",
 		"Marcos Alves (Xeon3D)\n"
 		"Vasco Costa (gluon)\n"
+		"Michael Vinícius de Oliveira (michaelvo)\n"
 	},
 	{ "ru",
 		"Tatyana Fursic (iceid)\n"
@@ -178,18 +179,24 @@ TranslationComparator(const void* left, const void* right)
 	const Translation* rightTranslation = *(const Translation**)right;
 
 	BLanguage* language;
-	be_locale_roster->GetLanguage(leftTranslation->languageCode, &language);
 	BString leftName;
-	language->GetTranslatedName(leftName);
-	delete language;
+	if (be_locale_roster->GetLanguage(leftTranslation->languageCode, &language)
+			== B_OK) {
+		language->GetName(leftName);
+		delete language;
+	} else
+		leftName = leftTranslation->languageCode;
 
-	be_locale_roster->GetLanguage(rightTranslation->languageCode, &language);
 	BString rightName;
-	language->GetTranslatedName(rightName);
-	delete language;
+	if (be_locale_roster->GetLanguage(rightTranslation->languageCode, &language)
+			== B_OK) {
+		language->GetName(rightName);
+		delete language;
+	} else
+		rightName = rightTranslation->languageCode;
 
 	BCollator collator;
-	be_locale_roster->GetDefaultCollator(&collator);
+	be_locale->GetCollator(&collator);
 	return collator.Compare(leftName.String(), rightName.String());
 }
 
@@ -505,15 +512,24 @@ AboutView::AboutView()
 	// GCC version
 	BEntry gccFourHybrid("/boot/system/lib/gcc2/libstdc++.r4.so");
 	BEntry gccTwoHybrid("/boot/system/lib/gcc4/libsupc++.so");
-	if (gccFourHybrid.Exists() || gccTwoHybrid.Exists())
+	bool isHybrid = gccFourHybrid.Exists() || gccTwoHybrid.Exists();
+
+	if (isHybrid) {
 		snprintf(string, sizeof(string), B_TRANSLATE("GCC %d Hybrid"),
 			__GNUC__);
-	else
+	} else
 		snprintf(string, sizeof(string), "GCC %d", __GNUC__);
 
 	BStringView* gccView = new BStringView("gcctext", string);
 	gccView->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT,
 		B_ALIGN_VERTICAL_UNSET));
+
+#if __GNUC__ == 2
+	if (isHybrid) {
+		// do now show the GCC version if it's the default
+		gccView->Hide();
+	}
+#endif
 
 	// CPU count, type and clock speed
 	char processorLabel[256];
@@ -571,12 +587,13 @@ AboutView::AboutView()
 
 	const float offset = 5;
 
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
+	SetLayout(new BGroupLayout(B_HORIZONTAL, 0));
+	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 
 	BLayoutBuilder::Group<>((BGroupLayout*)GetLayout())
-		.AddGroup(B_VERTICAL)
+		.AddGroup(B_VERTICAL, 0)
 			.Add(new LogoView())
-			.AddGroup(B_VERTICAL)
+			.AddGroup(B_VERTICAL, 0)
 				.Add(_CreateLabel("oslabel", B_TRANSLATE("Version:")))
 				.Add(versionView)
 				.Add(gccView)
@@ -841,6 +858,7 @@ AboutView::_CreateCreditsView()
 	fCreditsView->MakeEditable(false);
 	fCreditsView->SetWordWrap(true);
 	fCreditsView->SetInsets(5, 5, 5, 5);
+	fCreditsView->SetViewColor(ui_color(B_DOCUMENT_BACKGROUND_COLOR));
 
 	BScrollView* creditsScroller = new BScrollView("creditsScroller",
 		fCreditsView, B_WILL_DRAW | B_FRAME_EVENTS, false, true,
@@ -1083,7 +1101,7 @@ AboutView::_CreateCreditsView()
 		langName.Truncate(0);
 		if (be_locale_roster->GetLanguage(translation.languageCode, &lang)
 			== B_OK) {
-			lang->GetTranslatedName(langName);
+			lang->GetName(langName);
 			delete lang;
 		} else {
 			// We failed to get the localized readable name,
@@ -1096,9 +1114,7 @@ AboutView::_CreateCreditsView()
 		fCreditsView->Insert(langName);
 		fCreditsView->Insert("\n");
 		fCreditsView->SetFontAndColor(be_plain_font, B_FONT_ALL, &kDarkGrey);
-		fCreditsView->Insert(
-			translation.names
-		);
+		fCreditsView->Insert(translation.names);
 	}
 
 	fCreditsView->SetFontAndColor(&font, B_FONT_ALL, &kHaikuOrange);
@@ -1116,7 +1132,9 @@ AboutView::_CreateCreditsView()
 	fCreditsView->Insert(
 		B_TRANSLATE("The BeGeistert team\n"));
 	fCreditsView->Insert(
-		B_TRANSLATE("Google & their Google Summer of Code program\n\n"));
+		B_TRANSLATE("Google & their Google Summer of Code program\n"));
+	fCreditsView->Insert(
+		B_TRANSLATE("The University of Auckland and Christof Lutteroth\n\n"));
 	fCreditsView->Insert(
 		B_TRANSLATE("... and the many people making donations!\n\n"));
 

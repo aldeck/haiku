@@ -9,50 +9,77 @@
 #include <Collator.h>
 #include <Country.h>
 #include <Language.h>
+#include <Locker.h>
 
 
 class BCatalog;
 class BString;
+class BTimeZone;
+
+
+typedef enum {
+	B_DATE_ELEMENT_INVALID = B_BAD_DATA,
+	B_DATE_ELEMENT_YEAR = 0,
+	B_DATE_ELEMENT_MONTH,
+	B_DATE_ELEMENT_DAY,
+	B_DATE_ELEMENT_AM_PM,
+	B_DATE_ELEMENT_HOUR,
+	B_DATE_ELEMENT_MINUTE,
+	B_DATE_ELEMENT_SECOND
+} BDateElement;
+
+typedef enum {
+	B_NUMBER_ELEMENT_INVALID = B_BAD_DATA,
+	B_NUMBER_ELEMENT_INTEGER = 0,
+	B_NUMBER_ELEMENT_FRACTIONAL,
+	B_NUMBER_ELEMENT_CURRENCY
+} BNumberElement;
 
 
 class BLocale {
 public:
-								BLocale(const char* languageAndCountryCode
-									= "en_US");
+								BLocale(const BLanguage* language = NULL,
+									const BCountry* country = NULL);
 								BLocale(const BLocale& other);
-								BLocale& operator=(const BLocale& other);
 								~BLocale();
 
-			const BCollator*	Collator() const { return &fCollator; }
-			const BCountry*		Country() const { return &fCountry; }
-			const BLanguage*	Language() const { return &fLanguage; }
-			const char*			Code() const;
-			bool				GetName(BString& name) const;
+			BLocale&			operator=(const BLocale& other);
+
+			status_t			GetCollator(BCollator* collator) const;
+			status_t			GetLanguage(BLanguage* language) const;
+			status_t			GetCountry(BCountry* country) const;
 
 			void				SetCountry(const BCountry& newCountry);
 			void				SetCollator(const BCollator& newCollator);
-			void				SetLanguage(const char* languageCode);
+			void				SetLanguage(const BLanguage& newLanguage);
+
+			bool				GetName(BString& name) const;
 
 			// see definitions in LocaleStrings.h
-			const char*			GetString(uint32 id);
+			const char*			GetString(uint32 id) const;
 
 			void				FormatString(char* target, size_t maxSize,
-									char* fmt, ...);
-			void				FormatString(BString* buffer, char* fmt, ...);
+									char* fmt, ...) const;
+			void				FormatString(BString* buffer, char* fmt,
+									...) const;
 			status_t			FormatDateTime(char* target, size_t maxSize,
-									time_t time, bool longFormat);
+									time_t time, bool longFormat) const;
 			status_t			FormatDateTime(BString* buffer, time_t time,
-									bool longFormat);
+									bool longFormat,
+									const BTimeZone* timeZone = NULL) const;
 
 								// Date
 
+								// TODO: drop some of these once BDateFormat
+								//       has been implemented!
 			status_t			FormatDate(char* string, size_t maxSize,
-									time_t time, bool longFormat);
+									time_t time, bool longFormat) const;
 			status_t			FormatDate(BString* string, time_t time,
-									bool longFormat);
+									bool longFormat,
+									const BTimeZone* timeZone = NULL) const;
 			status_t			FormatDate(BString* string,
 									int*& fieldPositions, int& fieldCount,
-									time_t time, bool longFormat);
+									time_t time, bool longFormat) const;
 			status_t			GetDateFields(BDateElement*& fields,
 									int& fieldCount, bool longFormat) const;
 			status_t			GetDateFormat(BString&, bool longFormat) const;
@@ -63,13 +90,16 @@ public:
 
 								// Time
 
+								// TODO: drop some of these once BTimeFormat
+								//       has been implemented!
 			status_t			FormatTime(char* string, size_t maxSize,
-									time_t time, bool longFormat);
+									time_t time, bool longFormat) const;
 			status_t			FormatTime(BString* string, time_t time,
-									bool longFormat);
+									bool longFormat,
+									const BTimeZone* timeZone = NULL) const;
 			status_t			FormatTime(BString* string,
 									int*& fieldPositions, int& fieldCount,
-									time_t time, bool longFormat);
+									time_t time, bool longFormat) const;
 			status_t			GetTimeFields(BDateElement*& fields,
 									int& fieldCount, bool longFormat) const;
 
@@ -81,17 +111,25 @@ public:
 								// numbers
 
 			status_t			FormatNumber(char* string, size_t maxSize,
-									double value);
-			status_t			FormatNumber(BString* string, double value);
+									double value) const;
+			status_t			FormatNumber(BString* string,
+									double value) const;
 			status_t			FormatNumber(char* string, size_t maxSize,
-									int32 value);
-			status_t			FormatNumber(BString* string, int32 value);
+									int32 value) const;
+			status_t			FormatNumber(BString* string,
+									int32 value) const;
 
 								// monetary
 
 			ssize_t				FormatMonetary(char* string, size_t maxSize,
-									double value);
-			ssize_t				FormatMonetary(BString* string, double value);
+									double value) const;
+			ssize_t				FormatMonetary(BString* string,
+									double value) const;
+			status_t			FormatMonetary(BString* string,
+									int*& fieldPositions,
+									BNumberElement*& fieldTypes,
+									int& fieldCount, double value) const;
+			status_t			GetCurrencySymbol(BString& result) const;
 
 			// Collator short-hands
 			int					StringCompare(const char* s1,
@@ -102,17 +140,24 @@ public:
 			void				GetSortKey(const char* string,
 									BString* key) const;
 
-protected:
+private:
+			void				_UpdateFormats();
+
+	mutable	BLocker				fLock;
 			BCollator			fCollator;
 			BCountry			fCountry;
 			BLanguage			fLanguage;
 
-			icu_44::Locale*		fICULocale;
 			BString				fLongDateFormat;
 			BString				fShortDateFormat;
 			BString				fLongTimeFormat;
 			BString				fShortTimeFormat;
+
 };
+
+
+// global locale object
+extern const BLocale* be_locale;
 
 
 //--- collator short-hands inlines ---

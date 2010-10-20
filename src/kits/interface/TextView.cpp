@@ -3039,6 +3039,12 @@ BTextView::InsertText(const char *inText, int32 inLength, int32 inOffset,
 
 		// update the style runs
 		fStyles->BumpOffset(inLength, fStyles->OffsetToRun(inOffset - 1) + 1);
+
+		// offset the caret/selection, if the text was inserted before it
+		if (inOffset <= fSelEnd) {
+			fSelStart += inLength;
+			fCaretOffset = fSelEnd = fSelStart;
+		}
 	}
 
 	if (fStylable && inRuns != NULL) {
@@ -4202,12 +4208,6 @@ BTextView::_DoInsertText(const char *inText, int32 inLength, int32 inOffset,
 	// copy data into buffer
 	InsertText(inText, inLength, inOffset, inRuns);
 
-	// offset the caret/selection, if the text was inserted before it
-	if (inOffset <= fSelEnd) {
-		fSelStart += inLength;
-		fCaretOffset = fSelEnd = fSelStart;
-	}
-
 	// recalc line breaks and draw the text
 	_Refresh(inOffset, inOffset + inLength, false);
 }
@@ -4270,6 +4270,7 @@ BTextView::_DrawLine(BView *view, const int32 &lineNum,
 	const BFont *font = NULL;
 	const rgb_color *color = NULL;
 	int32 numBytes;
+	drawing_mode defaultTextRenderingMode = DrawingMode();
 	// iterate through each style on this line
 	while ((numBytes = fStyles->Iterate(offset, length, fInline, &font,
 			&color)) != 0) {
@@ -4287,7 +4288,7 @@ BTextView::_DrawLine(BView *view, const int32 &lineNum,
 				} while ((tabChars + numTabs) < numBytes);
 			}
 
-			drawing_mode textRenderingMode = B_OP_COPY;
+			drawing_mode textRenderingMode = defaultTextRenderingMode;
 
 			if (inputRegion.CountRects() > 0
 				&& ((offset <= fInline->Offset()
@@ -5401,8 +5402,6 @@ BTextView::_HandleInputMethodChanged(BMessage *message)
 
 		const int32 inlineOffset = fInline->Offset();
 		InsertText(string, stringLen, fSelStart, NULL);
-		fSelStart += stringLen;
-		fCaretOffset = fSelEnd = fSelStart;
 
 		_Refresh(inlineOffset, fSelEnd, true);
 		_ShowCaret();

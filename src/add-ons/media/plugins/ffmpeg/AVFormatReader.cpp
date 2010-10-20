@@ -1,5 +1,5 @@
 /*
- * Copyright 2009, Stephan Aßmus <superstippi@gmx.de>
+ * Copyright 2009-2010, Stephan Aßmus <superstippi@gmx.de>
  * All rights reserved. Distributed under the terms of the GNU L-GPL license.
  */
 
@@ -27,25 +27,23 @@ extern "C" {
 #include "gfx_util.h"
 
 
-#define TRACE_AVFORMAT_READER
+//#define TRACE_AVFORMAT_READER
 #ifdef TRACE_AVFORMAT_READER
 #	define TRACE printf
 #	define TRACE_IO(a...)
-#	define TRACE_SEEK(a...)
+#	define TRACE_SEEK(a...) printf(a)
+#	define TRACE_FIND(a...)
 #	define TRACE_PACKET(a...)
 #else
 #	define TRACE(a...)
 #	define TRACE_IO(a...)
 #	define TRACE_SEEK(a...)
+#	define TRACE_FIND(a...)
 #	define TRACE_PACKET(a...)
 #endif
 
 #define ERROR(a...) fprintf(stderr, a)
 
-
-static const size_t kIOBufferSize = 64 * 1024;
-	// TODO: This could depend on the BMediaFile creation flags, IIRC,
-	// they allow to specify a buffering mode.
 
 static const int64 kNoPTSValue = 0x8000000000000000LL;
 	// NOTE: For some reasons, I have trouble with the avcodec.h define:
@@ -53,7 +51,7 @@ static const int64 kNoPTSValue = 0x8000000000000000LL;
 	// INT64_C is not defined here.
 
 
-uint32
+static uint32
 avformat_to_beos_format(SampleFormat format)
 {
 	switch (format) {
@@ -69,28 +67,44 @@ avformat_to_beos_format(SampleFormat format)
 }
 
 
-uint32
+static uint32
 avformat_to_beos_byte_order(SampleFormat format)
 {
+	// TODO: Huh?
 	return B_MEDIA_HOST_ENDIAN;
 }
 
 
-// #pragma mark - AVFormatReader::StreamCookie
+static void
+avmetadata_to_message(AVMetadata* metaData, BMessage* message)
+{
+	if (metaData == NULL)
+		return;
+
+	AVMetadataTag* tag = NULL;
+	while ((tag = av_metadata_get(metaData, "", tag,
+		AV_METADATA_IGNORE_SUFFIX))) {
+		// TODO: Make sure we eventually follow a defined convention for
+		// the names of meta-data keys.
+		message->AddString(tag->key, tag->value);
+	}
+}
 
 
-class AVFormatReader::StreamCookie {
+// #pragma mark - StreamBase
+
+
+class StreamBase {
 public:
-								StreamCookie(BPositionIO* source,
-									BLocker* streamLock);
-	virtual						~StreamCookie();
+								StreamBase(BPositionIO* source,
+									BLocker* sourceLock, BLocker* streamLock);
+	virtual						~StreamBase();
 
 	// Init an indivual AVFormatContext
 			status_t			Open();
 
 	// Setup this stream to point to the AVStream at the given streamIndex.
-	// This will also initialize the media_format.
-			status_t			Init(int32 streamIndex);
+	virtual	status_t			Init(int32 streamIndex);
 
 	inline	const AVFormatContext* Context() const
 									{ return fContext; }
@@ -100,28 +114,18 @@ public:
 	inline	int32				VirtualIndex() const
 									{ return fVirtualIndex; }
 
-	inline	const media_format&	Format() const
-									{ return fFormat; }
-
 			double				FrameRate() const;
+			bigtime_t			Duration() const;
 
-	// Support for AVFormatReader
-			status_t			GetStreamInfo(int64* frameCount,
-									bigtime_t* duration, media_format* format,
-									const void** infoBuffer,
-									size_t* infoSize) const;
-
-			status_t			Seek(uint32 flags, int64* frame,
+	virtual	status_t			Seek(uint32 flags, int64* frame,
 									bigtime_t* time);
-			status_t			FindKeyFrame(uint32 flags, int64* frame,
-									bigtime_t* time) const;
 
 			status_t			GetNextChunk(const void** chunkBuffer,
 									size_t* chunkSize,
 									media_header* mediaHeader);
 
-private:
-	// I/O hooks for libavformat, cookie will be a StreamCookie instance.
+protected:
+	// I/O hooks for libavformat, cookie will be a Stream instance.
 	// Since multiple StreamCookies use the same BPositionIO source, they
 	// maintain the position individually, and may need to seek the source
 	// if it does not match anymore in _Read().
@@ -139,70 +143,91 @@ private:
 
 			status_t			_NextPacket(bool reuse);
 
-private:
+			int64_t				_ConvertToStreamTimeBase(bigtime_t time) const;
+			bigtime_t			_ConvertFromStreamTimeBase(int64_t time) const;
+
+protected:
 			BPositionIO*		fSource;
 			off_t				fPosition;
 			// Since different threads may read from the source,
 			// we need to protect the file position and I/O by a lock.
+			BLocker*			fSourceLock;
+
 			BLocker*			fStreamLock;
 
 			AVFormatContext*	fContext;
 			AVStream*			fStream;
 			int32				fVirtualIndex;
 
+			media_format		fFormat;
+
 			ByteIOContext		fIOContext;
-			uint8				fIOBuffer[kIOBufferSize];
 
 			AVPacket			fPacket;
 			bool				fReusePacket;
 
-			media_format		fFormat;
+			bool				fSeekByBytes;
+			bool				fStreamBuildsIndexWhileReading;
 };
 
 
-
-AVFormatReader::StreamCookie::StreamCookie(BPositionIO* source,
+StreamBase::StreamBase(BPositionIO* source, BLocker* sourceLock,
 		BLocker* streamLock)
 	:
 	fSource(source),
 	fPosition(0),
+	fSourceLock(sourceLock),
+
 	fStreamLock(streamLock),
 
 	fContext(NULL),
 	fStream(NULL),
 	fVirtualIndex(-1),
 
-	fReusePacket(false)
+	fReusePacket(false),
+
+	fSeekByBytes(false),
+	fStreamBuildsIndexWhileReading(false)
 {
-	memset(&fIOBuffer, 0, sizeof(fIOBuffer));
-	memset(&fFormat, 0, sizeof(media_format));
+	// NOTE: Don't use streamLock here, it may not yet be initialized!
 	av_new_packet(&fPacket, 0);
+	memset(&fFormat, 0, sizeof(media_format));
 }
 
 
-AVFormatReader::StreamCookie::~StreamCookie()
+StreamBase::~StreamBase()
 {
+	av_free(fIOContext.buffer);
 	av_free_packet(&fPacket);
 	av_free(fContext);
 }
 
 
 status_t
-AVFormatReader::StreamCookie::Open()
+StreamBase::Open()
 {
+	BAutolock _(fStreamLock);
+
 	// Init probing data
+	size_t bufferSize = 32768;
+	uint8* buffer = static_cast<uint8*>(av_malloc(bufferSize));
+	if (buffer == NULL)
+		return B_NO_MEMORY;
+
 	size_t probeSize = 2048;
 	AVProbeData probeData;
 	probeData.filename = "";
-	probeData.buf = fIOBuffer;
+	probeData.buf = buffer;
 	probeData.buf_size = probeSize;
 
 	// Read a bit of the input...
 	// NOTE: Even if other streams have already read from the source,
 	// it is ok to not seek first, since our fPosition is 0, so the necessary
 	// seek will happen automatically in _Read().
-	if (_Read(this, fIOBuffer, probeSize) != (ssize_t)probeSize)
+	if (_Read(this, buffer, probeSize) != (ssize_t)probeSize) {
+		av_free(buffer);
 		return B_IO_ERROR;
+	}
 	// ...and seek back to the beginning of the file. This is important
 	// since libavformat will assume the stream to be at offset 0, the
 	// probe data is not reused.
@@ -212,75 +237,73 @@ AVFormatReader::StreamCookie::Open()
 	AVInputFormat* inputFormat = av_probe_input_format(&probeData, 1);
 
 	if (inputFormat == NULL) {
-		TRACE("AVFormatReader::StreamCookie::Open() - "
-			"av_probe_input_format() failed!\n");
+		TRACE("StreamBase::Open() - av_probe_input_format() failed!\n");
+		av_free(buffer);
 		return B_NOT_SUPPORTED;
 	}
 
-	TRACE("AVFormatReader::StreamCookie::Open() - "
+	TRACE("StreamBase::Open() - "
 		"av_probe_input_format(): %s\n", inputFormat->name);
-
-	const DemuxerFormat* demuxerFormat = demuxer_format_for(inputFormat);
-	if (demuxerFormat == NULL) {
-		// We could support this format, but we don't want to. Bail out.
-		ERROR("AVFormatReader::StreamCookie::Open() - "
-			"support for demuxer '%s' is not enabled. "
-			"See DemuxerTable.cpp\n", inputFormat->name);
-		return B_NOT_SUPPORTED;
-	}
+	TRACE("  flags:%s%s%s%s%s\n",
+		(inputFormat->flags & AVFMT_GLOBALHEADER) ? " AVFMT_GLOBALHEADER" : "",
+		(inputFormat->flags & AVFMT_NOTIMESTAMPS) ? " AVFMT_NOTIMESTAMPS" : "",
+		(inputFormat->flags & AVFMT_GENERIC_INDEX) ? " AVFMT_GENERIC_INDEX" : "",
+		(inputFormat->flags & AVFMT_TS_DISCONT) ? " AVFMT_TS_DISCONT" : "",
+		(inputFormat->flags & AVFMT_VARIABLE_FPS) ? " AVFMT_VARIABLE_FPS" : ""
+	);
 
 	// Init I/O context with buffer and hook functions, pass ourself as
 	// cookie.
-	if (init_put_byte(&fIOContext, fIOBuffer, kIOBufferSize, 0, this,
+	memset(buffer, 0, bufferSize);
+	if (init_put_byte(&fIOContext, buffer, bufferSize, 0, this,
 			_Read, 0, _Seek) != 0) {
-		TRACE("AVFormatReader::StreamCookie::Open() - "
-			"init_put_byte() failed!\n");
+		TRACE("StreamBase::Open() - init_put_byte() failed!\n");
 		return B_ERROR;
 	}
 
 	// Initialize our context.
 	if (av_open_input_stream(&fContext, &fIOContext, "", inputFormat,
 			NULL) < 0) {
-		TRACE("AVFormatReader::StreamCookie::Open() - "
-			"av_open_input_stream() failed!\n");
+		TRACE("StreamBase::Open() - av_open_input_stream() failed!\n");
 		return B_NOT_SUPPORTED;
 	}
 
 	// Retrieve stream information
 	if (av_find_stream_info(fContext) < 0) {
-		TRACE("AVFormatReader::StreamCookie::Open() - "
-			"av_find_stream_info() failed!\n");
+		TRACE("StreamBase::Open() - av_find_stream_info() failed!\n");
 		return B_NOT_SUPPORTED;
 	}
 
-	TRACE("AVFormatReader::StreamCookie::Open() - "
-		"av_find_stream_info() success!\n");
+	fSeekByBytes = (inputFormat->flags & AVFMT_TS_DISCONT) != 0;
+	fStreamBuildsIndexWhileReading
+		= (inputFormat->flags & AVFMT_GENERIC_INDEX) != 0
+			|| fSeekByBytes;
+
+	TRACE("StreamBase::Open() - "
+		"av_find_stream_info() success! Seeking by bytes: %d\n",
+		fSeekByBytes);
 
 	return B_OK;
 }
 
 
 status_t
-AVFormatReader::StreamCookie::Init(int32 virtualIndex)
+StreamBase::Init(int32 virtualIndex)
 {
-	TRACE("AVFormatReader::StreamCookie::Init(%ld)\n", virtualIndex);
+	BAutolock _(fStreamLock);
+
+	TRACE("StreamBase::Init(%ld)\n", virtualIndex);
 
 	if (fContext == NULL)
 		return B_NO_INIT;
 
 	int32 streamIndex = StreamIndexFor(virtualIndex);
 	if (streamIndex < 0) {
-		TRACE("  Bad stream index!\n");
+		TRACE("  bad stream index!\n");
 		return B_BAD_INDEX;
 	}
 
 	TRACE("  context stream index: %ld\n", streamIndex);
-
-	const DemuxerFormat* demuxerFormat = demuxer_format_for(fContext->iformat);
-	if (demuxerFormat == NULL) {
-		TRACE("  unknown AVInputFormat!\n");
-		return B_NOT_SUPPORTED;
-	}
 
 	// We need to remember the virtual index so that
 	// AVFormatReader::FreeCookie() can clear the correct stream entry.
@@ -289,15 +312,631 @@ AVFormatReader::StreamCookie::Init(int32 virtualIndex)
 	// Make us point to the AVStream at streamIndex
 	fStream = fContext->streams[streamIndex];
 
-	// Discard all other streams
-	for (unsigned i = 0; i < fContext->nb_streams; i++) {
-		if (i != (unsigned)streamIndex)
-			fContext->streams[i]->discard = AVDISCARD_ALL;
+// NOTE: Discarding other streams works for most, but not all containers,
+// for example it does not work for the ASF demuxer. Since I don't know what
+// other demuxer it breaks, let's just keep reading packets for unwanted
+// streams, it just makes the _GetNextPacket() function slightly less
+// efficient.
+//	// Discard all other streams
+//	for (unsigned i = 0; i < fContext->nb_streams; i++) {
+//		if (i != (unsigned)streamIndex)
+//			fContext->streams[i]->discard = AVDISCARD_ALL;
+//	}
+
+	return B_OK;
+}
+
+
+int32
+StreamBase::Index() const
+{
+	if (fStream != NULL)
+		return fStream->index;
+	return -1;
+}
+
+
+int32
+StreamBase::CountStreams() const
+{
+	// Figure out the stream count. If the context has "AVPrograms", use
+	// the first program (for now).
+	// TODO: To support "programs" properly, the BMediaFile/Track API should
+	// be extended accordingly. I guess programs are like TV channels in the
+	// same satilite transport stream. Maybe call them "TrackGroups".
+	if (fContext->nb_programs > 0) {
+		// See libavformat/utils.c:dump_format()
+		return fContext->programs[0]->nb_stream_indexes;
 	}
+	return fContext->nb_streams;
+}
+
+
+int32
+StreamBase::StreamIndexFor(int32 virtualIndex) const
+{
+	// NOTE: See CountStreams()
+	if (fContext->nb_programs > 0) {
+		const AVProgram* program = fContext->programs[0];
+		if (virtualIndex >= 0
+			&& virtualIndex < (int32)program->nb_stream_indexes) {
+			return program->stream_index[virtualIndex];
+		}
+	} else {
+		if (virtualIndex >= 0 && virtualIndex < (int32)fContext->nb_streams)
+			return virtualIndex;
+	}
+	return -1;
+}
+
+
+double
+StreamBase::FrameRate() const
+{
+	// TODO: Find a way to always calculate a correct frame rate...
+	double frameRate = 1.0;
+	switch (fStream->codec->codec_type) {
+		case CODEC_TYPE_AUDIO:
+			frameRate = (double)fStream->codec->sample_rate;
+			break;
+		case CODEC_TYPE_VIDEO:
+			if (fStream->avg_frame_rate.den && fStream->avg_frame_rate.num)
+				frameRate = av_q2d(fStream->avg_frame_rate);
+			else if (fStream->r_frame_rate.den && fStream->r_frame_rate.num)
+				frameRate = av_q2d(fStream->r_frame_rate);
+			else if (fStream->time_base.den && fStream->time_base.num)
+				frameRate = 1 / av_q2d(fStream->time_base);
+			else if (fStream->codec->time_base.den
+				&& fStream->codec->time_base.num) {
+				frameRate = 1 / av_q2d(fStream->codec->time_base);
+			}
+			
+			// TODO: Fix up interlaced video for real
+			if (frameRate == 50.0f)
+				frameRate = 25.0f;
+			break;
+		default:
+			break;
+	}
+	if (frameRate <= 0.0)
+		frameRate = 1.0;
+	return frameRate;
+}
+
+
+bigtime_t
+StreamBase::Duration() const
+{
+	// TODO: This is not working correctly for all stream types...
+	// It seems that the calculations here are correct, because they work
+	// for a couple of streams and are in line with the documentation, but
+	// unfortunately, libavformat itself seems to set the time_base and
+	// duration wrongly sometimes. :-(
+	if ((int64)fStream->duration != kNoPTSValue)
+		return _ConvertFromStreamTimeBase(fStream->duration);
+	else if ((int64)fContext->duration != kNoPTSValue)
+		return (bigtime_t)fContext->duration;
+
+	return 0;
+}
+
+
+status_t
+StreamBase::Seek(uint32 flags, int64* frame, bigtime_t* time)
+{
+	BAutolock _(fStreamLock);
+
+	if (fContext == NULL || fStream == NULL)
+		return B_NO_INIT;
+
+	TRACE_SEEK("StreamBase::Seek(%ld,%s%s%s%s, %lld, "
+		"%lld)\n", VirtualIndex(),
+		(flags & B_MEDIA_SEEK_TO_FRAME) ? " B_MEDIA_SEEK_TO_FRAME" : "",
+		(flags & B_MEDIA_SEEK_TO_TIME) ? " B_MEDIA_SEEK_TO_TIME" : "",
+		(flags & B_MEDIA_SEEK_CLOSEST_BACKWARD)
+			? " B_MEDIA_SEEK_CLOSEST_BACKWARD" : "",
+		(flags & B_MEDIA_SEEK_CLOSEST_FORWARD)
+			? " B_MEDIA_SEEK_CLOSEST_FORWARD" : "",
+		*frame, *time);
+
+	double frameRate = FrameRate();
+	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
+		// Seeking is always based on time, initialize it when client seeks
+		// based on frame.
+		*time = (bigtime_t)(*frame * 1000000.0 / frameRate + 0.5);
+	}
+
+	int64_t timeStamp = *time;
+
+	int searchFlags = AVSEEK_FLAG_BACKWARD;
+	if ((flags & B_MEDIA_SEEK_CLOSEST_FORWARD) != 0)
+		searchFlags = 0;
+
+	if (fSeekByBytes) {
+		searchFlags |= AVSEEK_FLAG_BYTE;
+
+		BAutolock _(fSourceLock);
+		int64_t fileSize;
+		if (fSource->GetSize(&fileSize) != B_OK)
+			return B_NOT_SUPPORTED;
+		int64_t duration = Duration();
+		if (duration == 0)
+			return B_NOT_SUPPORTED;
+
+		timeStamp = int64_t(fileSize * ((double)timeStamp / duration));
+		if ((flags & B_MEDIA_SEEK_CLOSEST_BACKWARD) != 0) {
+			timeStamp -= 65536;
+			if (timeStamp < 0)
+				timeStamp = 0;
+		}
+
+		bool seekAgain = true;
+		bool seekForward = true;
+		bigtime_t lastFoundTime = -1;
+		int64_t closestTimeStampBackwards = -1;
+		while (seekAgain) {
+			if (avformat_seek_file(fContext, -1, INT64_MIN, timeStamp,
+				INT64_MAX, searchFlags) < 0) {
+				TRACE("  avformat_seek_file() (by bytes) failed.\n");
+				return B_ERROR;
+			}
+			seekAgain = false;
+	
+			// Our last packet is toast in any case. Read the next one so we
+			// know where we really seeked.
+			fReusePacket = false;
+			if (_NextPacket(true) == B_OK) {
+				while (fPacket.pts == kNoPTSValue) {
+					fReusePacket = false;
+					if (_NextPacket(true) != B_OK)
+						return B_ERROR;
+				}
+				if (fPacket.pos >= 0)
+					timeStamp = fPacket.pos;
+				bigtime_t foundTime
+					= _ConvertFromStreamTimeBase(fPacket.pts);
+				if (foundTime != lastFoundTime) {
+					lastFoundTime = foundTime;
+					if (foundTime > *time) {
+						if (closestTimeStampBackwards >= 0) {
+							timeStamp = closestTimeStampBackwards;
+							seekAgain = true;
+							seekForward = false;
+							continue;
+						}
+						int64_t diff = int64_t(fileSize
+							* ((double)(foundTime - *time) / (2 * duration)));
+						if (diff < 8192)
+							break;
+						timeStamp -= diff;
+						TRACE_SEEK("  need to seek back (%lld) (time: %.2f "
+							"-> %.2f)\n", timeStamp, *time / 1000000.0,
+							foundTime / 1000000.0);
+						if (timeStamp < 0)
+							foundTime = 0;
+						else {
+							seekAgain = true;
+							continue;
+						}
+					} else if (seekForward && foundTime < *time - 100000) {
+						closestTimeStampBackwards = timeStamp;
+						int64_t diff = int64_t(fileSize
+							* ((double)(*time - foundTime) / (2 * duration)));
+						if (diff < 8192)
+							break;
+						timeStamp += diff;
+						TRACE_SEEK("  need to seek forward (%lld) (time: "
+							"%.2f -> %.2f)\n", timeStamp, *time / 1000000.0,
+							foundTime / 1000000.0);
+						if (timeStamp > duration)
+							foundTime = duration;
+						else {
+							seekAgain = true;
+							continue;
+						}
+					}
+				}
+				TRACE_SEEK("  found time: %lld -> %lld (%.2f)\n", *time,
+					foundTime, foundTime / 1000000.0);
+				*time = foundTime;
+				if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
+					*frame = *time * frameRate / 1000000LL + 0.5;
+					TRACE_SEEK("  seeked frame: %lld\n", *frame);
+				}
+			} else {
+				TRACE_SEEK("  _NextPacket() failed!\n");
+				return B_ERROR;
+			}
+		}
+	} else {
+		// We may not get a PTS from the next packet after seeking, so
+		// we try to get an expected time from the index.
+		int64_t streamTimeStamp = _ConvertToStreamTimeBase(*time);
+		int index = av_index_search_timestamp(fStream, streamTimeStamp,
+			searchFlags);
+		if (index < 0) {
+			TRACE("  av_index_search_timestamp() failed\n");
+		} else {
+			if (index > 0) {
+				const AVIndexEntry& entry = fStream->index_entries[index];
+				streamTimeStamp = entry.timestamp;
+			} else {
+				// Some demuxers use the first index entry to store some
+				// other information, like the total playing time for example.
+				// Assume the timeStamp of the first entry is alays 0.
+				// TODO: Handle start-time offset?
+				streamTimeStamp = 0;
+			}
+			bigtime_t foundTime = _ConvertFromStreamTimeBase(streamTimeStamp);
+			bigtime_t timeDiff = foundTime > *time
+				? foundTime - *time : *time - foundTime;
+		
+			if (timeDiff > 1000000
+				&& (fStreamBuildsIndexWhileReading
+					|| index == fStream->nb_index_entries - 1)) {
+				// If the stream is building the index on the fly while parsing
+				// it, we only have entries in the index for positions already
+				// decoded, i.e. we cannot seek into the future. In that case,
+				// just assume that we can seek where we want and leave
+				// time/frame unmodified. Since successfully seeking one time
+				// will generate index entries for the seeked to position, we
+				// need to remember this in fStreamBuildsIndexWhileReading,
+				// since when seeking back there will be later index entries,
+				// but we still want to ignore the found entry.
+				fStreamBuildsIndexWhileReading = true;
+				TRACE_SEEK("  Not trusting generic index entry. "
+					"(Current count: %d)\n", fStream->nb_index_entries);
+			} else {
+				// If we found a reasonably time, write it into *time.
+				// After seeking, we will try to read the sought time from
+				// the next packet. If the packet has no PTS value, we may
+				// still have a more accurate time from the index lookup.
+				*time = foundTime;
+			}
+		}
+
+		if (avformat_seek_file(fContext, -1, INT64_MIN, timeStamp, INT64_MAX,
+				searchFlags) < 0) {
+			TRACE("  avformat_seek_file() failed.\n");
+			// Try to fall back to av_seek_frame()
+			timeStamp = _ConvertToStreamTimeBase(timeStamp);
+			if (av_seek_frame(fContext, fStream->index, timeStamp,
+				searchFlags) < 0) {
+				TRACE("  avformat_seek_frame() failed as well.\n");
+				// Fall back to seeking to the beginning by bytes
+				timeStamp = 0;
+				if (av_seek_frame(fContext, fStream->index, timeStamp,
+						AVSEEK_FLAG_BYTE) < 0) {
+					TRACE("  avformat_seek_frame() by bytes failed as "
+						"well.\n");
+					// Do not propagate error in any case. We fail if we can't
+					// read another packet.
+				} else
+					*time = 0;
+			}
+		}
+	
+		// Our last packet is toast in any case. Read the next one so
+		// we know where we really sought.
+		bigtime_t foundTime = *time;
+	
+		fReusePacket = false;
+		if (_NextPacket(true) == B_OK) {
+			if (fPacket.pts != kNoPTSValue)
+				foundTime = _ConvertFromStreamTimeBase(fPacket.pts);
+			else
+				TRACE_SEEK("  no PTS in packet after seeking\n");
+		} else
+			TRACE_SEEK("  _NextPacket() failed!\n");
+	
+		*time = foundTime;
+		TRACE_SEEK("  sought time: %.2fs\n", *time / 1000000.0);
+		if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
+			*frame = *time * frameRate / 1000000.0 + 0.5;
+			TRACE_SEEK("  sought frame: %lld\n", *frame);
+		}
+	}
+
+	return B_OK;
+}
+
+
+status_t
+StreamBase::GetNextChunk(const void** chunkBuffer,
+	size_t* chunkSize, media_header* mediaHeader)
+{
+	BAutolock _(fStreamLock);
+
+	TRACE_PACKET("StreamBase::GetNextChunk()\n");
+
+	// Get the last stream DTS before reading the next packet, since
+	// then it points to that one.
+	int64 lastStreamDTS = fStream->cur_dts;
+
+	status_t ret = _NextPacket(false);
+	if (ret != B_OK) {
+		*chunkBuffer = NULL;
+		*chunkSize = 0;
+		return ret;
+	}
+
+	// NOTE: AVPacket has a field called "convergence_duration", for which
+	// the documentation is quite interesting. It sounds like it could be
+	// used to know the time until the next I-Frame in streams that don't
+	// let you know the position of keyframes in another way (like through
+	// the index).
+
+	// According to libavformat documentation, fPacket is valid until the
+	// next call to av_read_frame(). This is what we want and we can share
+	// the memory with the least overhead.
+	*chunkBuffer = fPacket.data;
+	*chunkSize = fPacket.size;
+
+	if (mediaHeader != NULL) {
+		mediaHeader->type = fFormat.type;
+		mediaHeader->buffer = 0;
+		mediaHeader->destination = -1;
+		mediaHeader->time_source = -1;
+		mediaHeader->size_used = fPacket.size;
+		if (fPacket.pts != kNoPTSValue) {
+//TRACE("  PTS: %lld (time_base.num: %d, .den: %d), stream DTS: %lld\n",
+//fPacket.pts, fStream->time_base.num, fStream->time_base.den,
+//fStream->cur_dts);
+			mediaHeader->start_time = _ConvertFromStreamTimeBase(fPacket.pts);
+		} else {
+//TRACE("  PTS (stream): %lld (time_base.num: %d, .den: %d), stream DTS: %lld\n",
+//lastStreamDTS, fStream->time_base.num, fStream->time_base.den,
+//fStream->cur_dts);
+			mediaHeader->start_time
+				= _ConvertFromStreamTimeBase(lastStreamDTS);
+		}
+		mediaHeader->file_pos = fPacket.pos;
+		mediaHeader->data_offset = 0;
+		switch (mediaHeader->type) {
+			case B_MEDIA_RAW_AUDIO:
+				break;
+			case B_MEDIA_ENCODED_AUDIO:
+				mediaHeader->u.encoded_audio.buffer_flags
+					= (fPacket.flags & PKT_FLAG_KEY) ? B_MEDIA_KEY_FRAME : 0;
+				break;
+			case B_MEDIA_RAW_VIDEO:
+				mediaHeader->u.raw_video.line_count
+					= fFormat.u.raw_video.display.line_count;
+				break;
+			case B_MEDIA_ENCODED_VIDEO:
+				mediaHeader->u.encoded_video.field_flags
+					= (fPacket.flags & PKT_FLAG_KEY) ? B_MEDIA_KEY_FRAME : 0;
+				mediaHeader->u.encoded_video.line_count
+					= fFormat.u.encoded_video.output.display.line_count;
+				break;
+			default:
+				break;
+		}
+	}
+
+//	static bigtime_t pts[2];
+//	static bigtime_t lastPrintTime = system_time();
+//	static BLocker printLock;
+//	if (fStream->index < 2) {
+//		if (fPacket.pts != kNoPTSValue)
+//			pts[fStream->index] = _ConvertFromStreamTimeBase(fPacket.pts);
+//		printLock.Lock();
+//		bigtime_t now = system_time();
+//		if (now - lastPrintTime > 1000000) {
+//			printf("PTS: %.4f/%.4f, diff: %.4f\r", pts[0] / 1000000.0,
+//				pts[1] / 1000000.0, (pts[0] - pts[1]) / 1000000.0);
+//			fflush(stdout);
+//			lastPrintTime = now;
+//		}
+//		printLock.Unlock();
+//	}
+
+	return B_OK;
+}
+
+
+// #pragma mark -
+
+
+/*static*/ int
+StreamBase::_Read(void* cookie, uint8* buffer, int bufferSize)
+{
+	StreamBase* stream = reinterpret_cast<StreamBase*>(cookie);
+
+	BAutolock _(stream->fSourceLock);
+
+	TRACE_IO("StreamBase::_Read(%p, %p, %d) position: %lld/%lld\n",
+		cookie, buffer, bufferSize, stream->fPosition,
+		stream->fSource->Position());
+
+	if (stream->fPosition != stream->fSource->Position()) {
+		off_t position
+			= stream->fSource->Seek(stream->fPosition, SEEK_SET);
+		if (position != stream->fPosition)
+			return -1;
+	}
+
+	ssize_t read = stream->fSource->Read(buffer, bufferSize);
+	if (read > 0)
+		stream->fPosition += read;
+
+	TRACE_IO("  read: %ld\n", read);
+	return (int)read;
+
+}
+
+
+/*static*/ off_t
+StreamBase::_Seek(void* cookie, off_t offset, int whence)
+{
+	TRACE_IO("StreamBase::_Seek(%p, %lld, %d)\n",
+		cookie, offset, whence);
+
+	StreamBase* stream = reinterpret_cast<StreamBase*>(cookie);
+
+	BAutolock _(stream->fSourceLock);
+
+	// Support for special file size retrieval API without seeking
+	// anywhere:
+	if (whence == AVSEEK_SIZE) {
+		off_t size;
+		if (stream->fSource->GetSize(&size) == B_OK)
+			return size;
+		return -1;
+	}
+
+	// If not requested to seek to an absolute position, we need to
+	// confirm that the stream is currently at the position that we
+	// think it is.
+	if (whence != SEEK_SET
+		&& stream->fPosition != stream->fSource->Position()) {
+		off_t position
+			= stream->fSource->Seek(stream->fPosition, SEEK_SET);
+		if (position != stream->fPosition)
+			return -1;
+	}
+
+	off_t position = stream->fSource->Seek(offset, whence);
+	TRACE_IO("  position: %lld\n", position);
+	if (position < 0)
+		return -1;
+
+	stream->fPosition = position;
+
+	return position;
+}
+
+
+status_t
+StreamBase::_NextPacket(bool reuse)
+{
+	TRACE_PACKET("StreamBase::_NextPacket(%d)\n", reuse);
+
+	if (fReusePacket) {
+		// The last packet was marked for reuse, so we keep using it.
+		TRACE_PACKET("  re-using last packet\n");
+		fReusePacket = reuse;
+		return B_OK;
+	}
+
+	av_free_packet(&fPacket);
+
+	while (true) {
+		if (av_read_frame(fContext, &fPacket) < 0) {
+			// NOTE: Even though we may get the error for a different stream,
+			// av_read_frame() is not going to be successful from here on, so
+			// it doesn't matter
+			fReusePacket = false;
+			return B_LAST_BUFFER_ERROR;
+		}
+
+		if (fPacket.stream_index == Index())
+			break;
+
+		// This is a packet from another stream, ignore it.
+		av_free_packet(&fPacket);
+	}
+
+	// Mark this packet with the new reuse flag.
+	fReusePacket = reuse;
+	return B_OK;
+}
+
+
+int64_t
+StreamBase::_ConvertToStreamTimeBase(bigtime_t time) const
+{
+	int64 timeStamp = int64_t((double)time * fStream->time_base.den
+		/ (1000000.0 * fStream->time_base.num) + 0.5);
+	if (fStream->start_time != kNoPTSValue)
+		timeStamp += fStream->start_time;
+	return timeStamp;
+}
+
+
+bigtime_t
+StreamBase::_ConvertFromStreamTimeBase(int64_t time) const
+{
+	if (fStream->start_time != kNoPTSValue)
+		time -= fStream->start_time;
+
+	return bigtime_t(1000000.0 * time * fStream->time_base.num
+		/ fStream->time_base.den + 0.5);
+}
+
+
+// #pragma mark - AVFormatReader::Stream
+
+
+class AVFormatReader::Stream : public StreamBase {
+public:
+								Stream(BPositionIO* source,
+									BLocker* streamLock);
+	virtual						~Stream();
+
+	// Setup this stream to point to the AVStream at the given streamIndex.
+	// This will also initialize the media_format.
+	virtual	status_t			Init(int32 streamIndex);
+
+			status_t			GetMetaData(BMessage* data);
+
+	// Support for AVFormatReader
+			status_t			GetStreamInfo(int64* frameCount,
+									bigtime_t* duration, media_format* format,
+									const void** infoBuffer,
+									size_t* infoSize) const;
+
+			status_t			FindKeyFrame(uint32 flags, int64* frame,
+									bigtime_t* time) const;
+	virtual	status_t			Seek(uint32 flags, int64* frame,
+									bigtime_t* time);
+
+private:
+	mutable	BLocker				fLock;
+
+			struct KeyframeInfo {
+				bigtime_t		requestedTime;
+				int64			requestedFrame;
+				bigtime_t		reportedTime;
+				int64			reportedFrame;
+				uint32			seekFlags;
+			};
+	mutable	KeyframeInfo		fLastReportedKeyframe;
+	mutable	StreamBase*			fGhostStream;
+};
+
+
+
+AVFormatReader::Stream::Stream(BPositionIO* source, BLocker* streamLock)
+	:
+	StreamBase(source, streamLock, &fLock),
+	fLock("stream lock"),
+	fGhostStream(NULL)
+{
+	fLastReportedKeyframe.requestedTime = 0;
+	fLastReportedKeyframe.requestedFrame = 0;
+	fLastReportedKeyframe.reportedTime = 0;
+	fLastReportedKeyframe.reportedFrame = 0;
+}
+
+
+AVFormatReader::Stream::~Stream()
+{
+	delete fGhostStream;
+}
+
+
+status_t
+AVFormatReader::Stream::Init(int32 virtualIndex)
+{
+	TRACE("AVFormatReader::Stream::Init(%ld)\n", virtualIndex);
+
+	status_t ret = StreamBase::Init(virtualIndex);
+	if (ret != B_OK)
+		return ret;
 
 	// Get a pointer to the AVCodecContext for the stream at streamIndex.
 	AVCodecContext* codecContext = fStream->codec;
-	AVStream* stream = fStream;
 
 #if 0
 // stippi: Here I was experimenting with the question if some fields of the
@@ -331,30 +970,36 @@ AVFormatReader::StreamCookie::Init(int32 virtualIndex)
 
 	// Set format family and type depending on codec_type of the stream.
 	switch (codecContext->codec_type) {
-		case CODEC_TYPE_AUDIO:
+		case AVMEDIA_TYPE_AUDIO:
 			if ((codecContext->codec_id >= CODEC_ID_PCM_S16LE)
 				&& (codecContext->codec_id <= CODEC_ID_PCM_U8)) {
 				TRACE("  raw audio\n");
 				format->type = B_MEDIA_RAW_AUDIO;
 				description.family = B_ANY_FORMAT_FAMILY;
+				// This will then apparently be handled by the (built into
+				// BMediaTrack) RawDecoder.
 			} else {
 				TRACE("  encoded audio\n");
 				format->type = B_MEDIA_ENCODED_AUDIO;
-				description.family = demuxerFormat->audio_family;
+				description.family = B_MISC_FORMAT_FAMILY;
+				description.u.misc.file_format = 'ffmp';
 			}
 			break;
-		case CODEC_TYPE_VIDEO:
+		case AVMEDIA_TYPE_VIDEO:
 			TRACE("  encoded video\n");
 			format->type = B_MEDIA_ENCODED_VIDEO;
-			description.family = demuxerFormat->video_family;
+			description.family = B_MISC_FORMAT_FAMILY;
+			description.u.misc.file_format = 'ffmp';
 			break;
 		default:
 			TRACE("  unknown type\n");
 			format->type = B_MEDIA_UNKNOWN_TYPE;
+			return B_ERROR;
 			break;
 	}
 
 	if (format->type == B_MEDIA_RAW_AUDIO) {
+		// We cannot describe all raw-audio formats, some are unsupported.
 		switch (codecContext->codec_id) {
 			case CODEC_ID_PCM_S16LE:
 				format->u.raw_audio.format
@@ -395,93 +1040,8 @@ AVFormatReader::StreamCookie::Init(int32 virtualIndex)
 				break;
 		}
 	} else {
-		uint32 codecTag = codecContext->codec_tag;
-		if (codecTag == 0) {
-			// Ugh, no codec_tag. Let's try to fake some known codecs.
-			// Such a situation seems to occur for the "mpegts" demuxer for
-			// example. These are some tags I could test with.
-			switch (codecContext->codec_id) {
-				case CODEC_ID_H264:
-					codecTag = 'h264';
-					break;
-				case CODEC_ID_DVVIDEO:
-					codecTag = 'pcvd';
-					break;
-				case CODEC_ID_AC3:
-					description.family = B_WAV_FORMAT_FAMILY;
-					codecTag = 0x2000;
-					break;
-				case CODEC_ID_FLAC:
-					description.family = B_WAV_FORMAT_FAMILY;
-					codecTag = 'flac';
-					break;
-				case CODEC_ID_VP6F:
-					description.family = B_QUICKTIME_FORMAT_FAMILY;
-					codecTag = B_BENDIAN_TO_HOST_INT32('VP6F');
-					break;
-				case CODEC_ID_MP3:
-					description.family = B_QUICKTIME_FORMAT_FAMILY;
-					codecTag = B_BENDIAN_TO_HOST_INT32('.mp3');
-					break;
-				default:
-					fprintf(stderr, "ffmpeg codecTag is null, codec_id "
-						"unknown 0x%x\n", codecContext->codec_id);
-					// TODO: Add more...
-					break;
-			}
-		}
-		switch (description.family) {
-			case B_AIFF_FORMAT_FAMILY:
-				TRACE("  B_AIFF_FORMAT_FAMILY\n");
-				description.u.aiff.codec = codecTag;
-				break;
-			case B_ASF_FORMAT_FAMILY:
-				TRACE("  B_ASF_FORMAT_FAMILY\n");
-//				description.u.asf.guid = GUID(codecTag);
-				return B_NOT_SUPPORTED;
-				break;
-			case B_AVI_FORMAT_FAMILY:
-				TRACE("  B_AVI_FORMAT_FAMILY\n");
-				description.u.avi.codec = codecTag;
-				break;
-			case B_AVR_FORMAT_FAMILY:
-				TRACE("  B_AVR_FORMAT_FAMILY\n");
-				description.u.avr.id = codecTag;
-				break;
-			case B_MPEG_FORMAT_FAMILY:
-				TRACE("  B_MPEG_FORMAT_FAMILY\n");
-				if (codecContext->codec_id == CODEC_ID_MPEG1VIDEO)
-					description.u.mpeg.id = B_MPEG_1_VIDEO;
-				else if (codecContext->codec_id == CODEC_ID_MPEG2VIDEO)
-					description.u.mpeg.id = B_MPEG_2_VIDEO;
-				else if (codecContext->codec_id == CODEC_ID_MP2)
-					description.u.mpeg.id = B_MPEG_2_AUDIO_LAYER_2;
-				else if (codecContext->codec_id == CODEC_ID_MP3)
-					description.u.mpeg.id = B_MPEG_1_AUDIO_LAYER_3;
-				// TODO: Add some more...
-				else
-					description.u.mpeg.id = B_MPEG_ANY;
-				break;
-			case B_QUICKTIME_FORMAT_FAMILY:
-				TRACE("  B_QUICKTIME_FORMAT_FAMILY\n");
-				description.u.quicktime.codec
-					= B_HOST_TO_BENDIAN_INT32(codecTag);
-				break;
-			case B_WAV_FORMAT_FAMILY:
-				TRACE("  B_WAV_FORMAT_FAMILY\n");
-				description.u.wav.codec = codecTag;
-				break;
-			case B_MISC_FORMAT_FAMILY:
-				TRACE("  B_MISC_FORMAT_FAMILY\n");
-				description.u.misc.codec = codecTag;
-				break;
-
-			default:
-				break;
-		}
-		TRACE("  codecTag '%.4s' or %ld\n", (char*)&codecTag, codecTag);
-		TRACE("  fourcc '%.4s' or %d\n", (char*)&codecContext->codec_id,
-			codecContext->codec_id);
+		if (description.family == B_MISC_FORMAT_FAMILY)
+			description.u.misc.codec = codecContext->codec_id;
 
 		BMediaFormats formats;
 		status_t status = formats.GetFormatFor(description, format);
@@ -489,23 +1049,24 @@ AVFormatReader::StreamCookie::Init(int32 virtualIndex)
 			TRACE("  formats.GetFormatFor() error: %s\n", strerror(status));
 
 		format->user_data_type = B_CODEC_TYPE_INFO;
-		*(uint32*)format->user_data = codecTag;
+		*(uint32*)format->user_data = codecContext->codec_tag;
 		format->user_data[4] = 0;
 	}
 
-//	format->require_flags = 0;
+	format->require_flags = 0;
 	format->deny_flags = B_MEDIA_MAUI_UNDEFINED_FLAGS;
 
 	switch (format->type) {
 		case B_MEDIA_RAW_AUDIO:
 			format->u.raw_audio.frame_rate = (float)codecContext->sample_rate;
 			format->u.raw_audio.channel_count = codecContext->channels;
+			format->u.raw_audio.channel_mask = codecContext->channel_layout;
 			format->u.raw_audio.byte_order
 				= avformat_to_beos_byte_order(codecContext->sample_fmt);
 			format->u.raw_audio.format
 				= avformat_to_beos_format(codecContext->sample_fmt);
 			format->u.raw_audio.buffer_size = 0;
-
+			
 			// Read one packet and mark it for later re-use. (So our first
 			// GetNextChunk() call does not read another packet.)
 			if (_NextPacket(true) == B_OK) {
@@ -523,8 +1084,11 @@ AVFormatReader::StreamCookie::Init(int32 virtualIndex)
 				= media_multi_audio_format::wildcard;
 			format->u.encoded_audio.output.frame_rate
 				= (float)codecContext->sample_rate;
+			// Channel layout bits match in Be API and FFmpeg.
 			format->u.encoded_audio.output.channel_count
 				= codecContext->channels;
+			format->u.encoded_audio.multi_info.channel_mask
+				= codecContext->channel_layout;
 			format->u.encoded_audio.output.byte_order
 				= avformat_to_beos_byte_order(codecContext->sample_fmt);
 			format->u.encoded_audio.output.format
@@ -554,11 +1118,7 @@ AVFormatReader::StreamCookie::Init(int32 virtualIndex)
 //			format->u.encoded_video.forward_history = 0;
 //			format->u.encoded_video.backward_history = 0;
 
-			// TODO: Fix up for interlaced video
-			format->u.encoded_video.output.field_rate
-				= av_q2d(stream->r_frame_rate);
-if (format->u.encoded_video.output.field_rate == 50.0f)
-	format->u.encoded_video.output.field_rate = 25.0f;
+			format->u.encoded_video.output.field_rate = FrameRate();
 			format->u.encoded_video.output.interlace = 1;
 
 			format->u.encoded_video.output.first_active = 0;
@@ -600,6 +1160,8 @@ if (format->u.encoded_video.output.field_rate == 50.0f)
 				= codecContext->width;
 			format->u.encoded_video.output.display.line_count
 				= codecContext->height;
+			TRACE("  width/height: %d/%d\n", codecContext->width,
+				codecContext->height);
 			format->u.encoded_video.output.display.bytes_per_row = 0;
 			format->u.encoded_video.output.display.pixel_offset = 0;
 			format->u.encoded_video.output.display.line_offset = 0;
@@ -620,10 +1182,10 @@ if (format->u.encoded_video.output.field_rate == 50.0f)
 	}
 
 	TRACE("  extradata_size: %d\n", codecContext->extradata_size);
-	TRACE("  intra_matrix: %p\n", codecContext->intra_matrix);
-	TRACE("  inter_matrix: %p\n", codecContext->inter_matrix);
-	TRACE("  get_buffer(): %p\n", codecContext->get_buffer);
-	TRACE("  release_buffer(): %p\n", codecContext->release_buffer);
+//	TRACE("  intra_matrix: %p\n", codecContext->intra_matrix);
+//	TRACE("  inter_matrix: %p\n", codecContext->inter_matrix);
+//	TRACE("  get_buffer(): %p\n", codecContext->get_buffer);
+//	TRACE("  release_buffer(): %p\n", codecContext->release_buffer);
 
 #ifdef TRACE_AVFORMAT_READER
 	char formatString[512];
@@ -638,111 +1200,78 @@ if (format->u.encoded_video.output.field_rate == 50.0f)
 }
 
 
-int32
-AVFormatReader::StreamCookie::Index() const
+status_t
+AVFormatReader::Stream::GetMetaData(BMessage* data)
 {
-	if (fStream != NULL)
-		return fStream->index;
-	return -1;
-}
+	BAutolock _(&fLock);
 
+	avmetadata_to_message(fStream->metadata, data);
 
-int32
-AVFormatReader::StreamCookie::CountStreams() const
-{
-	// Figure out the stream count. If the context has "AVPrograms", use
-	// the first program (for now).
-	// TODO: To support "programs" properly, the BMediaFile/Track API should
-	// be extended accordingly. I guess programs are like TV channels in the
-	// same satilite transport stream. Maybe call them "TrackGroups".
-	if (fContext->nb_programs > 0) {
-		// See libavformat/utils.c:dump_format()
-		return fContext->programs[0]->nb_stream_indexes;
-	}
-	return fContext->nb_streams;
-}
-
-
-int32
-AVFormatReader::StreamCookie::StreamIndexFor(int32 virtualIndex) const
-{
-	// NOTE: See CountStreams()
-	if (fContext->nb_programs > 0) {
-		const AVProgram* program = fContext->programs[0];
-		if (virtualIndex >= 0
-			&& virtualIndex < (int32)program->nb_stream_indexes) {
-			return program->stream_index[virtualIndex];
-		}
-	} else {
-		if (virtualIndex >= 0 && virtualIndex < (int32)fContext->nb_streams)
-			return virtualIndex;
-	}
-	return -1;
-}
-
-
-double
-AVFormatReader::StreamCookie::FrameRate() const
-{
-	// TODO: Find a way to always calculate a correct frame rate...
-	double frameRate;
-	switch (fStream->codec->codec_type) {
-		case CODEC_TYPE_AUDIO:
-			frameRate = (double)fStream->codec->sample_rate;
-			break;
-		case CODEC_TYPE_VIDEO:
-			frameRate = av_q2d(fStream->r_frame_rate);
-			break;
-		default:
-			frameRate = 1.0;
-			break;
-	}
-	if (frameRate <= 0.0)
-		frameRate = 1.0;
-	return frameRate;
+	return B_OK;
 }
 
 
 status_t
-AVFormatReader::StreamCookie::GetStreamInfo(int64* frameCount,
+AVFormatReader::Stream::GetStreamInfo(int64* frameCount,
 	bigtime_t* duration, media_format* format, const void** infoBuffer,
 	size_t* infoSize) const
 {
-	TRACE("AVFormatReader::StreamCookie::GetStreamInfo(%ld)\n",
+	BAutolock _(&fLock);
+
+	TRACE("AVFormatReader::Stream::GetStreamInfo(%ld)\n",
 		VirtualIndex());
 
 	double frameRate = FrameRate();
 	TRACE("  frameRate: %.4f\n", frameRate);
 
-	// TODO: This is obviously not working correctly for all stream types...
-	// It seems that the calculations here are correct, because they work
-	// for a couple of streams and are in line with the documentation, but
-	// unfortunately, libavformat itself seems to set the time_base and
-	// duration wrongly sometimes. :-(
-	if ((int64)fStream->duration != kNoPTSValue) {
-		*duration = (bigtime_t)(1000000LL * fStream->duration
-			* fStream->time_base.num / fStream->time_base.den);
-		TRACE("  stream duration: %lld, time_base %.4f (%d/%d)\n",
-			fStream->duration, av_q2d(fStream->time_base),
-			fStream->time_base.num, fStream->time_base.den);
-	} else if ((int64)fContext->duration != kNoPTSValue) {
-		*duration = (bigtime_t)(1000000LL * fContext->duration / AV_TIME_BASE);
-		TRACE("  stream duration: %lld (from AVFormatContext)\n",
-			*duration);
-	} else {
-		*duration = 0;
-		TRACE("  stream duration: N/A\n");
+	#ifdef TRACE_AVFORMAT_READER
+	if (fStream->start_time != kNoPTSValue) {
+		bigtime_t startTime = _ConvertFromStreamTimeBase(fStream->start_time);
+		TRACE("  start_time: %lld or %.5fs\n", startTime,
+			startTime / 1000000.0);
+		// TODO: Handle start time in FindKeyFrame() and Seek()?!
 	}
+	#endif // TRACE_AVFORMAT_READER
 
-	TRACE("  duration: %lld or %.2fs\n", *duration, *duration / 1000000.0);
+	*duration = Duration();
+
+	TRACE("  duration: %lld or %.5fs\n", *duration, *duration / 1000000.0);
+
+	#if 0
+	if (fStream->nb_index_entries > 0) {
+		TRACE("  dump of index entries:\n");
+		int count = 5;
+		int firstEntriesCount = min_c(fStream->nb_index_entries, count);
+		int i = 0;
+		for (; i < firstEntriesCount; i++) {
+			AVIndexEntry& entry = fStream->index_entries[i];
+			bigtime_t timeGlobal = entry.timestamp;
+			bigtime_t timeNative = _ConvertFromStreamTimeBase(timeGlobal);
+			TRACE("    [%d] native: %.5fs global: %.5fs\n", i,
+				timeNative / 1000000.0f, timeGlobal / 1000000.0f);
+		}
+		if (fStream->nb_index_entries - count > i) {
+			i = fStream->nb_index_entries - count;
+			TRACE("    ...\n");
+			for (; i < fStream->nb_index_entries; i++) {
+				AVIndexEntry& entry = fStream->index_entries[i];
+				bigtime_t timeGlobal = entry.timestamp;
+				bigtime_t timeNative = _ConvertFromStreamTimeBase(timeGlobal);
+				TRACE("    [%d] native: %.5fs global: %.5fs\n", i,
+					timeNative / 1000000.0f, timeGlobal / 1000000.0f);
+			}
+		}
+	}
+	#endif
 
 	*frameCount = fStream->nb_frames;
-	if (*frameCount == 0) {
+//	if (*frameCount == 0) {
 		// Calculate from duration and frame rate
 		*frameCount = (int64)(*duration * frameRate / 1000000LL);
-		TRACE("  frameCount (calculated): %lld\n", *frameCount);
-	} else
-		TRACE("  frameCount: %lld\n", *frameCount);
+		TRACE("  frameCount calculated: %lld, from context: %lld\n",
+			*frameCount, fStream->nb_frames);
+//	} else
+//		TRACE("  frameCount: %lld\n", *frameCount);
 
 	*format = fFormat;
 
@@ -754,317 +1283,150 @@ AVFormatReader::StreamCookie::GetStreamInfo(int64* frameCount,
 
 
 status_t
-AVFormatReader::StreamCookie::Seek(uint32 flags, int64* frame,
-	bigtime_t* time)
-{
-	if (fContext == NULL || fStream == NULL)
-		return B_NO_INIT;
-
-	if ((flags & B_MEDIA_SEEK_CLOSEST_FORWARD) != 0) {
-		TRACE_SEEK("AVFormatReader::StreamCookie::Seek() - "
-			"B_MEDIA_SEEK_CLOSEST_FORWARD not supported.\n");
-		return B_NOT_SUPPORTED;
-	}
-
-	TRACE_SEEK("AVFormatReader::StreamCookie::Seek(%ld, %s %s %s %s, %lld, "
-		"%lld)\n", VirtualIndex(),
-		(flags & B_MEDIA_SEEK_TO_FRAME) ? "B_MEDIA_SEEK_TO_FRAME" : "",
-		(flags & B_MEDIA_SEEK_TO_TIME) ? "B_MEDIA_SEEK_TO_TIME" : "",
-		(flags & B_MEDIA_SEEK_CLOSEST_BACKWARD) ? "B_MEDIA_SEEK_CLOSEST_BACKWARD" : "",
-		(flags & B_MEDIA_SEEK_CLOSEST_FORWARD) ? "B_MEDIA_SEEK_CLOSEST_FORWARD" : "",
-		*frame, *time);
-
-	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0)
-		*time = (bigtime_t)(*frame * 1000000LL / FrameRate());
-
-#if 0
-	// This happens in ffplay.c:
-
-	int64_t pos = get_master_clock(cur_stream);
-		// The master clock seems to be the current system time
-		// with an offset for the current PTS value of the respective
-		// stream.
-	pos += incr;
-		// depends on the seek direction...
-
-	pos = (int64_t)(pos * AV_TIME_BASE);
-	uint32_t seekFlags = incr < 0 ? AVSEEK_FLAG_BACKWARD : 0;
-
-	pos = av_rescale_q(pos, AV_TIME_BASE_Q, fStream->time_base);
-
-	ret = av_seek_frame(fContext, Index(), pos, seekFlags);
-#endif
-
-
-	int64_t timeStamp;
-	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
-		// Can use frame, because stream timeStamp is actually in frame
-		// units.
-		timeStamp = *frame;
-	} else {
-		timeStamp = *time * fStream->time_base.num
-			/ ((int64_t)fStream->time_base.den * 1000000);
-	}
-
-	TRACE_SEEK("  time: %.5fs -> %lld, current DTS: %lld (time_base: %d/%d)\n",
-		*time / 1000000.0, timeStamp, fStream->cur_dts, fStream->time_base.num,
-		fStream->time_base.den);
-
-	if (av_seek_frame(fContext, Index(), timeStamp, 0) < 0) {
-		TRACE_SEEK("  av_seek_frame() failed.\n");
-		return B_ERROR;
-	}
-
-	// Our last packet is toast in any case.
-	av_free_packet(&fPacket);
-	fReusePacket = false;
-
-	return B_OK;
-}
-
-
-status_t
-AVFormatReader::StreamCookie::FindKeyFrame(uint32 flags, int64* frame,
+AVFormatReader::Stream::FindKeyFrame(uint32 flags, int64* frame,
 	bigtime_t* time) const
 {
+	BAutolock _(&fLock);
+
 	if (fContext == NULL || fStream == NULL)
 		return B_NO_INIT;
 
-	TRACE_SEEK("AVFormatReader::StreamCookie::FindKeyFrame(%ld, %s %s %s %s, "
+	TRACE_FIND("AVFormatReader::Stream::FindKeyFrame(%ld,%s%s%s%s, "
 		"%lld, %lld)\n", VirtualIndex(),
-		(flags & B_MEDIA_SEEK_TO_FRAME) ? "B_MEDIA_SEEK_TO_FRAME" : "",
-		(flags & B_MEDIA_SEEK_TO_TIME) ? "B_MEDIA_SEEK_TO_TIME" : "",
-		(flags & B_MEDIA_SEEK_CLOSEST_BACKWARD) ? "B_MEDIA_SEEK_CLOSEST_BACKWARD" : "",
-		(flags & B_MEDIA_SEEK_CLOSEST_FORWARD) ? "B_MEDIA_SEEK_CLOSEST_FORWARD" : "",
+		(flags & B_MEDIA_SEEK_TO_FRAME) ? " B_MEDIA_SEEK_TO_FRAME" : "",
+		(flags & B_MEDIA_SEEK_TO_TIME) ? " B_MEDIA_SEEK_TO_TIME" : "",
+		(flags & B_MEDIA_SEEK_CLOSEST_BACKWARD)
+			? " B_MEDIA_SEEK_CLOSEST_BACKWARD" : "",
+		(flags & B_MEDIA_SEEK_CLOSEST_FORWARD)
+			? " B_MEDIA_SEEK_CLOSEST_FORWARD" : "",
 		*frame, *time);
+
+	bool inLastRequestedRange = false;
+	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
+		if (fLastReportedKeyframe.reportedFrame
+			<= fLastReportedKeyframe.requestedFrame) {
+			inLastRequestedRange
+				= *frame >= fLastReportedKeyframe.reportedFrame
+					&& *frame <= fLastReportedKeyframe.requestedFrame;
+		} else {
+			inLastRequestedRange
+				= *frame >= fLastReportedKeyframe.requestedFrame
+					&& *frame <= fLastReportedKeyframe.reportedFrame;
+		}
+	} else if ((flags & B_MEDIA_SEEK_TO_FRAME) == 0) {
+		if (fLastReportedKeyframe.reportedTime
+			<= fLastReportedKeyframe.requestedTime) {
+			inLastRequestedRange
+				= *time >= fLastReportedKeyframe.reportedTime
+					&& *time <= fLastReportedKeyframe.requestedTime;
+		} else {
+			inLastRequestedRange
+				= *time >= fLastReportedKeyframe.requestedTime
+					&& *time <= fLastReportedKeyframe.reportedTime;
+		}
+	}
+
+	if (inLastRequestedRange) {
+		*frame = fLastReportedKeyframe.reportedFrame;
+		*time = fLastReportedKeyframe.reportedTime;
+		TRACE_FIND("  same as last reported keyframe\n");
+		return B_OK;
+	}
 
 	double frameRate = FrameRate();
 	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0)
-		*time = (bigtime_t)(*frame * 1000000LL / frameRate);
+		*time = (bigtime_t)(*frame * 1000000.0 / frameRate + 0.5);
 
-	int64_t timeStamp;
-	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
-		// Can use frame, because stream timeStamp is actually in frame
-		// units.
-		timeStamp = *frame;
-	} else {
-		timeStamp = *time * fStream->time_base.num
-			/ ((int64_t)fStream->time_base.den * 1000000);
+	status_t ret;
+	if (fGhostStream == NULL) {
+		BAutolock _(fSourceLock);
+
+		fGhostStream = new(std::nothrow) StreamBase(fSource, fSourceLock,
+			&fLock);
+		if (fGhostStream == NULL) {
+			TRACE("  failed to allocate ghost stream\n");
+			return B_NO_MEMORY;
+		}
+
+		ret = fGhostStream->Open();
+		if (ret != B_OK) {
+			TRACE("  ghost stream failed to open: %s\n", strerror(ret));
+			return B_ERROR;
+		}
+
+		ret = fGhostStream->Init(fVirtualIndex);
+		if (ret != B_OK) {
+			TRACE("  ghost stream failed to init: %s\n", strerror(ret));
+			return B_ERROR;
+		}
 	}
+	fLastReportedKeyframe.requestedFrame = *frame;
+	fLastReportedKeyframe.requestedTime = *time;
+	fLastReportedKeyframe.seekFlags = flags;
 
-	TRACE_SEEK("  time: %.2fs -> %lld (time_base: %d/%d)\n", *time / 1000000.0,
-		timeStamp, fStream->time_base.num, fStream->time_base.den);
-
-	int searchFlags = AVSEEK_FLAG_BACKWARD;
-	if ((flags & B_MEDIA_SEEK_CLOSEST_FORWARD) != 0)
-		searchFlags = 0;
-
-	int index = av_index_search_timestamp(fStream, timeStamp, searchFlags);
-	if (index < 0) {
-		TRACE_SEEK("  av_index_search_timestamp() failed.\n");
-		// Just seek to the beginning of the stream and assume it is a
-		// keyframe...
-		*frame = 0;
-		*time = 0;
-		return B_OK;
-	}
-
-	const AVIndexEntry& entry = fStream->index_entries[index];
-	timeStamp = entry.timestamp;
-	*time = (bigtime_t)(timeStamp * 1000000 * fStream->time_base.num
-		/ fStream->time_base.den);
-
-	TRACE_SEEK("  seeked time: %.2fs (%lld)\n", *time / 1000000.0, timeStamp);
-	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
-		*frame = timeStamp;//*time * frameRate / 1000000LL;
-		TRACE_SEEK("  seeked frame: %lld\n", *frame);
-	}
-
-	return B_OK;
-}
-
-
-status_t
-AVFormatReader::StreamCookie::GetNextChunk(const void** chunkBuffer,
-	size_t* chunkSize, media_header* mediaHeader)
-{
-	TRACE_PACKET("AVFormatReader::StreamCookie::GetNextChunk()\n");
-
-	// Get the last stream DTS before reading the next packet, since
-	// then it points to that one.
-	int64 lastStreamDTS = fStream->cur_dts;
-
-	status_t ret = _NextPacket(false);
+	ret = fGhostStream->Seek(flags, frame, time);
 	if (ret != B_OK) {
-		*chunkBuffer = NULL;
-		*chunkSize = 0;
-		return ret;
+		TRACE("  ghost stream failed to seek: %s\n", strerror(ret));
+		return B_ERROR;
 	}
 
-	// NOTE: AVPacket has a field called "convergence_duration", for which
-	// the documentation is quite interesting. It sounds like it could be
-	// used to know the time until the next I-Frame in streams that don't
-	// let you know the position of keyframes in another way (like through
-	// the index).
+	fLastReportedKeyframe.reportedFrame = *frame;
+	fLastReportedKeyframe.reportedTime = *time;
 
-	// According to libavformat documentation, fPacket is valid until the
-	// next call to av_read_frame(). This is what we want and we can share
-	// the memory with the least overhead.
-	*chunkBuffer = fPacket.data;
-	*chunkSize = fPacket.size;
-
-	if (mediaHeader != NULL) {
-		mediaHeader->type = fFormat.type;
-		mediaHeader->buffer = 0;
-		mediaHeader->destination = -1;
-		mediaHeader->time_source = -1;
-		mediaHeader->size_used = fPacket.size;
-		if (fPacket.pts != kNoPTSValue) {
-//TRACE("  PTS: %lld (time_base.num: %d, .den: %d), stream DTS: %lld\n",
-//fPacket.pts, fStream->time_base.num, fStream->time_base.den,
-//fStream->cur_dts);
-			mediaHeader->start_time = (bigtime_t)(1000000.0 * fPacket.pts
-				* fStream->time_base.num / fStream->time_base.den);
-		} else {
-//TRACE("  PTS (stream): %lld (time_base.num: %d, .den: %d), stream DTS: %lld\n",
-//lastStreamDTS, fStream->time_base.num, fStream->time_base.den,
-//fStream->cur_dts);
-			mediaHeader->start_time = (bigtime_t)(1000000.0 * lastStreamDTS
-				* fStream->time_base.num / fStream->time_base.den);
-		}
-		mediaHeader->file_pos = fPacket.pos;
-		mediaHeader->data_offset = 0;
-		switch (mediaHeader->type) {
-			case B_MEDIA_RAW_AUDIO:
-				break;
-			case B_MEDIA_ENCODED_AUDIO:
-				mediaHeader->u.encoded_audio.buffer_flags
-					= (fPacket.flags & PKT_FLAG_KEY) ? B_MEDIA_KEY_FRAME : 0;
-				break;
-			case B_MEDIA_RAW_VIDEO:
-				mediaHeader->u.raw_video.line_count
-					= fFormat.u.raw_video.display.line_count;
-				break;
-			case B_MEDIA_ENCODED_VIDEO:
-				mediaHeader->u.encoded_video.field_flags
-					= (fPacket.flags & PKT_FLAG_KEY) ? B_MEDIA_KEY_FRAME : 0;
-				mediaHeader->u.encoded_video.line_count
-					= fFormat.u.encoded_video.output.display.line_count;
-				break;
-			default:
-				break;
-		}
+	TRACE_FIND("  found time: %.2fs\n", *time / 1000000.0);
+	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
+		*frame = int64_t(*time * FrameRate() / 1000000.0 + 0.5);
+		TRACE_FIND("  found frame: %lld\n", *frame);
 	}
 
 	return B_OK;
-}
-
-
-// #pragma mark -
-
-
-/*static*/ int
-AVFormatReader::StreamCookie::_Read(void* cookie, uint8* buffer,
-	int bufferSize)
-{
-	TRACE_IO("AVFormatReader::StreamCookie::_Read(%p, %p, %d)\n",
-		cookie, buffer, bufferSize);
-
-	StreamCookie* stream = reinterpret_cast<StreamCookie*>(cookie);
-
-	BAutolock _(stream->fStreamLock);
-
-	if (stream->fPosition != stream->fSource->Position()) {
-		off_t position
-			= stream->fSource->Seek(stream->fPosition, SEEK_SET);
-		if (position != stream->fPosition)
-			return -1;
-	}
-
-	ssize_t read = stream->fSource->Read(buffer, bufferSize);
-	if (read > 0)
-		stream->fPosition += read;
-
-	TRACE_IO("  read: %ld\n", read);
-	return (int)read;
-
-}
-
-
-/*static*/ off_t
-AVFormatReader::StreamCookie::_Seek(void* cookie, off_t offset, int whence)
-{
-	TRACE_IO("AVFormatReader::StreamCookie::_Seek(%p, %lld, %d)\n",
-		cookie, offset, whence);
-
-	StreamCookie* stream = reinterpret_cast<StreamCookie*>(cookie);
-
-	BAutolock _(stream->fStreamLock);
-
-	// Support for special file size retrieval API without seeking
-	// anywhere:
-	if (whence == AVSEEK_SIZE) {
-		off_t size;
-		if (stream->fSource->GetSize(&size) == B_OK)
-			return size;
-		return -1;
-	}
-
-	// If not requested to seek to an absolute position, we need to
-	// confirm that the stream is currently at the position that we
-	// think it is.
-	if (whence != SEEK_SET
-		&& stream->fPosition != stream->fSource->Position()) {
-		off_t position
-			= stream->fSource->Seek(stream->fPosition, SEEK_SET);
-		if (position != stream->fPosition)
-			return -1;
-	}
-
-	off_t position = stream->fSource->Seek(offset, whence);
-	TRACE_IO("  position: %lld\n", position);
-	if (position < 0)
-		return -1;
-
-	stream->fPosition = position;
-
-	return position;
 }
 
 
 status_t
-AVFormatReader::StreamCookie::_NextPacket(bool reuse)
+AVFormatReader::Stream::Seek(uint32 flags, int64* frame, bigtime_t* time)
 {
-	TRACE_PACKET("AVFormatReader::StreamCookie::_NextPacket(%d)\n", reuse);
+	BAutolock _(&fLock);
 
-	if (fReusePacket) {
-		// The last packet was marked for reuse, so we keep using it.
-		TRACE_PACKET("  re-using last packet\n");
-		fReusePacket = reuse;
-		return B_OK;
-	}
+	if (fContext == NULL || fStream == NULL)
+		return B_NO_INIT;
 
-	av_free_packet(&fPacket);
-
-	while (true) {
-		if (av_read_frame(fContext, &fPacket) < 0) {
-			// NOTE: Even though we may get the error for a different stream,
-			// av_read_frame() is not going to be successful from here on, so
-			// it doesn't matter
-			fReusePacket = false;
-			return B_LAST_BUFFER_ERROR;
+	// Put the old requested values into frame/time, since we already know
+	// that the sought frame/time will then match the reported values.
+	// TODO: Will not work if client changes seek flags (from backwards to
+	// forward or vice versa)!!
+	bool inLastRequestedRange = false;
+	if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
+		if (fLastReportedKeyframe.reportedFrame
+			<= fLastReportedKeyframe.requestedFrame) {
+			inLastRequestedRange
+				= *frame >= fLastReportedKeyframe.reportedFrame
+					&& *frame <= fLastReportedKeyframe.requestedFrame;
+		} else {
+			inLastRequestedRange
+				= *frame >= fLastReportedKeyframe.requestedFrame
+					&& *frame <= fLastReportedKeyframe.reportedFrame;
 		}
-
-		if (fPacket.stream_index == Index())
-			break;
-
-		// This is a packet from another stream, ignore it.
-		av_free_packet(&fPacket);
+	} else if ((flags & B_MEDIA_SEEK_TO_FRAME) == 0) {
+		if (fLastReportedKeyframe.reportedTime
+			<= fLastReportedKeyframe.requestedTime) {
+			inLastRequestedRange
+				= *time >= fLastReportedKeyframe.reportedTime
+					&& *time <= fLastReportedKeyframe.requestedTime;
+		} else {
+			inLastRequestedRange
+				= *time >= fLastReportedKeyframe.requestedTime
+					&& *time <= fLastReportedKeyframe.reportedTime;
+		}
 	}
 
-	// Mark this packet with the new reuse flag.
-	fReusePacket = reuse;
-	return B_OK;
+	if (inLastRequestedRange) {
+		*frame = fLastReportedKeyframe.requestedFrame;
+		*time = fLastReportedKeyframe.requestedTime;
+		flags = fLastReportedKeyframe.seekFlags;
+	}
+
+	return StreamBase::Seek(flags, frame, time);
 }
 
 
@@ -1074,7 +1436,7 @@ AVFormatReader::StreamCookie::_NextPacket(bool reuse)
 AVFormatReader::AVFormatReader()
 	:
 	fStreams(NULL),
-	fStreamLock("stream lock")
+	fSourceLock("source I/O lock")
 {
 	TRACE("AVFormatReader::AVFormatReader\n");
 }
@@ -1084,7 +1446,12 @@ AVFormatReader::~AVFormatReader()
 {
 	TRACE("AVFormatReader::~AVFormatReader\n");
 	if (fStreams != NULL) {
-		delete fStreams[0];
+		// The client was supposed to call FreeCookie() on all
+		// allocated streams. Deleting the first stream is always
+		// prevented, we delete the other ones just in case.
+		int32 count = fStreams[0]->CountStreams();
+		for (int32 i = 0; i < count; i++)
+			delete fStreams[i];
 		delete[] fStreams;
 	}
 }
@@ -1097,6 +1464,7 @@ const char*
 AVFormatReader::Copyright()
 {
 // TODO: Could not find the equivalent in libavformat >= version 53.
+// Use metadata API instead!
 //	if (fStreams != NULL && fStreams[0] != NULL)
 //		return fStreams[0]->Context()->copyright;
 	// TODO: Return copyright of the file instead!
@@ -1115,14 +1483,14 @@ AVFormatReader::Sniff(int32* _streamCount)
 		return B_NOT_SUPPORTED;
 	}
 
-	StreamCookie* stream = new(std::nothrow) StreamCookie(source,
-		&fStreamLock);
+	Stream* stream = new(std::nothrow) Stream(source,
+		&fSourceLock);
 	if (stream == NULL) {
-		ERROR("AVFormatReader::Sniff() - failed to allocate StreamCookie\n");
+		ERROR("AVFormatReader::Sniff() - failed to allocate Stream\n");
 		return B_NO_MEMORY;
 	}
 
-	ObjectDeleter<StreamCookie> streamDeleter(stream);
+	ObjectDeleter<Stream> streamDeleter(stream);
 
 	status_t ret = stream->Open();
 	if (ret != B_OK) {
@@ -1139,13 +1507,13 @@ AVFormatReader::Sniff(int32* _streamCount)
 		return B_ERROR;
 	}
 
-	fStreams = new(std::nothrow) StreamCookie*[streamCount];
+	fStreams = new(std::nothrow) Stream*[streamCount];
 	if (fStreams == NULL) {
 		ERROR("AVFormatReader::Sniff() - failed to allocate streams\n");
 		return B_NO_MEMORY;
 	}
 
-	memset(fStreams, 0, sizeof(StreamCookie*) * streamCount);
+	memset(fStreams, 0, sizeof(Stream*) * streamCount);
 	fStreams[0] = stream;
 	streamDeleter.Detach();
 
@@ -1217,13 +1585,50 @@ AVFormatReader::GetFileFormatInfo(media_file_format* mff)
 	}
 
 	if (context->iformat->long_name != NULL)
-		strcpy(mff->pretty_name, context->iformat->long_name);
+		sprintf(mff->pretty_name, "%s (FFmpeg)", context->iformat->long_name);
 	else {
 		if (format != NULL)
-			strcpy(mff->pretty_name, format->pretty_name);
+			sprintf(mff->pretty_name, "%s (FFmpeg)", format->pretty_name);
 		else
-			strcpy(mff->pretty_name, "");
+			strcpy(mff->pretty_name, "Unknown (FFmpeg)");
 	}
+}
+
+
+status_t
+AVFormatReader::GetMetaData(BMessage* _data)
+{
+	// The first cookie is always there!
+	const AVFormatContext* context = fStreams[0]->Context();
+
+	if (context == NULL)
+		return B_NO_INIT;
+
+	avmetadata_to_message(context->metadata, _data);
+
+	// Add chapter info
+	for (unsigned i = 0; i < context->nb_chapters; i++) {
+		AVChapter* chapter = context->chapters[i];
+		BMessage chapterData;
+		chapterData.AddInt64("start", bigtime_t(1000000.0
+			* chapter->start * chapter->time_base.num
+			/ chapter->time_base.den + 0.5));
+		chapterData.AddInt64("end", bigtime_t(1000000.0
+			* chapter->end * chapter->time_base.num
+			/ chapter->time_base.den + 0.5));
+
+		avmetadata_to_message(chapter->metadata, &chapterData);
+		_data->AddMessage("be:chapter", &chapterData);
+	}
+
+	// Add program info
+	for (unsigned i = 0; i < context->nb_programs; i++) {
+		BMessage progamData;
+		avmetadata_to_message(context->programs[i]->metadata, &progamData);
+		_data->AddMessage("be:program", &progamData);
+	}
+
+	return B_OK;
 }
 
 
@@ -1235,7 +1640,7 @@ AVFormatReader::AllocateCookie(int32 streamIndex, void** _cookie)
 {
 	TRACE("AVFormatReader::AllocateCookie(%ld)\n", streamIndex);
 
-	BAutolock _(fStreamLock);
+	BAutolock _(fSourceLock);
 
 	if (fStreams == NULL)
 		return B_NO_INIT;
@@ -1246,7 +1651,7 @@ AVFormatReader::AllocateCookie(int32 streamIndex, void** _cookie)
 	if (_cookie == NULL)
 		return B_BAD_VALUE;
 
-	StreamCookie* cookie = fStreams[streamIndex];
+	Stream* cookie = fStreams[streamIndex];
 	if (cookie == NULL) {
 		// Allocate the cookie
 		BPositionIO* source = dynamic_cast<BPositionIO*>(Source());
@@ -1255,10 +1660,10 @@ AVFormatReader::AllocateCookie(int32 streamIndex, void** _cookie)
 			return B_NOT_SUPPORTED;
 		}
 
-		cookie = new(std::nothrow) StreamCookie(source, &fStreamLock);
+		cookie = new(std::nothrow) Stream(source, &fSourceLock);
 		if (cookie == NULL) {
 			ERROR("AVFormatReader::Sniff() - failed to allocate "
-				"StreamCookie\n");
+				"Stream\n");
 			return B_NO_MEMORY;
 		}
 
@@ -1289,9 +1694,9 @@ AVFormatReader::AllocateCookie(int32 streamIndex, void** _cookie)
 status_t
 AVFormatReader::FreeCookie(void *_cookie)
 {
-	BAutolock _(fStreamLock);
+	BAutolock _(fSourceLock);
 
-	StreamCookie* cookie = reinterpret_cast<StreamCookie*>(_cookie);
+	Stream* cookie = reinterpret_cast<Stream*>(_cookie);
 
 	// NOTE: Never delete the first cookie!
 	if (cookie != NULL && cookie->VirtualIndex() != 0) {
@@ -1312,9 +1717,17 @@ AVFormatReader::GetStreamInfo(void* _cookie, int64* frameCount,
 	bigtime_t* duration, media_format* format, const void** infoBuffer,
 	size_t* infoSize)
 {
-	StreamCookie* cookie = reinterpret_cast<StreamCookie*>(_cookie);
+	Stream* cookie = reinterpret_cast<Stream*>(_cookie);
 	return cookie->GetStreamInfo(frameCount, duration, format, infoBuffer,
 		infoSize);
+}
+
+
+status_t
+AVFormatReader::GetStreamMetaData(void* _cookie, BMessage* _data)
+{
+	Stream* cookie = reinterpret_cast<Stream*>(_cookie);
+	return cookie->GetMetaData(_data);
 }
 
 
@@ -1322,7 +1735,7 @@ status_t
 AVFormatReader::Seek(void* _cookie, uint32 seekTo, int64* frame,
 	bigtime_t* time)
 {
-	StreamCookie* cookie = reinterpret_cast<StreamCookie*>(_cookie);
+	Stream* cookie = reinterpret_cast<Stream*>(_cookie);
 	return cookie->Seek(seekTo, frame, time);
 }
 
@@ -1331,7 +1744,7 @@ status_t
 AVFormatReader::FindKeyFrame(void* _cookie, uint32 flags, int64* frame,
 	bigtime_t* time)
 {
-	StreamCookie* cookie = reinterpret_cast<StreamCookie*>(_cookie);
+	Stream* cookie = reinterpret_cast<Stream*>(_cookie);
 	return cookie->FindKeyFrame(flags, frame, time);
 }
 
@@ -1340,7 +1753,7 @@ status_t
 AVFormatReader::GetNextChunk(void* _cookie, const void** chunkBuffer,
 	size_t* chunkSize, media_header* mediaHeader)
 {
-	StreamCookie* cookie = reinterpret_cast<StreamCookie*>(_cookie);
+	Stream* cookie = reinterpret_cast<Stream*>(_cookie);
 	return cookie->GetNextChunk(chunkBuffer, chunkSize, mediaHeader);
 }
 

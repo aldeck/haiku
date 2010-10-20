@@ -1,5 +1,5 @@
 /*
- * Copyright 2009, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2009-2010, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -26,6 +26,7 @@
 #include <SplitLayoutBuilder.h>
 #include <StringView.h>
 #include <TextControl.h>
+#include <UnicodeChar.h>
 
 #include "CharacterView.h"
 #include "UnicodeBlockView.h"
@@ -64,6 +65,7 @@ private:
 	mutable char	fText[32];
 };
 
+
 class RedirectUpAndDownFilter : public BMessageFilter {
 public:
 	RedirectUpAndDownFilter(BHandler* target)
@@ -88,6 +90,7 @@ public:
 private:
 	BHandler*	fTarget;
 };
+
 
 class EscapeMessageFilter : public BMessageFilter {
 public:
@@ -254,6 +257,20 @@ CharacterWindow::~CharacterWindow()
 void
 CharacterWindow::MessageReceived(BMessage* message)
 {
+	if (message->WasDropped()) {
+		const char* text;
+		ssize_t size;
+		uint32 c;
+		if (message->FindInt32("character", (int32*)&c) == B_OK) {
+			fCharacterView->ScrollToCharacter(c);
+			return;
+		} else if (message->FindData("text/plain", B_MIME_TYPE,
+				(const void**)&text, &size) == B_OK) {
+			fCharacterView->ScrollToCharacter(BUnicodeChar::FromUTF8(text));
+			return;
+		}
+	}
+
 	switch (message->what) {
 		case B_COPY:
 			PostMessage(message, fCharacterView);
@@ -268,7 +285,7 @@ CharacterWindow::MessageReceived(BMessage* message)
 
 			BlockListItem* item
 				= static_cast<BlockListItem*>(fUnicodeBlockView->ItemAt(index));
-			fCharacterView->ScrollTo(item->BlockIndex());
+			fCharacterView->ScrollToBlock(item->BlockIndex());
 
 			fFilterControl->MakeFocus();
 			break;
@@ -298,20 +315,25 @@ CharacterWindow::MessageReceived(BMessage* message)
 		case kMsgFontSelected:
 		{
 			BMenuItem* item;
+
 			if (message->FindPointer("source", (void**)&item) != B_OK)
 				break;
 
 			fSelectedFontItem->SetMarked(false);
 
 			// If it's the family menu, just select the first style
-			if (item->Submenu() != NULL)
+			if (item->Submenu() != NULL) {
+				item->SetMarked(true);
 				item = item->Submenu()->ItemAt(0);
+			}
 
 			if (item != NULL) {
 				item->SetMarked(true);
 				fSelectedFontItem = item;
 
 				_SetFont(item->Menu()->Name(), item->Label());
+				item = item->Menu()->Superitem();
+				item->SetMarked(true);
 			}
 			break;
 		}
@@ -467,6 +489,7 @@ BMenu*
 CharacterWindow::_CreateFontMenu()
 {
 	BMenu* menu = new BMenu("Font");
+	BMenuItem* item;
 
 	font_family currentFamily;
 	font_style currentStyle;
@@ -474,6 +497,8 @@ CharacterWindow::_CreateFontMenu()
 		&currentStyle);
 
 	int32 numFamilies = count_font_families();
+
+	menu->SetRadioMode(true);
 
 	for (int32 i = 0; i < numFamilies; i++) {
 		font_family family;
@@ -487,8 +512,7 @@ CharacterWindow::_CreateFontMenu()
 				font_style style;
 				uint32 flags;
 				if (get_font_style(family, j, &style, &flags) == B_OK) {
-					BMenuItem* item = new BMenuItem(style,
-						new BMessage(kMsgFontSelected));
+					item = new BMenuItem(style, new BMessage(kMsgFontSelected));
 					subMenu->AddItem(item);
 
 					if (!strcmp(family, currentFamily)
@@ -500,6 +524,9 @@ CharacterWindow::_CreateFontMenu()
 			}
 		}
 	}
+
+	item = menu->FindItem(currentFamily);
+	item->SetMarked(true);
 
 	return menu;
 }

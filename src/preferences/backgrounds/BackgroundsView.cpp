@@ -16,6 +16,7 @@
 
 #include <Bitmap.h>
 #include <Catalog.h>
+#include <Cursor.h>
 #include <Debug.h>
 #include <File.h>
 #include <FindDirectory.h>
@@ -57,45 +58,6 @@ static const uint32 kMsgIconLabelOutline = 'ilol';
 
 static const uint32 kMsgImagePlacement = 'xypl';
 static const uint32 kMsgUpdatePreviewPlacement = 'pvpl';
-
-
-const uint8 kHandCursorData[68] = {
-	16, 1, 2, 2,
-
-	0, 0,		// 0000000000000000
-	7, 128,		// 0000011110000000
-	61, 112,	// 0011110101110000
-	37, 40,		// 0010010100101000
-	36, 168,	// 0010010010101000
-	18, 148,	// 0001001010010100
-	18, 84,		// 0001001001010100
-	9, 42,		// 0000100100101010
-	8, 1,		// 0000100000000001
-	60, 1,		// 0011110000000001
-	76, 1,		// 0100110000000001
-	66, 1,		// 0100001000000001
-	48, 1,		// 0011000000000001
-	12, 1,		// 0000110000000001
-	2, 0,		// 0000001000000000
-	1, 0,		// 0000000100000000
-
-	0, 0,		// 0000000000000000
-	7, 128,		// 0000011110000000
-	63, 240,	// 0011111111110000
-	63, 248,	// 0011111111111000
-	63, 248,	// 0011111111111000
-	31, 252,	// 0001111111111100
-	31, 252,	// 0001111111111100
-	15, 254,	// 0000111111111110
-	15, 255,	// 0000111111111111
-	63, 255,	// 0011111111111111
-	127, 255,	// 0111111111111111
-	127, 255,	// 0111111111111111
-	63, 255,	// 0011111111111111
-	15, 255,	// 0000111111111111
-	3, 254,		// 0000001111111110
-	1, 248		// 0000000111111000
-};
 
 
 BackgroundsView::BackgroundsView()
@@ -144,7 +106,7 @@ BackgroundsView::BackgroundsView()
 		.AddGroup(B_VERTICAL, 20)
 			.AddGroup(B_HORIZONTAL, 0)
 				.AddGlue()
-				.AddGrid(0, 0)
+				.AddGrid(0, 0, 1)
 					.Add(fTopLeft, 0, 0)
 					.Add(fTop, 1, 0)
 					.Add(fTopRight, 2, 0)
@@ -923,6 +885,8 @@ BackgroundsView::_UpdatePreview()
 
 			fPreView->fImageBounds = BRect(bitmap->Bounds());
 			fCurrent->Show(info, fPreView);
+
+			delete info;
 		}
 	} else
 		fPreView->SetEnabled(false);
@@ -1182,8 +1146,7 @@ BackgroundsView::FoundPositionSetting()
 
 PreView::PreView()
 	:
-	BControl("PreView", NULL, NULL, B_WILL_DRAW | B_SUBPIXEL_PRECISE),
-	fMoveHandCursor(kHandCursorData)
+	BControl("PreView", NULL, NULL, B_WILL_DRAW | B_SUBPIXEL_PRECISE)
 {
 	float aspectRatio = BScreen().Frame().Width() / BScreen().Frame().Height();
 	float previewWidth = 120.0f;
@@ -1218,6 +1181,9 @@ PreView::MouseDown(BPoint point)
 			fYRatio = Bounds().Height() / fMode.virtual_height;
 			SetMouseEventMask(B_POINTER_EVENTS,
 				B_LOCK_WINDOW_FOCUS | B_NO_POINTER_HISTORY);
+
+			BCursor grabbingCursor(B_CURSOR_ID_GRABBING);
+			SetViewCursor(&grabbingCursor);
 		}
 	}
 }
@@ -1226,20 +1192,22 @@ PreView::MouseDown(BPoint point)
 void
 PreView::MouseUp(BPoint point)
 {
-	if (IsTracking())
+	if (IsTracking()) {
 		SetTracking(false);
+		BCursor grabCursor(B_CURSOR_ID_GRAB);
+		SetViewCursor(&grabCursor);
+	}
 }
 
 
 void
 PreView::MouseMoved(BPoint point, uint32 transit, const BMessage* message)
 {
-	if (IsEnabled())
-		SetViewCursor(&fMoveHandCursor);
-	else
-		SetViewCursor(B_CURSOR_SYSTEM_DEFAULT);
-
-	if (IsTracking()) {
+	if (!IsTracking()) {
+		BCursor cursor(IsEnabled()
+			? B_CURSOR_ID_GRAB : B_CURSOR_ID_SYSTEM_DEFAULT);
+		SetViewCursor(&cursor);
+	} else {
 		float x, y;
 		x = fPoint.x + (point.x - fOldPoint.x) / fXRatio;
 		y = fPoint.y + (point.y - fOldPoint.y) / fYRatio;
@@ -1287,6 +1255,7 @@ PreView::MouseMoved(BPoint point, uint32 transit, const BMessage* message)
 			messenger.SendMessage(kMsgUpdatePreviewPlacement);
 		}
 	}
+
 	BControl::MouseMoved(point, transit, message);
 }
 

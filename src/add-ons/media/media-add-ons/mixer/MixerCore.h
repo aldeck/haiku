@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2009 Haiku Inc. All rights reserved.
+ * Copyright 2003-2010 Haiku Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -32,10 +32,11 @@ class Resampler;
 
 class MixerCore {
 public:
-								MixerCore(AudioMixer *node);
+								MixerCore(AudioMixer* node);
 	virtual						~MixerCore();
 
 			MixerSettings*		Settings();
+			void				UpdateResamplingAlgorithm();
 
 	// To avoid calling Settings()->AttenuateOutput() for every outgoing
 	// buffer, this setting is cached in fOutputGain and must be set by
@@ -67,7 +68,7 @@ public:
 
 			void				SetOutputBufferGroup(BBufferGroup* group);
 			void				SetTimingInfo(BTimeSource* timeSource,
-									bigtime_t downstream_latency);
+									bigtime_t downstreamLatency);
 			void				EnableOutput(bool enabled);
 			bool				Start();
 			bool				Stop();
@@ -77,9 +78,11 @@ public:
 			uint32				OutputChannelCount();
 
 private:
-			void				ApplyOutputFormat();
-	static	int32				_mix_thread_(void* arg);
-			void				MixThread();
+			void				_UpdateResamplers(
+									const media_multi_audio_format& format);
+			void				_ApplyOutputFormat();
+	static	int32				_MixThreadEntry(void* arg);
+			void				_MixThread();
 
 private:
 			BLocker*			fLocker;

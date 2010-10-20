@@ -1,8 +1,10 @@
 /*
  * Copyright 2007-2008, Christof Lutteroth, lutteroth@cs.auckland.ac.nz
  * Copyright 2007-2008, James Kim, jkim202@ec.auckland.ac.nz
+ * Copyright 2010, Clemens Zeidler <haiku@clemens-zeidler.de>
  * Distributed under the terms of the MIT License.
  */
+
 
 #include "LinearSpec.h"
 
@@ -12,12 +14,10 @@
  * Creates a new specification for a linear programming problem.
  */
 LinearSpec::LinearSpec()
-	: fCountColumns(0),
+	:
 	fLpPresolved(NULL),
 	fOptimization(MINIMIZE),
-	fObjFunction(new BList()),
-	fVariables(new BList()),
-	fConstraints(new BList()),
+	fObjFunction(new SummandList()),
 	fResult(ERROR),
 	fObjectiveValue(NAN),
 	fSolvingTime(NAN)
@@ -37,13 +37,16 @@ LinearSpec::LinearSpec()
 LinearSpec::~LinearSpec()
 {
 	RemovePresolved();
-	for (int32 i=0; i<fConstraints->CountItems(); i++)
-		delete (Constraint*)fConstraints->ItemAt(i);
-	for (int32 i=0; i<fObjFunction->CountItems(); i++)
+	for (int32 i = 0; i < fConstraints.CountItems(); i++)
+		delete (Constraint*)fConstraints.ItemAt(i);
+	for (int32 i = 0; i < fObjFunction->CountItems(); i++)
 		delete (Summand*)fObjFunction->ItemAt(i);
-	for (int32 i=0; i<fVariables->CountItems(); i++)
-		delete (Variable*)fVariables->ItemAt(i);
+	while (fVariables.CountItems() > 0)
+		RemoveVariable(fVariables.ItemAt(0));
+
 	delete_lp(fLP);
+
+	delete fObjFunction;
 }
 
 
@@ -55,7 +58,75 @@ LinearSpec::~LinearSpec()
 Variable*
 LinearSpec::AddVariable()
 {
-	return new Variable(this);
+	Variable* variable = new Variable(this);
+	if (!variable)
+		return NULL;
+	if (!AddVariable(variable)) {
+		delete variable;
+		return NULL;
+	}
+
+	return variable;
+}
+
+
+bool
+LinearSpec::AddVariable(Variable* variable)
+{
+	double d = 0;
+	int i = 0;
+
+	if (!fVariables.AddItem(variable))
+		return false;
+	if (add_columnex(fLP, 0, &d, &i) == 0) {
+		fVariables.RemoveItem(variable);
+		return false;
+	}
+
+	if (!SetRange(variable, -20000, 20000)) {
+		RemoveVariable(variable, false);
+		return false;
+	}
+
+	variable->fIsValid = true;
+	return true;
+}
+
+
+bool
+LinearSpec::RemoveVariable(Variable* variable, bool deleteVariable)
+{
+	int32 index = IndexOf(variable);
+	if (index < 0)
+		return false;
+
+	if (!del_column(fLP, index))
+		return false;
+	fVariables.RemoveItemAt(index - 1);
+	variable->Invalidate();
+
+	if (deleteVariable)
+		delete variable;
+	return true;
+}
+
+
+int32
+LinearSpec::IndexOf(const Variable* variable) const
+{
+	int32 i = fVariables.IndexOf(variable);
+	if (i == -1) {
+		printf("Variable 0x%p not part of fLS->Variables().\n", variable);
+		return -1;
+	}
+	return i + 1;
+}
+
+
+bool
+LinearSpec::SetRange(Variable* variable, double min, double max)
+{
+	return set_bounds(fLP, IndexOf(variable), min, max);
 }
 
 
@@ -69,7 +140,8 @@ LinearSpec::AddVariable()
  * @return the new constraint
  */
 Constraint*
-LinearSpec::AddConstraint(BList* summands, OperatorType op, double rightSide)
+LinearSpec::AddConstraint(SummandList* summands, OperatorType op,
+	double rightSide)
 {
 	Constraint* c = new Constraint(this, summands, op, rightSide,
 		INFINITY, INFINITY);
@@ -91,7 +163,7 @@ Constraint*
 LinearSpec::AddConstraint(double coeff1, Variable* var1,
 	OperatorType op, double rightSide)
 {
-	BList* summands = new BList(1);
+	SummandList* summands = new SummandList(1);
 	summands->AddItem(new Summand(coeff1, var1));
 	Constraint* c = new Constraint(this, summands, op, rightSide,
 		INFINITY, INFINITY);
@@ -115,7 +187,7 @@ Constraint*
 LinearSpec::AddConstraint(double coeff1, Variable* var1,
 	double coeff2, Variable* var2, OperatorType op, double rightSide)
 {
-	BList* summands = new BList(2);
+	SummandList* summands = new SummandList(2);
 	summands->AddItem(new Summand(coeff1, var1));
 	summands->AddItem(new Summand(coeff2, var2));
 	Constraint* c = new Constraint(this, summands, op, rightSide,
@@ -143,7 +215,7 @@ LinearSpec::AddConstraint(double coeff1, Variable* var1,
 		double coeff2, Variable* var2, double coeff3, Variable* var3,
 		OperatorType op, double rightSide)
 {
-	BList* summands = new BList(3);
+	SummandList* summands = new SummandList(3);
 	summands->AddItem(new Summand(coeff1, var1));
 	summands->AddItem(new Summand(coeff2, var2));
 	summands->AddItem(new Summand(coeff3, var3));
@@ -174,7 +246,7 @@ LinearSpec::AddConstraint(double coeff1, Variable* var1,
 		double coeff2, Variable* var2, double coeff3, Variable* var3,
 		double coeff4, Variable* var4, OperatorType op, double rightSide)
 {
-	BList* summands = new BList(3);
+	SummandList* summands = new SummandList(3);
 	summands->AddItem(new Summand(coeff1, var1));
 	summands->AddItem(new Summand(coeff2, var2));
 	summands->AddItem(new Summand(coeff3, var3));
@@ -198,7 +270,7 @@ LinearSpec::AddConstraint(double coeff1, Variable* var1,
  * @param penaltyPos	the coefficient penalizing positive deviations from the exact solution
  */
 Constraint*
-LinearSpec::AddConstraint(BList* summands, OperatorType op,
+LinearSpec::AddConstraint(SummandList* summands, OperatorType op,
 		double rightSide, double penaltyNeg, double penaltyPos)
 {
 	Constraint* c = new Constraint(this, summands, op, rightSide,
@@ -222,7 +294,7 @@ Constraint*
 LinearSpec::AddConstraint(double coeff1, Variable* var1,
 		OperatorType op, double rightSide, double penaltyNeg, double penaltyPos)
 {
-	BList* summands = new BList(1);
+	SummandList* summands = new SummandList(1);
 	summands->AddItem(new Summand(coeff1, var1));
 	Constraint* c = new Constraint(this, summands, op, rightSide,
 		penaltyNeg, penaltyPos);
@@ -248,7 +320,7 @@ LinearSpec::AddConstraint(double coeff1, Variable* var1,
 	double coeff2, Variable* var2, OperatorType op, double rightSide,
 	double penaltyNeg, double penaltyPos)
 {
-	BList* summands = new BList(2);
+	SummandList* summands = new SummandList(2);
 	summands->AddItem(new Summand(coeff1, var1));
 	summands->AddItem(new Summand(coeff2, var2));
 	Constraint* c = new Constraint(this, summands, op, rightSide,
@@ -277,7 +349,7 @@ LinearSpec::AddConstraint(double coeff1, Variable* var1,
 	double coeff2, Variable* var2, double coeff3, Variable* var3,
 	OperatorType op, double rightSide, double penaltyNeg, double penaltyPos)
 {
-	BList* summands = new BList(2);
+	SummandList* summands = new SummandList(2);
 	summands->AddItem(new Summand(coeff1, var1));
 	summands->AddItem(new Summand(coeff2, var2));
 	summands->AddItem(new Summand(coeff3, var3));
@@ -310,7 +382,7 @@ LinearSpec::AddConstraint(double coeff1, Variable* var1,
 	double coeff4, Variable* var4, OperatorType op, double rightSide,
 	double penaltyNeg, double penaltyPos)
 {
-	BList* summands = new BList(2);
+	SummandList* summands = new SummandList(2);
 	summands->AddItem(new Summand(coeff1, var1));
 	summands->AddItem(new Summand(coeff2, var2));
 	summands->AddItem(new Summand(coeff3, var3));
@@ -340,26 +412,39 @@ LinearSpec::AddPenaltyFunction(Variable* var, BList* xs, BList* gs)
 /**
  * Gets the objective function.
  *
- * @return BList containing the objective function's summands
+ * @return SummandList containing the objective function's summands
  */
-BList*
-LinearSpec::ObjFunction()
+SummandList*
+LinearSpec::ObjectiveFunction()
 {
 	return fObjFunction;
 }
 
 
+SummandList*
+LinearSpec::SwapObjectiveFunction(SummandList* objFunction)
+{
+	SummandList* list = fObjFunction;
+	fObjFunction = objFunction;
+	UpdateObjectiveFunction();
+	return list;
+}
+
+
 /**
  * Sets a new objective function.
- * The old objective function summands are NOT deleted.
  *
- * @param summands	BList containing the objective function's summands
+ * @param summands	SummandList containing the objective function's summands
  */
 void
-LinearSpec::SetObjFunction(BList* summands)
+LinearSpec::SetObjectiveFunction(SummandList* objFunction)
 {
-	fObjFunction = summands;
-	UpdateObjFunction();
+	for (int32 i = 0; i < fObjFunction->CountItems(); i++)
+		delete (Summand*)fObjFunction->ItemAt(i);
+	delete fObjFunction;
+
+	fObjFunction = objFunction;
+	UpdateObjectiveFunction();
 }
 
 
@@ -368,7 +453,7 @@ LinearSpec::SetObjFunction(BList* summands)
  * Must be called whenever the summands of the objective function are changed.
  */
 void
-LinearSpec::UpdateObjFunction()
+LinearSpec::UpdateObjectiveFunction()
 {
 	int32 size = fObjFunction->CountItems();
 	double coeffs[size];
@@ -381,7 +466,7 @@ LinearSpec::UpdateObjFunction()
 	}
 
 	if (!set_obj_fnex(fLP, size, &coeffs[0], &varIndexes[0]))
-		printf("Error in set_obj_fnex.");
+		printf("Error in set_obj_fnex.\n");
 
 	RemovePresolved();
 }
@@ -418,17 +503,17 @@ LinearSpec::Presolve()
 
 	if (fLpPresolved == NULL) {
 		fLpPresolved = copy_lp(fLP);
-		set_presolve(fLpPresolved, PRESOLVE_ROWS | PRESOLVE_COLS | PRESOLVE_LINDEP,
-				get_presolveloops(fLpPresolved));
+		set_presolve(fLpPresolved, PRESOLVE_ROWS | PRESOLVE_COLS
+			| PRESOLVE_LINDEP, get_presolveloops(fLpPresolved));
 	}
 
 	fResult = (ResultType)solve(fLpPresolved);
 	fObjectiveValue = get_objective(fLpPresolved);
 
 	if (fResult == OPTIMAL) {
-		int32 size = fVariables->CountItems();
+		int32 size = fVariables.CountItems();
 		for (int32 i = 0; i < size; i++) {
-			Variable* current = (Variable*)fVariables->ItemAt(i);
+			Variable* current = (Variable*)fVariables.ItemAt(i);
 			current->SetValue(get_var_primalresult(fLpPresolved,
 					get_Norig_rows(fLpPresolved) + current->Index()));
 		}
@@ -460,14 +545,14 @@ LinearSpec::Solve()
 	fObjectiveValue = get_objective(fLP);
 
 	if (fResult == OPTIMAL) {
-		int32 size = fVariables->CountItems();
+		int32 size = fVariables.CountItems();
 		double x[size];
 		if (!get_variables(fLP, &x[0]))
-			printf("Error in get_variables.");
+			printf("Error in get_variables.\n");
 
 		int32 i = 0;
 		while (i < size) {
-			((Variable*)fVariables->ItemAt(i))->SetValue(x[i]);
+			((Variable*)fVariables.ItemAt(i))->SetValue(x[i]);
 			i++;
 		}
 	}
@@ -490,18 +575,6 @@ LinearSpec::Save(const char* fileName)
 {
 	// TODO: Constness should be fixed in liblpsolve API.
 	write_lp(fLP, const_cast<char*>(fileName));
-}
-
-
-/**
- * Gets the number of columns.
- *
- * @return the number of columns
- */
-int32
-LinearSpec::CountColumns() const
-{
-	return fCountColumns;
 }
 
 
@@ -536,23 +609,11 @@ LinearSpec::SetOptimization(OptimizationType value)
 
 
 /**
- * Gets the the variables.
- *
- * @return the variables
- */
-BList*
-LinearSpec::Variables() const
-{
-	return fVariables;
-}
-
-
-/**
  * Gets the constraints.
  *
  * @return the constraints
  */
-BList*
+const ConstraintList&
 LinearSpec::Constraints() const
 {
 	return fConstraints;
@@ -607,14 +668,14 @@ void
 LinearSpec::GetString(BString& string) const
 {
 	string << "LinearSpec " << (int32)this << ":\n";
-	for (int i = 0; i < fVariables->CountItems(); i++) {
-		Variable* variable = static_cast<Variable*>(fVariables->ItemAt(i));
+	for (int i = 0; i < fVariables.CountItems(); i++) {
+		Variable* variable = static_cast<Variable*>(fVariables.ItemAt(i));
 		variable->GetString(string);
 		string << "=" << (float)variable->Value() << " ";
 	}
 	string << "\n";
-	for (int i = 0; i < fConstraints->CountItems(); i++) {
-		Constraint* c = static_cast<Constraint*>(fConstraints->ItemAt(i));
+	for (int i = 0; i < fConstraints.CountItems(); i++) {
+		Constraint* c = static_cast<Constraint*>(fConstraints.ItemAt(i));
 		string << i << ": ";
 		c->GetString(string);
 		string << "\n";

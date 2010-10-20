@@ -1,13 +1,16 @@
 /*
  * Copyright 2007-2008, Christof Lutteroth, lutteroth@cs.auckland.ac.nz
  * Copyright 2007-2008, James Kim, jkim202@ec.auckland.ac.nz
+ * Copyright 2010, Clemens Zeidler <haiku@clemens-zeidler.de>
  * Distributed under the terms of the MIT License.
  */
 
+
 #include "Row.h"
-#include "BALMLayout.h"
+
+#include "ALMLayout.h"
 #include "OperatorType.h"
-#include "YTab.h"
+#include "Tab.h"
 
 #include <SupportDefs.h>
 
@@ -71,7 +74,7 @@ Row::SetPrevious(Row* value)
 		
 	fPrevious = value;
 	fPrevious->fNext = this;
-	value->fNextGlue = value->fBottom->IsEqual(fTop);
+	value->fNextGlue = value->Bottom()->IsEqual(Top());
 	fPreviousGlue = value->fNextGlue;
 }
 
@@ -115,14 +118,9 @@ Row::SetNext(Row* value)
 		
 	fNext = value;
 	fNext->fPrevious = this;
-	value->fPreviousGlue = fBottom->IsEqual(value->fTop);
+	value->fPreviousGlue = Bottom()->IsEqual(value->Top());
 	fNextGlue = value->fPreviousGlue;
 }
-
-
-//~ string Row::ToString() {
-	//~ return "Row(" + fTop.ToString() + ", " + fBottom.ToString() + ")";
-//~ }
 
 
 /**
@@ -161,9 +159,9 @@ Constraint*
 Row::HasSameHeightAs(Row* row)
 {
 	Constraint* constraint = fLS->AddConstraint(
-		-1.0, fTop, 1.0, fBottom, 1.0, row->fTop, -1.0, row->fBottom,
+		-1.0, Top(), 1.0, Bottom(), 1.0, row->Top(), -1.0, row->Bottom(),
 		OperatorType(EQ), 0.0);
-	fConstraints->AddItem(constraint);
+	fConstraints.AddItem(constraint);
 	return constraint;
 }
 
@@ -171,20 +169,10 @@ Row::HasSameHeightAs(Row* row)
 /**
  * Gets the constraints.
  */
-BList*
+ConstraintList*
 Row::Constraints() const
 {
-	return fConstraints;
-}
-
-
-/**
- * Sets the constraints.
- */
-void
-Row::SetConstraints(BList* constraints)
-{
-	fConstraints = constraints;
+	return const_cast<ConstraintList*>(&fConstraints);
 }
 
 
@@ -196,8 +184,8 @@ Row::~Row()
 {
 	if (fPrevious != NULL) 
 		fPrevious->SetNext(fNext);
-	for (int32 i = 0; i < fConstraints->CountItems(); i++)
-		delete (Constraint*)fConstraints->ItemAt(i);
+	for (int32 i = 0; i < fConstraints.CountItems(); i++)
+		delete (Constraint*)fConstraints.ItemAt(i);
 	delete fTop;
 	delete fBottom;
 }
@@ -206,11 +194,10 @@ Row::~Row()
 /**
  * Constructor.
  */
-Row::Row(BALMLayout* ls)
+Row::Row(BALMLayout* layout)
 {
-	fLS = ls;
-	fTop = new YTab(ls);
-	fBottom = new YTab(ls);
-	fConstraints = new BList(1);
+	fLS = layout->Solver();
+	fTop = layout->AddYTab();
+	fBottom = layout->AddYTab();
 }
 

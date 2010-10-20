@@ -19,12 +19,14 @@ enum {
 
 	MSG_CONTROLLER_VIDEO_TRACK_CHANGED		= 'cnvt',
 	MSG_CONTROLLER_AUDIO_TRACK_CHANGED		= 'cnat',
+	MSG_CONTROLLER_SUB_TITLE_TRACK_CHANGED	= 'cnst',
 
 	MSG_CONTROLLER_VIDEO_STATS_CHANGED		= 'cnvs',
 	MSG_CONTROLLER_AUDIO_STATS_CHANGED		= 'cnas',
 
 	MSG_CONTROLLER_PLAYBACK_STATE_CHANGED	= 'cnps',
 	MSG_CONTROLLER_POSITION_CHANGED			= 'cnpc',
+	MSG_CONTROLLER_SEEK_HANDLED				= 'cnsh',
 	MSG_CONTROLLER_VOLUME_CHANGED			= 'cnvc',
 	MSG_CONTROLLER_MUTED_CHANGED			= 'cnmc'
 };
@@ -54,12 +56,14 @@ public:
 
 	virtual	void		VideoTrackChanged(int32 index);
 	virtual	void		AudioTrackChanged(int32 index);
+	virtual	void		SubTitleTrackChanged(int32 index);
 
 	virtual	void		VideoStatsChanged();
 	virtual	void		AudioStatsChanged();
 
 	virtual	void		PlaybackStateChanged(uint32 state);
 	virtual	void		PositionChanged(float position);
+	virtual	void		SeekHandled(int64 seekFrame);
 	virtual	void		VolumeChanged(float volume);
 	virtual	void		MutedChanged(bool muted);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2009, Stephan Amßus <superstippi@gmx.de>
+ * Copyright 2009-2010, Stephan Amßus <superstippi@gmx.de>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
@@ -15,6 +15,7 @@ extern "C" {
 	#include "rational.h"
 }
 
+#include "EncoderTable.h"
 #include "gfx_util.h"
 
 
@@ -36,6 +37,7 @@ AVCodecEncoder::AVCodecEncoder(uint32 codecID, int bitRateScale)
 	:
 	Encoder(),
 	fBitRateScale(bitRateScale),
+	fCodecID((enum CodecID)codecID),
 	fCodec(NULL),
 	fContext(avcodec_alloc_context()),
 	fCodecInitStatus(CODEC_INIT_NEEDED),
@@ -49,8 +51,10 @@ AVCodecEncoder::AVCodecEncoder(uint32 codecID, int bitRateScale)
 {
 	TRACE("AVCodecEncoder::AVCodecEncoder()\n");
 
-	fCodec = avcodec_find_encoder((enum CodecID)codecID);
-	TRACE("  found AVCodec for %lu: %p\n", codecID, fCodec);
+	if (fCodecID > 0) {
+		fCodec = avcodec_find_encoder(fCodecID);
+		TRACE("  found AVCodec for %u: %p\n", fCodecID, fCodec);
+	}
 
 	memset(&fInputFormat, 0, sizeof(media_format));
 
@@ -86,7 +90,7 @@ AVCodecEncoder::~AVCodecEncoder()
 
 	avpicture_free(&fDstFrame);
 	// NOTE: Do not use avpicture_free() on fSrcFrame!! We fill the picture
-	// data on the file with the media buffer data passed to Encode().
+	// data on the fly with the media buffer data passed to Encode().
 
 	if (fFrame != NULL) {
 		fFrame->data[0] = NULL;
@@ -131,11 +135,22 @@ AVCodecEncoder::SetUp(const media_format* inputFormat)
 {
 	TRACE("AVCodecEncoder::SetUp()\n");
 
-	if (fContext == NULL || fCodec == NULL)
+	if (fContext == NULL)
 		return B_NO_INIT;
 
 	if (inputFormat == NULL)
 		return B_BAD_VALUE;
+
+	// Codec IDs for raw-formats may need to be figured out here.
+	if (fCodec == NULL && fCodecID == CODEC_ID_NONE) {
+		fCodecID = raw_audio_codec_id_for(*inputFormat);
+		if (fCodecID != CODEC_ID_NONE)
+			fCodec = avcodec_find_encoder(fCodecID);
+	}
+	if (fCodec == NULL) {
+		TRACE("  encoder not found!\n");
+		return B_NO_INIT;
+	}
 
 	_CloseCodecIfNeeded();
 
@@ -155,7 +170,7 @@ AVCodecEncoder::GetEncodeParameters(encode_parameters* parameters) const
 // a user specified (via SetEncodeParameters()) bit_rate. At this point, the
 // fContext->bit_rate may not yet have been specified (_Setup() was never
 // called yet). So it cannot work like the code below, but in any case, it's
-// showing how to convert between the values (Albeit untested).
+// showing how to convert between the values (albeit untested).
 //	int avgBytesPerSecond = fContext->bit_rate / 8;
 //	int maxBytesPerSecond = (fContext->bit_rate
 //		+ fContext->bit_rate_tolerance) / 8;
@@ -247,6 +262,8 @@ AVCodecEncoder::_Setup()
 {
 	TRACE("AVCodecEncoder::_Setup\n");
 
+	int rawBitRate;
+
 	if (fInputFormat.type == B_MEDIA_RAW_VIDEO) {
 		TRACE("  B_MEDIA_RAW_VIDEO\n");
 		// frame rate
@@ -265,15 +282,8 @@ AVCodecEncoder::_Setup()
 //		fContext->rc_max_rate = 0;
 //		fContext->rc_min_rate = 0;
 		// TODO: Try to calculate a good bit rate...
-		int rawBitRate = (int)(fContext->width * fContext->height * 2
+		rawBitRate = (int)(fContext->width * fContext->height * 2
 			* fInputFormat.u.raw_video.field_rate) * 8;
-		int wantedBitRate = (int)(rawBitRate / fBitRateScale
-			* fEncodeParameters.quality);
-		TRACE("  rawBitRate: %d, wantedBitRate: %d (%.1f)\n", rawBitRate,
-			wantedBitRate, fEncodeParameters.quality);
-		// TODO: Support letting the user overwrite this via
-		// SetEncodeParameters(). See comments there...
-		fContext->bit_rate = wantedBitRate;
 
 		// Pixel aspect ratio
 		fContext->sample_aspect_ratio.num
@@ -320,12 +330,13 @@ AVCodecEncoder::_Setup()
 		TRACE("  B_MEDIA_RAW_AUDIO\n");
 		// frame rate
 		fContext->sample_rate = (int)fInputFormat.u.raw_audio.frame_rate;
-		// NOTE: From the output_example.c, it looks like we are not supposed
-		// to set this.
-		fContext->time_base.den = (int)fInputFormat.u.raw_audio.frame_rate;
-		fContext->time_base.num = 1;
 		// channels
 		fContext->channels = fInputFormat.u.raw_audio.channel_count;
+		// raw bitrate
+		rawBitRate = fContext->sample_rate * fContext->channels
+			* (fInputFormat.u.raw_audio.format
+				& media_raw_audio_format::B_AUDIO_SIZE_MASK) * 8;
+		// sample format
 		switch (fInputFormat.u.raw_audio.format) {
 			case media_raw_audio_format::B_AUDIO_FLOAT:
 				fContext->sample_fmt = SAMPLE_FMT_FLT;
@@ -385,6 +396,14 @@ AVCodecEncoder::_Setup()
 		TRACE("  UNSUPPORTED MEDIA TYPE!\n");
 		return B_NOT_SUPPORTED;
 	}
+
+	int wantedBitRate = (int)(rawBitRate / fBitRateScale
+		* fEncodeParameters.quality);
+	TRACE("  rawBitRate: %d, wantedBitRate: %d (%.1f)\n", rawBitRate,
+		wantedBitRate, fEncodeParameters.quality);
+	// TODO: Support letting the user overwrite this via
+	// SetEncodeParameters(). See comments there...
+	fContext->bit_rate = wantedBitRate;
 
 	// Add some known fixes from the FFmpeg API example:
 	if (fContext->codec_id == CODEC_ID_MPEG2VIDEO) {
@@ -489,6 +508,8 @@ AVCodecEncoder::_EncodeAudio(const void* _buffer, int64 frameCount,
 			if (ret != B_OK)
 				break;
 		}
+
+		delete[] tempBuffer;
 	} else {
 		// Raw audio. The number of bytes returned from avcodec_encode_audio()
 		// is always the same as the number of input bytes.
@@ -514,16 +535,18 @@ AVCodecEncoder::_EncodeAudio(const uint8* buffer, size_t bufferSize,
 		TRACE("  avcodec_encode_video() failed: %d\n", usedBytes);
 		return B_ERROR;
 	}
+	if (usedBytes == 0)
+		return B_OK;
 
-	// Maybe we need to use this PTS to calculate start_time:
-	if (fContext->coded_frame->pts != kNoPTSValue) {
-		TRACE("  codec frame PTS: %lld (codec time_base: %d/%d)\n",
-			fContext->coded_frame->pts, fContext->time_base.num,
-			fContext->time_base.den);
-	} else {
-		TRACE("  codec frame PTS: N/A (codec time_base: %d/%d)\n",
-			fContext->time_base.num, fContext->time_base.den);
-	}
+//	// Maybe we need to use this PTS to calculate start_time:
+//	if (fContext->coded_frame->pts != kNoPTSValue) {
+//		TRACE("  codec frame PTS: %lld (codec time_base: %d/%d)\n",
+//			fContext->coded_frame->pts, fContext->time_base.num,
+//			fContext->time_base.den);
+//	} else {
+//		TRACE("  codec frame PTS: N/A (codec time_base: %d/%d)\n",
+//			fContext->time_base.num, fContext->time_base.den);
+//	}
 
 	// Setup media_encode_info, most important is the time stamp.
 	info->start_time = (bigtime_t)(fFramesWritten * 1000000LL

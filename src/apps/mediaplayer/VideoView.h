@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2009 Stephan Aßmus <superstippi@gmx.de>
+ * Copyright 2006-2010 Stephan Aßmus <superstippi@gmx.de>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 #ifndef VIDEO_VIEW_H
@@ -10,6 +10,14 @@
 
 #include "ListenerAdapter.h"
 #include "VideoTarget.h"
+
+
+enum {
+	M_HIDE_FULL_SCREEN_CONTROLS = 'hfsc'
+};
+
+
+class SubtitleBitmap;
 
 
 class VideoView : public BView, public VideoTarget {
@@ -41,11 +49,20 @@ public:
 
 			void				SetPlaying(bool playing);
 			void				SetFullscreen(bool fullScreen);
+			void				SetVideoFrame(const BRect& frame);
+
+			void				SetSubTitle(const char* text);
+			void				SetSubTitleMaxBottom(float bottom);
 
 private:
 			void				_DrawBitmap(const BBitmap* bitmap);
+			void				_DrawSubtitle();
 			void				_AdoptGlobalSettings();
+			void				_SetOverlayMode(bool overlayMode);
+			void				_LayoutSubtitle();
 
+private:
+			BRect				fVideoFrame;
 			bool				fOverlayMode;
 			overlay_restrictions fOverlayRestrictions;
 			rgb_color			fOverlayKeyColor;
@@ -53,9 +70,17 @@ private:
 			bool				fIsFullscreen;
 			bigtime_t			fLastMouseMove;
 
+			SubtitleBitmap*		fSubtitleBitmap;
+			BRect				fSubtitleFrame;
+			float				fSubtitleMaxButtom;
+			bool				fHasSubtitle;
+			bool				fSubtitleChanged;
+
+			// Settings values:
 			ListenerAdapter		fGlobalSettingsListener;
 			bool				fUseOverlays;
 			bool				fUseBilinearScaling;
+			uint32				fSubtitlePlacement;
 };
 
 #endif // VIDEO_VIEW_H

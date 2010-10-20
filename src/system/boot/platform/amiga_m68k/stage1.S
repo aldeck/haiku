@@ -60,49 +60,153 @@
 #define	S_IFDIR						00000040000o
 
 // AmigaDOS calls
+// exec.library
+#define _Supervisor				-0x1e
+#define _FindResident			-0x60
+#define _Alert					-0x6c
+#define _SuperState				-0x96
+#define _UserState				-0x9c
+#define _OldOpenLibrary         -0x198
+#define _CloseLibrary           -0x19e
 // dos.library
-#define _OldOpenLibrary		-0x198
-#define _CloseLibrary		-0x19e
+#define Old_mode                        1005
+#define New_mode                        1006
+#define _Open					-0x1e
+#define _Close					-0x24
+#define _Read                   -0x2a
+#define _Write                  -0x30
+#define _Input					-0x36
+#define _Output					-0x3c
+#define _IoErr					-0x84
+#define _Delay					-0xc6
+// intuition.library
+#define _DisplayAlert			-90
 
 
 _floppy_entry:
 	.ascii	"DOS"
+//	.ascii	"BFS"
 	.byte	0
 _floppy_checksum:
 	.long	0
 _floppy_osversion: // ??
+//_super_stack: // also used as a variable in the code
 	//.long	0x370
 	.long	0x09D5A859 // dos private ???
 
 _floppy_boot:
+
+	// we get an open IO request in A1
+
 	// seems like a6 is already set to ExecBase when called from the ROM ?
 	// copy it
-	lea	_execbase(%pc),%a2
-	move	%a6,(%a2)
+	move.l	4.w,%a6
+	lea		_execbase(%pc),%a2
+	move.l	%a6,(%a2)
 
-	lea	dosname_boot(%pc),%a1
-	jsr	_OldOpenLibrary(%a6)
-	lea	_dosbase(%pc),%a2
-	move	%d0,(%a2)
+//	jsr		_SuperState(%a6)
+//	move.l	%d0,_super_stack
 
-	lea	dosname_boot(%pc),%a1
-	jsr	-0x60(%a6)	// FindResident()
+
+
+//	bra _continue
+
+/*
+	move.l	%d0,%a6
+
+	lea		window_name(%pc),%a0
+	move.l	%a0,%d1
+	move.l	#Old_mode,%d2
+	jsr		_Open(%a6)
+	tst.l	%d0
+	beq.s	_floppy_err
+_loop_1:
+	bra		_loop_1
+
+
+_loop_2:
+	bra		_loop_2
+*/	
+
+	//lea _display_alert,%a5
+	//jsr _Supervisor(%a6)
+
+	jsr _display_alert
+
+
+	bra	_floppy_err
+
+
+//	lea	dosname_boot(%pc),%a1
+////	jsr	-0x60(%a6)	// FindResident()
+//	move.l	4.w,%a6
+//	jsr	-96(%a6)
+
 
 	tst.l	%d0
 	beq.s	_floppy_err
 
-	move.l	%d0,%a0
+
+
+_continue:
+	move.l	4.w,%a6
+
+
+	lea	dosname_boot(%pc),%a1
+	jsr	_FindResident(%a6)
+	lea	_dosbase(%pc),%a2
+	tst.l	%d0
+	beq.s	_floppy_err
+	move.l	%d0,(%a2)
+
+//	move.l	_super_stack,%d0
+//	jsr		_UserState(%a6)
+
+	move.l	_dosbase,%a0
 	move.l	0x16(%a0),%a0
+
 	moveq	#0,%d0
 
 	rts
 
 _floppy_err:
+//	move.l	4.w,%a6
+//	move.l	_super_stack,%d0
+//	jsr		_UserState(%a6)
+
 	moveq	#-1,%d0
+	rts
+
+_display_alert:
+	move.l	4.w,%a6
+	lea	intname_boot(%pc),%a1
+	jsr	_OldOpenLibrary(%a6)
+	tst.l	%d0
+	beq.s	_floppy_err
+	lea	_intbase(%pc),%a2
+	move.l	%d0,(%a2)
+	move.l	%d0,%a6
+
+	lea		alert_data(%pc),%a0
+	moveq	#0,%d0
+	move.l	#30,%d1
+	jsr		_DisplayAlert(%a6)
 	rts
 
 dosname_boot:
 	.ascii	"dos.library"
+	.byte	0
+
+intname_boot:
+	.ascii	"intuition.library"
+	.byte	0
+
+alert_data:
+	.word	10
+	.byte	12
+	.ascii	"Welcome to Haiku\0"
+alert_extra:
+	.ascii	"\0\0"
 	.byte	0
 
 window_name:
@@ -112,55 +216,10 @@ _execbase:
 	.long	0
 _dosbase:
 	.long	0
+_intbase:
+	.long	0
 
 end_buff:
 // equ *-_floppy_entry
 	.dcb.b	(1024)-(end_buff-_floppy_entry),0
 
-#if 0
-//XXX: atari stuff here
-
-// NOTE: normal programs (.prg) run as user mode, 
-// while boot sector is chained in supervisor mode.
-// this means using Super(SUP_INQUIRE) we can know 
-// from the same entry point if we were run from boot code or prg.
-
-
-	//Pterm0
-	//move.w	#1,%d0
-	//trap	#1
-	//rts
-	
-	lea.l	str,%a0
-.loopt:
-	move.b	(%a0)+,%d0
-	beq	.strout
-	bsr	putc
-	bra	.loopt
-.strout:
-	//Pterm0
-	move.w	#1,%d0
-	trap	#1
-
-	rts
-	
-.loop:
-	move	#'.',%d0
-	bsr		putc
-	bra		.loop
-	rts
-
-/* prints the char in d0.b to the console */
-putc:
-	movem.l	%a0,-(%sp)
-	move.w	%d0,-(%sp)
-	move.w	#DEV_CON,-(%sp)	// DEV_CON
-	move.w	#3,-(%sp)	// Bconout
-	trap	#13
-	add.l	#6,%sp
-	movem.l	(%sp)+,%a0
-	rts
-str:
-	.ascii "Haiku!"
-	.byte 0
-#endif

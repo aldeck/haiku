@@ -45,11 +45,25 @@ struct irq_descriptor {
 typedef struct acpi_prt {
 	uint32			length;
 	uint32			pin;
-	int				address;		// here for 64-bit alignment
+	uint64			address;		// here for 64-bit alignment
 	uint32			sourceIndex;
 	char			source[4];		// pad to 64 bits so sizeof() works in
 									// all cases
 } acpi_pci_routing_table;
+
+//TODO: Hack until we expose ACPI structs better, currently hardcoded to
+// ACPI_RESOURCE_IRQ
+struct acpi_resource {
+    uint32          type;
+    uint32			length;
+    
+    uint8			descriptorLength;
+    uint8			triggering;
+    uint8			polarity;
+    uint8			sharable;
+    uint8			interruptCount;
+    uint8			interrupts[];
+};
 
 
 void print_irq_descriptor(irq_descriptor* descriptor);

@@ -49,6 +49,37 @@ copy_string(const char *string)
 }
 
 
+static char *
+to_utf8(const char* string)
+{
+	char buffer[256];
+	size_t out = 0;
+
+	// TODO: assume ISO-8859-1 character set for now
+	while (uint32 c = (uint8)string[0]) {
+		if (out == sizeof(buffer) - 1)
+			break;
+
+		if (c < 0x80)
+			buffer[out++] = c;
+		else if (c < 0x800) {
+			buffer[out++] = 0xc0 | (c >> 6);
+			buffer[out++] = 0x80 | (c & 0x3f);
+		}
+
+		string++;
+	}
+	buffer[out++] = '\0';
+
+	char *copy = (char *)malloc(out);
+	if (copy == NULL)
+		return NULL;
+
+	memcpy(copy, buffer, out);
+	return copy;
+}
+
+
 static bool
 is_garbage(char c)
 {
@@ -285,6 +316,13 @@ is_string_id(uint8 id)
 }
 
 
+/*!	Parses a \a pack data into the provided text buffer; the corresponding
+	track number will be left in \a track, and the type of the data in \a id.
+	The pack data is explained in SCSI MMC-3.
+
+	\a id, \a track, and \a state must stay constant between calls to this
+	function. \a state must be initialized to zero for the first call.
+*/
 static bool
 parse_pack_data(cdtext_pack_data *&pack, uint32 &packLeft,
 	cdtext_pack_data *&lastPack, uint8 &id, uint8 &track, uint8 &state,
@@ -299,6 +337,7 @@ parse_pack_data(cdtext_pack_data *&pack, uint32 &packLeft,
 	if (state != 0) {
 		// we had a terminated string and a missing track
 		track++;
+
 		memcpy(buffer, lastPack->text + state, 12 - state);
 		if (pack->track - track == 1)
 			state = 0;
@@ -309,6 +348,7 @@ parse_pack_data(cdtext_pack_data *&pack, uint32 &packLeft,
 
 	id = pack->id;
 	track = pack->track;
+
 	buffer[0] = '\0';
 	length = 0;
 
@@ -319,12 +359,14 @@ parse_pack_data(cdtext_pack_data *&pack, uint32 &packLeft,
 	}
 
 	while (id == pack->id && track == pack->track) {
-#if 1
+#if 0
 		dprintf("%u.%u.%u, %u.%u.%u, ", pack->id, pack->track, pack->number,
 			pack->double_byte, pack->block_number, pack->character_position);
 		for (int32 i = 0; i < 12; i++) {
 			if (isprint(pack->text[i]))
 				dprintf("%c", pack->text[i]);
+			else
+				dprintf("-");
 		}
 		dprintf("\n");
 #endif
@@ -365,7 +407,6 @@ parse_pack_data(cdtext_pack_data *&pack, uint32 &packLeft,
 		}
 	}
 
-	// TODO: convert text to UTF-8
 	return true;
 }
 
@@ -520,11 +561,14 @@ read_cdtext(int fd, struct cdtext &cdtext)
 	cdtext_pack_data *pack = (cdtext_pack_data *)(header + 1);
 	cdtext_pack_data *lastPack = NULL;
 	uint8 state = 0;
+	uint8 track = 0;
+	uint8 id = 0;
 	char text[256];
+
+	// TODO: determine encoding!
 
 	while (true) {
 		size_t length = sizeof(text);
-		uint8 id = 0, track = 0;
 
 		if (!parse_pack_data(pack, packLength, lastPack, id, track,
 				state, text, length))
@@ -534,10 +578,10 @@ read_cdtext(int fd, struct cdtext &cdtext)
 			case kTrackID:
 				if (track == 0) {
 					if (cdtext.album == NULL)
-						cdtext.album = copy_string(text);
+						cdtext.album = to_utf8(text);
 				} else if (track <= kMaxTracks) {
 					if (cdtext.titles[track - 1] == NULL)
-						cdtext.titles[track - 1] = copy_string(text);
+						cdtext.titles[track - 1] = to_utf8(text);
 					if (track > cdtext.track_count)
 						cdtext.track_count = track;
 				}
@@ -546,10 +590,10 @@ read_cdtext(int fd, struct cdtext &cdtext)
 			case kArtistID:
 				if (track == 0) {
 					if (cdtext.artist == NULL)
-						cdtext.artist = copy_string(text);
+						cdtext.artist = to_utf8(text);
 				} else if (track <= kMaxTracks) {
 					if (cdtext.artists[track - 1] == NULL)
-						cdtext.artists[track - 1] = copy_string(text);
+						cdtext.artists[track - 1] = to_utf8(text);
 				}
 				break;
 
@@ -562,7 +606,7 @@ read_cdtext(int fd, struct cdtext &cdtext)
 
 	free(buffer);
 
-	if (cdtext.artist == NULL || cdtext.album == NULL)
+	if (cdtext.artist == NULL && cdtext.album == NULL)
 		return B_ERROR;
 
 	for (int i = 0; i < cdtext.track_count; i++) {

@@ -10,6 +10,7 @@
 
 #define ASSIGN_RESOURCES
 #include "Common.h"
+#undef ASSIGN_RESOURCES
 
 #include <stdio.h>
 #include <string.h>
@@ -21,6 +22,34 @@
 #include <Path.h>
 
 
+const char*	kAppSignature		= "application/x-vnd.Haiku-DiskUsage";
+const char*	kHelpFileName		= "userguide/en/applications/diskusage.html";
+const char*	kPieRectAttrName	= "mainrect";
+
+const char*	kHelpBtnLabel		= "?";
+const char*	kEmptyStr			= "";
+const char*	kNameVolPtr			= "vol";
+const char*	kNameFilePtr		= "file";
+
+const float	kSmallHMargin		= 5.0;
+const float	kSmallVMargin		= 2.0;
+const float	kButtonMargin		= 20.0;
+const float	kMinButtonWidth		= 60.0;
+
+const float	kProgBarWidth		= 150.0;
+const float	kProgBarHeight		= 16.0;
+const float	kReportInterval		= 2.5;
+
+const float	kDefaultPieSize		= 400.0;
+const float	kPieCenterSize		= 80.0;
+const float	kPieRingSize		= 20.0;
+const float	kPieInnerMargin		= 10.0;
+const float	kPieOuterMargin		= 10.0;
+const float	kMinSegmentSpan		= 2.0;
+const int	kLightenFactor		= 0x12;
+const float	kDragThreshold		= 5.0;
+
+
 BResources*
 read_resources(const char* appSignature)
 {
@@ -30,7 +59,7 @@ read_resources(const char* appSignature)
 			strerror(ret));
 		exit(1);
 	}
-	
+
 	BFile file(&kAppInfo.ref, O_RDONLY);
 	ret = file.InitCheck();
 	if (ret != B_OK) {
@@ -49,6 +78,7 @@ read_resources(const char* appSignature)
 	kVolMenuLabel = LoadString("STR_VM_LABEL");
 	kOneFile = LoadString("STR_1_FILE");
 	kManyFiles = LoadString("STR_N_FILES");
+	kStrScan = LoadString("STR_SCAN");
 	kStrRescan = LoadString("STR_RESCAN");
 	kStrScanningX = LoadString("STR_SCN_X");
 	kStrUnavail = LoadString("STR_UNAVAIL");
@@ -65,6 +95,7 @@ read_resources(const char* appSignature)
 	kInfoTimeFmt = LoadString("STR_TIMEFMT");
 	kInfoKind = LoadString("STR_KIND");
 	kInfoPath = LoadString("STR_PATH");
+	kOutdatedStr = LoadString("STR_OUTDATED");
 
 	kWindowColor = ui_color(B_PANEL_BACKGROUND_COLOR);
 	kOutlineColor = LoadColor("RGB_PIE_OL");
@@ -102,10 +133,10 @@ size_to_string(off_t byteCount, char* name)
 		float		divisor;
 		const char*	format;
 	} scale[] = {
-		{ 0x100000,				1024.0,					"%.2f KB" },
-		{ 0x40000000,			1048576.0,				"%.2f MB" },
-		{ 0x10000000000ull,		1073741824.0,			"%.2f GB" },
-		{ 0x4000000000000ull,	1.09951162778e+12,		"%.2f TB" }
+		{ 0x100000,				1024.0,					"%.2f KiB" },
+		{ 0x40000000,			1048576.0,				"%.2f MiB" },
+		{ 0x10000000000ull,		1073741824.0,			"%.2f GiB" },
+		{ 0x4000000000000ull,	1.09951162778e+12,		"%.2f TiB" }
 	};
 
 	if (byteCount < 1024) {

@@ -2,6 +2,17 @@ SubDir HAIKU_TOP src system boot platform openfirmware ;
 
 SubDirC++Flags -D_BOOT_MODE -fno-rtti ;
 
+UsePrivateHeaders [ FDirName graphics common ] ;
+
+SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src add-ons accelerants common ] ;
+
+local genericPlatformSources =
+	text_menu.cpp
+	video_blit.cpp
+	video_rle.cpp
+	video_splash.cpp
+;
+
 KernelMergeObject boot_platform_openfirmware.o :
 	console.cpp
 	debug.cpp
@@ -19,13 +30,17 @@ KernelMergeObject boot_platform_openfirmware.o :
 	openfirmware.cpp
 	openfirmware_devices.cpp
 
-	# generic
-	text_menu.cpp
+	$(genericPlatformSources)
+
+	# VESA/DDC EDID
+	decode_edid.c
+	dump_edid.c
+
 	:
 	: boot_platform_openfirmware_$(TARGET_ARCH).a
 ;
 
-SEARCH on [ FGristFiles text_menu.cpp ]
+SEARCH on [ FGristFiles $(genericPlatformSources) ]
 	= [ FDirName $(HAIKU_TOP) src system boot platform generic ] ;
 SEARCH on [ FGristFiles openfirmware.cpp openfirmware_devices.cpp ]
 	= [ FDirName $(HAIKU_TOP) src system kernel platform openfirmware ] ;

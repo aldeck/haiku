@@ -267,7 +267,7 @@ BasicTerminalBuffer::IsFullWidthChar(int32 row, int32 column) const
 
 int
 BasicTerminalBuffer::GetChar(int32 row, int32 column, UTF8Char& character,
-	uint16& attributes) const
+	uint32& attributes) const
 {
 	TerminalLine* lineBuffer = ALLOC_LINE_ON_STACK(fWidth);
 	TerminalLine* line = _HistoryLineAt(row, lineBuffer);
@@ -289,7 +289,7 @@ BasicTerminalBuffer::GetChar(int32 row, int32 column, UTF8Char& character,
 
 int32
 BasicTerminalBuffer::GetString(int32 row, int32 firstColumn, int32 lastColumn,
-	char* buffer, uint16& attributes) const
+	char* buffer, uint32& attributes) const
 {
 	TerminalLine* lineBuffer = ALLOC_LINE_ON_STACK(fWidth);
 	TerminalLine* line = _HistoryLineAt(row, lineBuffer);
@@ -663,11 +663,18 @@ BasicTerminalBuffer::InsertTab()
 	fSoftWrappedCursor = false;
 
 	for (x = fCursor.x + 1; x < fWidth && !fTabStops[x]; x++)
-		; // no body
+		;
 	x = restrict_value(x, 0, fWidth - 1);
 
 	if (x != fCursor.x) {
+		TerminalLine* line = _LineAt(fCursor.y);
+		for (int32 i = fCursor.x; i <= x; i++) {
+			line->cells[i].character = ' ';		
+			line->cells[i].attributes = line->cells[fCursor.x - 1].attributes;
+		}
 		fCursor.x = x;
+		if (line->length < fCursor.x)
+			line->length = fCursor.x;
 		_CursorChanged();
 	}
 }
@@ -705,7 +712,7 @@ BasicTerminalBuffer::InsertSpace(int32 num)
 		TerminalLine* line = _LineAt(fCursor.y);
 		for (int32 i = fCursor.x; i < fCursor.x + num; i++) {
 			line->cells[i].character = kSpaceChar;
-			line->cells[i].attributes = 0;
+			line->cells[i].attributes = line->cells[fCursor.x - 1].attributes;
 		}
 
 		_Invalidate(fCursor.y, fCursor.y);

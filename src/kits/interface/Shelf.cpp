@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2009, Haiku, Inc.
+ * Copyright 2001-2010, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -291,19 +291,24 @@ replicant_data::~replicant_data()
 status_t
 replicant_data::Archive(BMessage* msg)
 {
-	status_t result = B_ERROR;
+	status_t result = B_OK;
 	BMessage archive;
-	if (view && (view->Archive(&archive) == B_OK)) {
-		msg->AddInt32("uniqueid", id);
-		BPoint pos (0,0);
-		if (view) {
-			msg->AddMessage("message", &archive);
-			pos = view->Frame().LeftTop();
-		} else if (zombie_view)
-			pos = zombie_view->Frame().LeftTop();
-		msg->AddPoint("position", pos);
-		result = B_OK;
-	}
+	if (view) 
+		result = view->Archive(&archive);
+	else if (zombie_view)
+		result = zombie_view->Archive(&archive);
+		
+	if (result != B_OK)
+		return result;
+
+	msg->AddInt32("uniqueid", id);
+	BPoint pos (0,0);
+	msg->AddMessage("message", &archive);
+	if (view)
+		pos = view->Frame().LeftTop();
+	else if (zombie_view) 
+		pos = zombie_view->Frame().LeftTop();
+	msg->AddPoint("position", pos);
 
 	return result;
 }
@@ -439,11 +444,8 @@ ShelfContainerViewFilter::_ObjectDropFilter(BMessage *msg, BHandler **_handler)
 		mouseView = dynamic_cast<BView*>(*_handler);
 
 	if (msg->WasDropped()) {
-		if (!fShelf->fAllowDragging) {
-			printf("Dragging replicants isn't allowed to this shelf.");
-			beep();
+		if (!fShelf->fAllowDragging)
 			return B_SKIP_MESSAGE;
-		}
 	}
 
 	BPoint point;
@@ -929,22 +931,13 @@ BShelf::SetSaveLocation(const entry_ref *ref)
 BDataIO *
 BShelf::SaveLocation(entry_ref *ref) const
 {
-	entry_ref entry;
-
-	if (fStream && ref) {
-		*ref = entry;
-		return fStream;
-	}
-	if (fEntry) {
-		fEntry->GetRef(&entry);
-
+	if (fStream) {
 		if (ref)
-			*ref = entry;
+			*ref = entry_ref();
+		return fStream;
+	} else if (fEntry && ref)
+		fEntry->GetRef(ref);
 
-		return NULL;
-	}
-
-	*ref = entry;
 	return NULL;
 }
 
@@ -1295,21 +1288,22 @@ BShelf::_AddReplicant(BMessage *data, BPoint *location, uint32 uniqueID)
 	// Instantiate the object, if this fails we have a zombie
 	image_id image = -1;
 	BArchivable *archivable = _InstantiateObject(data, &image);
-
-	if (archivable == NULL)
-		return send_reply(data, B_ERROR, uniqueID);
-
-	BView *view = dynamic_cast<BView*>(archivable);
-	if (view == NULL) {
-		printf("Replicant was rejected: it's not a view!");
-		return send_reply(data, B_ERROR, uniqueID);
+	
+	BView *view = NULL;
+	
+	if (archivable) {
+		view = dynamic_cast<BView*>(archivable);
+		
+		if (!view) {
+			return send_reply(data, B_ERROR, uniqueID);
+		}
 	}
-
+	
 	BDragger* dragger = NULL;
 	BView* replicant = NULL;
 	BDragger::relation relation = BDragger::TARGET_UNKNOWN;
 	_BZombieReplicantView_* zombie = NULL;
-	if (view != NULL) {
+	if (view) {
 		const BPoint point = location ? *location : view->Frame().LeftTop();
 		replicant = _GetReplicant(data, view, point, dragger, relation);
 		if (replicant == NULL)
@@ -1340,8 +1334,10 @@ BShelf::_AddReplicant(BMessage *data, BPoint *location, uint32 uniqueID)
 		}
 	}
 
-	data->RemoveName("_drop_point_");
-	data->RemoveName("_drop_offset_");
+	if (!zombie) {
+		data->RemoveName("_drop_point_");
+		data->RemoveName("_drop_offset_");
+	}
 
 	replicant_data *item = new replicant_data(data, replicant, dragger,
 		relation, uniqueID);
@@ -1444,7 +1440,7 @@ BShelf::_CreateZombie(BMessage *data, BDragger *&dragger)
 	if (data->WasDropped()) {
 		BPoint offset;
 		BPoint dropPoint = data->DropPoint(&offset);
-
+		
 		frame.OffsetTo(fContainerView->ConvertFromScreen(dropPoint) - offset);
 
 		zombie = new _BZombieReplicantView_(frame, B_ERROR);

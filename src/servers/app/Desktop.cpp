@@ -64,9 +64,6 @@
 #	define STRACE(a) ;
 #endif
 
-#if !USE_MULTI_LOCKER
-#	define AutoWriteLocker BAutolock
-#endif
 
 class KeyboardFilter : public EventFilter {
 	public:
@@ -83,6 +80,7 @@ class KeyboardFilter : public EventFilter {
 		EventTarget*	fLastFocus;
 		bigtime_t		fTimestamp;
 };
+
 
 class MouseFilter : public EventFilter {
 	public:
@@ -251,21 +249,21 @@ MouseFilter::Filter(BMessage* message, EventTarget** _target, int32* _viewToken,
 		switch (message->what) {
 			case B_MOUSE_DOWN:
 				window->MouseDown(message, where, &viewToken);
-				fDesktop->InvokeMouseDown(window, message, where);
+				fDesktop->NotifyMouseDown(window, message, where);
 				break;
 
 			case B_MOUSE_UP:
 				window->MouseUp(message, where, &viewToken);
 				if (buttons == 0)
 					fDesktop->SetMouseEventWindow(NULL);
-				fDesktop->InvokeMouseUp(window, message, where);
+				fDesktop->NotifyMouseUp(window, message, where);
 				break;
 
 			case B_MOUSE_MOVED:
 				window->MouseMoved(message, where, &viewToken,
 					latestMouseMoved == NULL || latestMouseMoved == message,
 					false);
-				fDesktop->InvokeMouseMoved(window, message, where);
+				fDesktop->NotifyMouseMoved(window, message, where);
 				break;
 		}
 
@@ -287,7 +285,7 @@ MouseFilter::Filter(BMessage* message, EventTarget** _target, int32* _viewToken,
 
 	fDesktop->SetLastMouseState(where, buttons, window);
 
-	fDesktop->InvokeMouseEvent(message);
+	fDesktop->NotifyMouseEvent(message);
 
 	fDesktop->UnlockAllWindows();
 
@@ -492,7 +490,7 @@ Desktop::BroadcastToAllWindows(int32 code)
 void
 Desktop::KeyEvent(uint32 what, int32 key, int32 modifiers)
 {
-	InvokeKeyEvent(what, key, modifiers);
+	NotifyKeyPressed(what, key, modifiers);
 }
 
 
@@ -921,7 +919,7 @@ Desktop::ActivateWindow(Window* window)
 
 	AutoWriteLocker _(fWindowLock);
 
-	InvokeActivateWindow(window);
+	NotifyWindowActitvated(window);
 
 	bool windowOnOtherWorkspace = !window->InWorkspace(fCurrentWorkspace);
 	if (windowOnOtherWorkspace
@@ -1049,7 +1047,6 @@ Desktop::SendWindowBehind(Window* window, Window* behindOf)
 	// might be dirty after the window is send to back
 	BRegion dirty(window->VisibleRegion());
 
-	// detach window and re-attach at desired position
 	Window* backmost = window->Backmost(behindOf);
 
 	CurrentWindows().RemoveWindow(window);
@@ -1076,7 +1073,7 @@ Desktop::SendWindowBehind(Window* window, Window* behindOf)
 
 	_WindowChanged(window);
 
-	InvokeSendWindowBehind(window, behindOf);
+	NotifyWindowSentBehind(window, behindOf);
 
 	UnlockAllWindows();
 
@@ -1121,8 +1118,6 @@ Desktop::ShowWindow(Window* window)
 	// it knows the mouse is over it.
 
 	_SendFakeMouseMoved(window);
-
-	InvokeShowWindow(window);
 }
 
 
@@ -1176,8 +1171,6 @@ Desktop::HideWindow(Window* window)
 		}
 	}
 
-	InvokeHideWindow(window);
-
 	UnlockAllWindows();
 
 	if (window == fWindowUnderMouse)
@@ -1194,11 +1187,11 @@ Desktop::MinimizeWindow(Window* window, bool minimize)
 	if (minimize && !window->IsHidden()) {
 		HideWindow(window);
 		window->SetMinimized(minimize);
-		InvokeMinimizeWindow(window, minimize);
+		NotifyWindowMinimized(window, minimize);
 	} else if (!minimize && window->IsHidden()) {
 		ActivateWindow(window);
 			// this will unminimize the window for us
-		InvokeMinimizeWindow(window, minimize);
+		NotifyWindowMinimized(window, minimize);
 	}
 
 	UnlockAllWindows();
@@ -1229,7 +1222,7 @@ Desktop::MoveWindowBy(Window* window, float x, float y, int32 workspace)
 		} else
 			window->MoveBy((int32)x, (int32)y);
 
-		InvokeMoveWindow(window);
+		NotifyWindowMoved(window);
 		UnlockAllWindows();
 		return;
 	}
@@ -1284,7 +1277,7 @@ Desktop::MoveWindowBy(Window* window, float x, float y, int32 workspace)
 			B_DIRECT_START | B_BUFFER_MOVED | B_CLIPPING_MODIFIED);
 	}
 
-	InvokeMoveWindow(window);
+	NotifyWindowMoved(window);
 
 	UnlockAllWindows();
 }
@@ -1301,7 +1294,7 @@ Desktop::ResizeWindowBy(Window* window, float x, float y)
 
 	if (!window->IsVisible()) {
 		window->ResizeBy((int32)x, (int32)y, NULL);
-		InvokeResizeWindow(window);
+		NotifyWindowResized(window);
 		UnlockAllWindows();
 		return;
 	}
@@ -1344,7 +1337,7 @@ Desktop::ResizeWindowBy(Window* window, float x, float y)
 			B_DIRECT_START | B_BUFFER_RESIZED | B_CLIPPING_MODIFIED);
 	}
 
-	InvokeResizeWindow(window);
+	NotifyWindowResized(window);
 
 	UnlockAllWindows();
 }
@@ -1358,7 +1351,9 @@ Desktop::SetWindowTabLocation(Window* window, float location)
 	BRegion dirty;
 	bool changed = window->SetTabLocation(location, dirty);
 	if (changed)
-		_RebuildAndRedrawAfterWindowChange(window, dirty);
+		RebuildAndRedrawAfterWindowChange(window, dirty);
+
+	NotifyWindowTabLocationChanged(window, location);
 
 	return changed;
 }
@@ -1371,9 +1366,9 @@ Desktop::SetWindowDecoratorSettings(Window* window, const BMessage& settings)
 
 	BRegion dirty;
 	bool changed = window->SetDecoratorSettings(settings, dirty);
-	bool listenerChanged = InvokeSetDecoratorSettings(window, settings);
+	bool listenerChanged = SetDecoratorSettings(window, settings);
 	if (changed || listenerChanged)
-		_RebuildAndRedrawAfterWindowChange(window, dirty);
+		RebuildAndRedrawAfterWindowChange(window, dirty);
 
 	return changed;
 }
@@ -1419,7 +1414,7 @@ Desktop::AddWindow(Window *window)
 
 	_ChangeWindowWorkspaces(window, 0, window->Workspaces());
 	
-	InvokeAddWindow(window);
+	NotifyWindowAdded(window);
 
 	UnlockAllWindows();
 }
@@ -1439,7 +1434,7 @@ Desktop::RemoveWindow(Window *window)
 
 	_ChangeWindowWorkspaces(window, window->Workspaces(), 0);
 	
-	InvokeRemoveWindow(window);
+	NotifyWindowRemoved(window);
 
 	UnlockAllWindows();
 
@@ -1478,7 +1473,7 @@ Desktop::FontsChanged(Window* window)
 	BRegion dirty;
 	window->FontsChanged(&dirty);
 
-	_RebuildAndRedrawAfterWindowChange(window, dirty);
+	RebuildAndRedrawAfterWindowChange(window, dirty);
 }
 
 
@@ -1495,7 +1490,9 @@ Desktop::SetWindowLook(Window* window, window_look newLook)
 		// TODO: test what happens when the window
 		// finds out it needs to resize itself...
 
-	_RebuildAndRedrawAfterWindowChange(window, dirty);
+	RebuildAndRedrawAfterWindowChange(window, dirty);
+
+	NotifyWindowLookChanged(window, newLook);
 }
 
 
@@ -1613,7 +1610,7 @@ Desktop::SetWindowFlags(Window *window, uint32 newFlags)
 		// TODO: test what happens when the window
 		// finds out it needs to resize itself...
 
-	_RebuildAndRedrawAfterWindowChange(window, dirty);
+	RebuildAndRedrawAfterWindowChange(window, dirty);
 }
 
 
@@ -1625,7 +1622,7 @@ Desktop::SetWindowTitle(Window *window, const char* title)
 	BRegion dirty;
 	window->SetTitle(title, dirty);
 
-	_RebuildAndRedrawAfterWindowChange(window, dirty);
+	RebuildAndRedrawAfterWindowChange(window, dirty);
 }
 
 
@@ -1923,6 +1920,13 @@ Desktop::ReloadDecor()
 {
 	AutoWriteLocker _(fWindowLock);
 
+	// TODO it is assumed all listeners are registered by one decor
+	// unregister old listeners
+	const DesktopListenerDLList& currentListeners = GetDesktopListenerList();
+	for (DesktopListener* listener = currentListeners.First();
+		listener != NULL; listener = currentListeners.GetNext(listener))
+		UnregisterListener(listener);
+
 	for (Window* window = fAllWindows.FirstWindow(); window != NULL;
 			window = window->NextWindow(kAllWindowList)) {
 			BRegion oldBorder;
@@ -1934,15 +1938,9 @@ Desktop::ReloadDecor()
 			window->GetBorderRegion(&border);
 
 			border.Include(&oldBorder);
-			_RebuildAndRedrawAfterWindowChange(window, border);
+			RebuildAndRedrawAfterWindowChange(window, border);
 	}
 
-	// TODO it is assumed all listeners are registered by one decor
-	// unregister old listeners
-	const DesktopListenerDLList& currentListeners = GetDesktopListenerList();
-	for (DesktopListener* listener = currentListeners.First();
-		listener != NULL; listener = currentListeners.GetNext(listener))
-		UnregisterListener(listener);
 	// register new listeners
 	const DesktopListenerList& newListeners
 		= gDecorManager.GetDesktopListeners();
@@ -2080,7 +2078,7 @@ Desktop::WriteWindowInfo(int32 serverToken, BPrivate::LinkSender& sender)
 	::Window* tmp = window->Window();
 	if (tmp) {
 		BMessage message;
-		InvokeGetDecoratorSettings(tmp, message);
+		GetDecoratorSettings(tmp, message);
 		if (tmp->GetDecoratorSettings(&message)) {
 			BRect tabFrame;
 			message.FindRect("tab frame", &tabFrame);
@@ -2485,6 +2483,20 @@ Desktop::AllWindows()
 }
 
 
+Window*
+Desktop::WindowForClientLooperPort(port_id port)
+{
+	ASSERT(fWindowLock.IsReadLocked());
+
+	for (Window* window = fAllWindows.FirstWindow(); window != NULL;
+			window = window->NextWindow(kAllWindowList)) {
+		if (window->ServerWindow()->ClientLooperPort() == port)
+			return window;
+	}
+	return NULL;
+}
+
+
 WindowList&
 Desktop::_Windows(int32 index)
 {
@@ -2821,7 +2833,7 @@ Desktop::_ChangeWindowWorkspaces(Window* window, uint32 oldWorkspaces,
 	// take care about modals and floating windows
 	_UpdateSubsetWorkspaces(window);
 
-	InvokeSetWindowWorkspaces(window, newWorkspaces);
+	NotifyWindowWorkspacesChanged(window, newWorkspaces);
 
 	UnlockAllWindows();
 }
@@ -3008,7 +3020,7 @@ Desktop::_SetBackground(BRegion& background)
 
 //!	The all window lock must be held when calling this function.
 void
-Desktop::_RebuildAndRedrawAfterWindowChange(Window* changedWindow,
+Desktop::RebuildAndRedrawAfterWindowChange(Window* changedWindow,
 	BRegion& dirty)
 {
 	if (!changedWindow->IsVisible() || dirty.CountRects() == 0)
@@ -3226,7 +3238,8 @@ Desktop::_SetWorkspace(int32 index, bool moveFocusWindow)
 				// send B_WORKSPACES_CHANGED message
 				movedWindow->WorkspacesChanged(oldWorkspaces,
 					movedWindow->Workspaces());
-				InvokeSetWindowWorkspaces(movedWindow, movedWindow->Workspaces());
+				NotifyWindowWorkspacesChanged(movedWindow,
+					movedWindow->Workspaces());
 			} else {
 				// make sure it's frontmost
 				_Windows(index).RemoveWindow(movedWindow);

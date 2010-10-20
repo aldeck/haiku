@@ -15,6 +15,7 @@
 #include <Locker.h>
 #include <LocaleRoster.h>
 #include <Message.h>
+#include <Resources.h>
 #include <TimeZone.h>
 
 
@@ -32,6 +33,8 @@ class MutableLocaleRoster : public BLocaleRoster {
 public:
 								MutableLocaleRoster();
 								~MutableLocaleRoster();
+
+			status_t			GetDefaultLocale(BLocale* locale) const;
 
 			status_t			SetDefaultCountry(const BCountry& country);
 			status_t			SetDefaultLocale(const BLocale& locale);
@@ -109,8 +112,10 @@ struct RosterData {
 			BMessage			fPreferredLanguages;
 
 			BLocale				fDefaultLocale;
-			BLanguage			fDefaultLanguage;
 			BTimeZone			fDefaultTimeZone;
+
+			bool				fAreResourcesLoaded;
+			BResources			fResources;
 
 								RosterData();
 								~RosterData();

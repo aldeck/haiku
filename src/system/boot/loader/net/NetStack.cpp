@@ -13,6 +13,7 @@
 #include <boot/net/Ethernet.h>
 #include <boot/net/IP.h>
 #include <boot/net/UDP.h>
+#include <boot/net/TCP.h>
 
 
 // sNetStack
@@ -24,13 +25,15 @@ NetStack::NetStack()
 		fEthernetService(NULL),
 		fARPService(NULL),
 		fIPService(NULL),
-		fUDPService(NULL)
+		fUDPService(NULL),
+		fTCPService(NULL)
 {
 }
 
 // destructor
 NetStack::~NetStack()
 {
+	delete fTCPService;
 	delete fUDPService;
 	delete fIPService;
 	delete fARPService;
@@ -72,6 +75,16 @@ NetStack::Init()
 	error = fUDPService->Init();
 	if (error != B_OK)
 		return error;
+
+#ifdef __POWERPC__
+	// TCP service
+	fTCPService = new(nothrow) TCPService(fIPService);
+	if (fTCPService == NULL)
+		return B_NO_MEMORY;
+	error = fTCPService->Init();
+	if (error != B_OK)
+		return error;
+#endif
 
 	return B_OK;
 }

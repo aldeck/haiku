@@ -577,7 +577,7 @@ ioapic_init(kernel_args* args)
 	if (sIOAPIC == NULL)
 		return;
 
-	if (!get_safemode_boolean(B_SAFEMODE_DISABLE_IOAPIC, true)) {
+	if (get_safemode_boolean(B_SAFEMODE_DISABLE_IOAPIC, true)) {
 		dprintf("ioapic explicitly disabled, not using ioapics for interrupt "
 			"routing\n");
 		return;
@@ -588,9 +588,6 @@ ioapic_init(kernel_args* args)
 		dprintf("ioapic seems inaccessible, not using it\n");
 		return;
 	}
-
-// disable io apic for now
-return;
 
 	// load acpi module
 	status_t status;
@@ -674,8 +671,8 @@ return;
 		config |= irqDescriptor.polarity;
 		config |= irqDescriptor.interrupt_mode;
 		
-		int32 num = -1;
-		for (int a = 0; a < 16; a++) {
+		int32 num = entry.source_index;		
+		for (int a = 0; a < 16 && num == 0; a++) {
 			if (irqDescriptor.irq >> i & 0x01) {
 				num = a;
 				break;

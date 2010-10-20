@@ -1,20 +1,28 @@
 /*
-** Copyright 2003, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
-** Distributed under the terms of the OpenBeOS License.
+** Copyright 2003, Axel Dörfler, axeld@pinc-software.de.
+** Copyright 2010, Oliver Tappe, zooey@hirschkaefer.de.
+** All rights reserved. Distributed under the terms of the OpenBeOS License.
 */
 
 
 #include <AutoDeleter.h>
+#include <Autolock.h>
 #include <CalendarView.h>
 #include <Catalog.h>
+#include <CountryPrivate.h>
+#include <LanguagePrivate.h>
 #include <Locale.h>
 #include <LocaleRoster.h>
+#include <MutableLocaleRoster.h>
+#include <TimeZone.h>
 
 #include <unicode/datefmt.h>
 #include <unicode/dcfmtsym.h>
 #include <unicode/decimfmt.h>
 #include <unicode/dtfmtsym.h>
+#include <unicode/numfmt.h>
 #include <unicode/smpdtfmt.h>
+#include <unicode/ustring.h>
 #include <ICUWrapper.h>
 
 #include <vector>
@@ -32,14 +40,25 @@ static DateFormat* CreateDateFormat(bool longFormat, const Locale& locale,
 						const BString& format);
 static DateFormat* CreateTimeFormat(bool longFormat, const Locale& locale,
 						const BString& format);
+static void FetchDateFormat(bool longFormat, const Locale& locale,
+				BString& format);
+static void FetchTimeFormat(bool longFormat, const Locale& locale,
+				BString& format);
 
 
-BLocale::BLocale(const char* languageAndCountryCode)
-	:
-	fCountry(languageAndCountryCode),
-	fLanguage(languageAndCountryCode),
-	fICULocale(new ICU_VERSION::Locale(languageAndCountryCode))
+BLocale::BLocale(const BLanguage* language, const BCountry* country)
 {
+	if (country != NULL)
+		fCountry = *country;
+	else
+		be_locale->GetCountry(&fCountry);
+
+	if (language != NULL)
+		fLanguage = *language;
+	else
+		be_locale->GetLanguage(&fLanguage);
+
+	_UpdateFormats();
 }
 
 
@@ -47,7 +66,6 @@ BLocale::BLocale(const BLocale& other)
 	:
 	fCountry(other.fCountry),
 	fLanguage(other.fLanguage),
-	fICULocale(new ICU_VERSION::Locale(*other.fICULocale)),
 	fLongDateFormat(other.fLongDateFormat),
 	fShortDateFormat(other.fShortDateFormat),
 	fLongTimeFormat(other.fLongTimeFormat),
@@ -61,8 +79,6 @@ BLocale::operator=(const BLocale& other)
 {
 	if (this == &other)
 		return *this;
-
-	*fICULocale = *other.fICULocale;
 
 	fLongDateFormat = other.fLongDateFormat;
 	fShortDateFormat = other.fShortDateFormat;
@@ -78,14 +94,65 @@ BLocale::operator=(const BLocale& other)
 
 BLocale::~BLocale()
 {
-	delete fICULocale;
+}
+
+
+status_t
+BLocale::GetCollator(BCollator* collator) const
+{
+	if (!collator)
+		return B_BAD_VALUE;
+
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	*collator = fCollator;
+
+	return B_OK;
+}
+
+
+status_t
+BLocale::GetLanguage(BLanguage* language) const
+{
+	if (!language)
+		return B_BAD_VALUE;
+
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	*language = fLanguage;
+
+	return B_OK;
+}
+
+
+status_t
+BLocale::GetCountry(BCountry* country) const
+{
+	if (!country)
+		return B_BAD_VALUE;
+
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	*country = fCountry;
+
+	return B_OK;
 }
 
 
 const char *
-BLocale::GetString(uint32 id)
+BLocale::GetString(uint32 id) const
 {
 	// Note: this code assumes a certain order of the string bases
+
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return "";
 
 	if (id >= B_OTHER_STRINGS_BASE) {
 		if (id == B_CODESET)
@@ -100,49 +167,68 @@ BLocale::GetString(uint32 id)
 void
 BLocale::SetCountry(const BCountry& newCountry)
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return;
+
 	fCountry = newCountry;
+
+	_UpdateFormats();
 }
 
 
 void
 BLocale::SetCollator(const BCollator& newCollator)
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return;
+
 	fCollator = newCollator;
 }
 
 
 void
-BLocale::SetLanguage(const char* languageCode)
+BLocale::SetLanguage(const BLanguage& newLanguage)
 {
-	fLanguage.SetTo(languageCode);
-}
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return;
 
-
-const char*
-BLocale::Code() const
-{
-	return fICULocale->getName();
+	fLanguage = newLanguage;
 }
 
 
 bool
 BLocale::GetName(BString& name) const
 {
+	Locale icuLocale = Locale::createCanonical(fCountry.Code());
+	if (icuLocale.isBogus())
+		return false;
+
 	UnicodeString uString;
-	fICULocale->getDisplayName(uString);
+	const Locale* countryLocale = BCountry::Private(&fCountry).ICULocale();
+	countryLocale->getDisplayName(icuLocale, uString);
 	BStringByteSink stringConverter(&name);
 	uString.toUTF8(stringConverter);
 	return true;
 }
 
+
 // #pragma mark - Date
 
 
 status_t
-BLocale::FormatDate(char* string, size_t maxSize, time_t time, bool longFormat)
+BLocale::FormatDate(char* string, size_t maxSize, time_t time,
+	bool longFormat) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	ObjectDeleter<DateFormat> dateFormatter = CreateDateFormat(longFormat,
-		*fICULocale, longFormat ? fLongDateFormat : fShortDateFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongDateFormat : fShortDateFormat);
 	if (dateFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
@@ -150,7 +236,6 @@ BLocale::FormatDate(char* string, size_t maxSize, time_t time, bool longFormat)
 	ICUString = dateFormatter->format((UDate)time * 1000, ICUString);
 
 	CheckedArrayByteSink stringConverter(string, maxSize);
-
 	ICUString.toUTF8(stringConverter);
 
 	if (stringConverter.Overflowed())
@@ -161,21 +246,32 @@ BLocale::FormatDate(char* string, size_t maxSize, time_t time, bool longFormat)
 
 
 status_t
-BLocale::FormatDate(BString *string, time_t time, bool longFormat)
+BLocale::FormatDate(BString *string, time_t time, bool longFormat,
+	const BTimeZone* timeZone) const
 {
-	string->Truncate(0);
-		// We make the string empty, this way even in cases where ICU fail we at
-		// least return something sane
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	ObjectDeleter<DateFormat> dateFormatter = CreateDateFormat(longFormat,
-		*fICULocale, longFormat ? fLongDateFormat : fShortDateFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongDateFormat : fShortDateFormat);
 	if (dateFormatter.Get() == NULL)
 		return B_NO_MEMORY;
+
+	if (timeZone != NULL) {
+		ObjectDeleter<TimeZone> icuTimeZone
+			= TimeZone::createTimeZone(timeZone->ID().String());
+		if (icuTimeZone.Get() == NULL)
+			return B_NO_MEMORY;
+		dateFormatter->setTimeZone(*icuTimeZone.Get());
+	}
 
 	UnicodeString ICUString;
 	ICUString = dateFormatter->format((UDate)time * 1000, ICUString);
 
+	string->Truncate(0);
 	BStringByteSink stringConverter(string);
-
 	ICUString.toUTF8(stringConverter);
 
 	return B_OK;
@@ -184,12 +280,15 @@ BLocale::FormatDate(BString *string, time_t time, bool longFormat)
 
 status_t
 BLocale::FormatDate(BString* string, int*& fieldPositions, int& fieldCount,
-	time_t time, bool longFormat)
+	time_t time, bool longFormat) const
 {
-	string->Truncate(0);
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
 
 	ObjectDeleter<DateFormat> dateFormatter = CreateDateFormat(longFormat,
-		*fICULocale, longFormat ? fLongDateFormat : fShortDateFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongDateFormat : fShortDateFormat);
 	if (dateFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
@@ -217,6 +316,7 @@ BLocale::FormatDate(BString* string, int*& fieldPositions, int& fieldCount,
 	for (int i = 0 ; i < fieldCount ; i++ )
 		fieldPositions[i] = fieldPosStorage[i];
 
+	string->Truncate(0);
 	BStringByteSink stringConverter(string);
 
 	ICUString.toUTF8(stringConverter);
@@ -228,6 +328,10 @@ BLocale::FormatDate(BString* string, int*& fieldPositions, int& fieldCount,
 status_t
 BLocale::GetDateFormat(BString& format, bool longFormat) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	if (longFormat && fLongDateFormat.Length() > 0)
 		format = fLongDateFormat;
 	else if (!longFormat && fShortDateFormat.Length() > 0)
@@ -236,7 +340,7 @@ BLocale::GetDateFormat(BString& format, bool longFormat) const
 		format.Truncate(0);
 
 		ObjectDeleter<DateFormat> dateFormatter = CreateDateFormat(longFormat,
-			*fICULocale, longFormat ? fLongDateFormat : fShortDateFormat);
+			*BCountry::Private(&fCountry).ICULocale(), format);
 		if (dateFormatter.Get() == NULL)
 			return B_NO_MEMORY;
 
@@ -258,7 +362,10 @@ BLocale::GetDateFormat(BString& format, bool longFormat) const
 status_t
 BLocale::SetDateFormat(const char* formatString, bool longFormat)
 {
-printf("FV::SetDateFormat: df='%s'\n", formatString);
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	if (longFormat)
 		fLongDateFormat = formatString;
 	else
@@ -272,8 +379,13 @@ status_t
 BLocale::GetDateFields(BDateElement*& fields, int& fieldCount,
 	bool longFormat) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	ObjectDeleter<DateFormat> dateFormatter = CreateDateFormat(longFormat,
-		*fICULocale, longFormat ? fLongDateFormat : fShortDateFormat);
+		*BCountry::Private(&fCountry).ICULocale(),
+		longFormat ? fLongDateFormat : fShortDateFormat);
 	if (dateFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
@@ -322,8 +434,14 @@ BLocale::GetDateFields(BDateElement*& fields, int& fieldCount,
 int
 BLocale::StartOfWeek() const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	UErrorCode err = U_ZERO_ERROR;
-	Calendar* c = Calendar::createInstance(*fICULocale, err);
+	Calendar* c
+		= Calendar::createInstance(*BCountry::Private(&fCountry).ICULocale(),
+			err);
 
 	if (err == U_ZERO_ERROR && c->getFirstDayOfWeek(err) == UCAL_SUNDAY) {
 		delete c;
@@ -338,15 +456,21 @@ BLocale::StartOfWeek() const
 
 status_t
 BLocale::FormatDateTime(char* target, size_t maxSize, time_t time,
-	bool longFormat)
+	bool longFormat) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	ObjectDeleter<DateFormat> dateFormatter = CreateDateFormat(longFormat,
-		*fICULocale, longFormat ? fLongDateFormat : fShortDateFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongDateFormat : fShortDateFormat);
 	if (dateFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
 	ObjectDeleter<DateFormat> timeFormatter = CreateTimeFormat(longFormat,
-		*fICULocale, longFormat ? fLongTimeFormat : fShortTimeFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongTimeFormat : fShortTimeFormat);
 	if (timeFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
@@ -367,14 +491,63 @@ BLocale::FormatDateTime(char* target, size_t maxSize, time_t time,
 }
 
 
+status_t
+BLocale::FormatDateTime(BString* target, time_t time, bool longFormat,
+	const BTimeZone* timeZone) const
+{
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	ObjectDeleter<DateFormat> dateFormatter = CreateDateFormat(longFormat,
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongDateFormat : fShortDateFormat);
+	if (dateFormatter.Get() == NULL)
+		return B_NO_MEMORY;
+
+	ObjectDeleter<DateFormat> timeFormatter = CreateTimeFormat(longFormat,
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongTimeFormat : fShortTimeFormat);
+	if (timeFormatter.Get() == NULL)
+		return B_NO_MEMORY;
+
+	if (timeZone != NULL) {
+		ObjectDeleter<TimeZone> icuTimeZone
+			= TimeZone::createTimeZone(timeZone->ID().String());
+		if (icuTimeZone.Get() == NULL)
+			return B_NO_MEMORY;
+		timeFormatter->setTimeZone(*icuTimeZone.Get());
+	}
+
+	UnicodeString ICUString;
+	ICUString = dateFormatter->format((UDate)time * 1000, ICUString);
+
+	ICUString.append(UnicodeString::fromUTF8(", "));
+
+	ICUString = timeFormatter->format((UDate)time * 1000, ICUString);
+
+	target->Truncate(0);
+	BStringByteSink stringConverter(target);
+	ICUString.toUTF8(stringConverter);
+
+	return B_OK;
+}
+
+
 // #pragma mark - Time
 
 
 status_t
-BLocale::FormatTime(char* string, size_t maxSize, time_t time, bool longFormat)
+BLocale::FormatTime(char* string, size_t maxSize, time_t time,
+	bool longFormat) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	ObjectDeleter<DateFormat> timeFormatter = CreateTimeFormat(longFormat,
-		*fICULocale, longFormat ? fLongTimeFormat : fShortTimeFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongTimeFormat : fShortTimeFormat);
 	if (timeFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
@@ -393,18 +566,31 @@ BLocale::FormatTime(char* string, size_t maxSize, time_t time, bool longFormat)
 
 
 status_t
-BLocale::FormatTime(BString* string, time_t time, bool longFormat)
+BLocale::FormatTime(BString* string, time_t time, bool longFormat,
+	const BTimeZone* timeZone) const
 {
-	string->Truncate(0);
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
 
 	ObjectDeleter<DateFormat> timeFormatter = CreateTimeFormat(longFormat,
-		*fICULocale, longFormat ? fLongTimeFormat : fShortTimeFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongTimeFormat : fShortTimeFormat);
 	if (timeFormatter.Get() == NULL)
 		return B_NO_MEMORY;
+
+	if (timeZone != NULL) {
+		ObjectDeleter<TimeZone> icuTimeZone
+			= TimeZone::createTimeZone(timeZone->ID().String());
+		if (icuTimeZone.Get() == NULL)
+			return B_NO_MEMORY;
+		timeFormatter->setTimeZone(*icuTimeZone.Get());
+	}
 
 	UnicodeString ICUString;
 	ICUString = timeFormatter->format((UDate)time * 1000, ICUString);
 
+	string->Truncate(0);
 	BStringByteSink stringConverter(string);
 
 	ICUString.toUTF8(stringConverter);
@@ -415,12 +601,15 @@ BLocale::FormatTime(BString* string, time_t time, bool longFormat)
 
 status_t
 BLocale::FormatTime(BString* string, int*& fieldPositions, int& fieldCount,
-	time_t time, bool longFormat)
+	time_t time, bool longFormat) const
 {
-	string->Truncate(0);
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
 
 	ObjectDeleter<DateFormat> timeFormatter = CreateTimeFormat(longFormat,
-		*fICULocale, longFormat ? fLongTimeFormat : fShortTimeFormat);
+		*BLanguage::Private(&fLanguage).ICULocale(),
+		longFormat ? fLongTimeFormat : fShortTimeFormat);
 	if (timeFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
@@ -448,6 +637,7 @@ BLocale::FormatTime(BString* string, int*& fieldPositions, int& fieldCount,
 	for (int i = 0 ; i < fieldCount ; i++ )
 		fieldPositions[i] = fieldPosStorage[i];
 
+	string->Truncate(0);
 	BStringByteSink stringConverter(string);
 
 	ICUString.toUTF8(stringConverter);
@@ -460,8 +650,13 @@ status_t
 BLocale::GetTimeFields(BDateElement*& fields, int& fieldCount,
 	bool longFormat) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	ObjectDeleter<DateFormat> timeFormatter = CreateTimeFormat(longFormat,
-		*fICULocale, longFormat ? fLongTimeFormat : fShortTimeFormat);
+		*BCountry::Private(&fCountry).ICULocale(),
+		longFormat ? fLongTimeFormat : fShortTimeFormat);
 	if (timeFormatter.Get() == NULL)
 		return B_NO_MEMORY;
 
@@ -516,6 +711,10 @@ BLocale::GetTimeFields(BDateElement*& fields, int& fieldCount,
 status_t
 BLocale::SetTimeFormat(const char* formatString, bool longFormat)
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	if (longFormat)
 		fLongTimeFormat = formatString;
 	else
@@ -528,6 +727,10 @@ BLocale::SetTimeFormat(const char* formatString, bool longFormat)
 status_t
 BLocale::GetTimeFormat(BString& format, bool longFormat) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	if (longFormat && fLongTimeFormat.Length() > 0)
 		format = fLongTimeFormat;
 	else if (!longFormat && fShortTimeFormat.Length() > 0)
@@ -536,7 +739,8 @@ BLocale::GetTimeFormat(BString& format, bool longFormat) const
 		format.Truncate(0);
 
 		ObjectDeleter<DateFormat> timeFormatter = CreateTimeFormat(longFormat,
-			*fICULocale, longFormat ? fLongTimeFormat : fShortTimeFormat);
+			*BCountry::Private(&fCountry).ICULocale(),
+			longFormat ? fLongTimeFormat : fShortTimeFormat);
 		if (timeFormatter.Get() == NULL)
 			return B_NO_MEMORY;
 
@@ -554,11 +758,25 @@ BLocale::GetTimeFormat(BString& format, bool longFormat) const
 }
 
 
+void
+BLocale::_UpdateFormats()
+{
+	FetchDateFormat(true, *BCountry::Private(&fCountry).ICULocale(),
+		this->fLongDateFormat);
+	FetchDateFormat(false, *BCountry::Private(&fCountry).ICULocale(),
+		this->fShortDateFormat);
+	FetchTimeFormat(true, *BCountry::Private(&fCountry).ICULocale(),
+		this->fLongTimeFormat);
+	FetchTimeFormat(false, *BCountry::Private(&fCountry).ICULocale(),
+		this->fShortTimeFormat);
+}
+
+
 // #pragma mark - Numbers
 
 
 status_t
-BLocale::FormatNumber(char* string, size_t maxSize, double value)
+BLocale::FormatNumber(char* string, size_t maxSize, double value) const
 {
 	BString fullString;
 	status_t status = FormatNumber(&fullString, value);
@@ -570,11 +788,16 @@ BLocale::FormatNumber(char* string, size_t maxSize, double value)
 
 
 status_t
-BLocale::FormatNumber(BString* string, double value)
+BLocale::FormatNumber(BString* string, double value) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	UErrorCode err = U_ZERO_ERROR;
 	ObjectDeleter<NumberFormat> numberFormatter	= NumberFormat::createInstance(
-		*fICULocale, NumberFormat::kNumberStyle, err);
+		*BCountry::Private(&fCountry).ICULocale(), NumberFormat::kNumberStyle,
+		err);
 
 	if (numberFormatter.Get() == NULL)
 		return B_NO_MEMORY;
@@ -593,7 +816,7 @@ BLocale::FormatNumber(BString* string, double value)
 
 
 status_t
-BLocale::FormatNumber(char* string, size_t maxSize, int32 value)
+BLocale::FormatNumber(char* string, size_t maxSize, int32 value) const
 {
 	BString fullString;
 	status_t status = FormatNumber(&fullString, value);
@@ -605,11 +828,16 @@ BLocale::FormatNumber(char* string, size_t maxSize, int32 value)
 
 
 status_t
-BLocale::FormatNumber(BString* string, int32 value)
+BLocale::FormatNumber(BString* string, int32 value) const
 {
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	UErrorCode err = U_ZERO_ERROR;
 	ObjectDeleter<NumberFormat> numberFormatter	= NumberFormat::createInstance(
-		*fICULocale, NumberFormat::kNumberStyle, err);
+		*BCountry::Private(&fCountry).ICULocale(), NumberFormat::kNumberStyle,
+		err);
 
 	if (numberFormatter.Get() == NULL)
 		return B_NO_MEMORY;
@@ -628,7 +856,7 @@ BLocale::FormatNumber(BString* string, int32 value)
 
 
 ssize_t
-BLocale::FormatMonetary(char* string, size_t maxSize, double value)
+BLocale::FormatMonetary(char* string, size_t maxSize, double value) const
 {
 	BString fullString;
 	ssize_t written = FormatMonetary(&fullString, value);
@@ -640,14 +868,19 @@ BLocale::FormatMonetary(char* string, size_t maxSize, double value)
 
 
 ssize_t
-BLocale::FormatMonetary(BString* string, double value)
+BLocale::FormatMonetary(BString* string, double value) const
 {
 	if (string == NULL)
 		return B_BAD_VALUE;
 
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
 	UErrorCode err;
 	ObjectDeleter<NumberFormat> numberFormatter
-		= NumberFormat::createCurrencyInstance(*fICULocale, err);
+		= NumberFormat::createCurrencyInstance(
+			*BCountry::Private(&fCountry).ICULocale(), err);
 
 	if (numberFormatter.Get() == NULL)
 		return B_NO_MEMORY;
@@ -665,15 +898,105 @@ BLocale::FormatMonetary(BString* string, double value)
 }
 
 
+status_t
+BLocale::FormatMonetary(BString* string, int*& fieldPositions,
+	BNumberElement*& fieldTypes, int& fieldCount, double value) const
+{
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	UErrorCode err = U_ZERO_ERROR;
+	ObjectDeleter<NumberFormat> numberFormatter
+		= NumberFormat::createCurrencyInstance(
+			*BCountry::Private(&fCountry).ICULocale(), err);
+	if (U_FAILURE(err))
+		return B_NO_MEMORY;
+
+	fieldPositions = NULL;
+	fieldTypes = NULL;
+	ICU_VERSION::FieldPositionIterator positionIterator;
+	UnicodeString ICUString;
+	ICUString = numberFormatter->format(value, ICUString, &positionIterator,
+		err);
+
+	if (err != U_ZERO_ERROR)
+		return B_ERROR;
+
+	ICU_VERSION::FieldPosition field;
+	std::vector<int> fieldPosStorage;
+	std::vector<int> fieldTypeStorage;
+	fieldCount  = 0;
+	while (positionIterator.next(field)) {
+		fieldTypeStorage.push_back(field.getField());
+		fieldPosStorage.push_back(field.getBeginIndex() | (field.getEndIndex() << 16));
+		fieldCount ++;
+
+	}
+
+	fieldPositions = (int*) malloc(fieldCount * sizeof(int));
+	fieldTypes = (BNumberElement*) malloc(fieldCount * sizeof(BNumberElement));
+
+	for (int i = 0 ; i < fieldCount ; i++ ) {
+		fieldPositions[i] = fieldPosStorage[i];
+		switch (fieldTypeStorage[i]) {
+			case NumberFormat::kCurrencyField:
+				fieldTypes[i] = B_NUMBER_ELEMENT_CURRENCY;
+				break;
+			case NumberFormat::kIntegerField:
+				fieldTypes[i] = B_NUMBER_ELEMENT_INTEGER;
+				break;
+			case NumberFormat::kFractionField:
+				fieldTypes[i] = B_NUMBER_ELEMENT_FRACTIONAL;
+				break;
+			default:
+				fieldTypes[i] = B_NUMBER_ELEMENT_INVALID;
+				break;
+		}
+	}
+
+	string->Truncate(0);
+	BStringByteSink stringConverter(string);
+
+	ICUString.toUTF8(stringConverter);
+
+	return B_OK;
+}
+
+
+status_t
+BLocale::GetCurrencySymbol(BString& result) const
+{
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	UErrorCode error = U_ZERO_ERROR;
+	NumberFormat* format = NumberFormat::createCurrencyInstance(
+		*BCountry::Private(&fCountry).ICULocale(), error);
+
+	if (U_FAILURE(error))
+		return B_ERROR;
+
+	char* symbol = (char*)malloc(20);
+	u_strToUTF8(symbol, 20, NULL, format->getCurrency(), -1, &error);
+	if (U_FAILURE(error))
+		return B_BAD_DATA;
+	result.Append(symbol);
+	delete format;
+	delete symbol;
+	return B_OK;
+}
+
+
 // #pragma mark - Helpers
 
 
 static DateFormat*
-CreateDateFormat(bool longFormat, const Locale& locale,
-	const BString& format)
+CreateDateFormat(bool longFormat, const Locale& locale,	const BString& format)
 {
 	DateFormat* dateFormatter = DateFormat::createDateInstance(
-		longFormat ? DateFormat::FULL : DateFormat::SHORT, locale);
+		longFormat ? DateFormat::kFull : DateFormat::kShort, locale);
 
 	if (format.Length() > 0) {
 		SimpleDateFormat* dateFormatterImpl
@@ -688,11 +1011,10 @@ CreateDateFormat(bool longFormat, const Locale& locale,
 
 
 static DateFormat*
-CreateTimeFormat(bool longFormat, const Locale& locale,
-	const BString& format)
+CreateTimeFormat(bool longFormat, const Locale& locale, const BString& format)
 {
 	DateFormat* timeFormatter = DateFormat::createTimeInstance(
-		longFormat ? DateFormat::MEDIUM : DateFormat::SHORT, locale);
+		longFormat ? DateFormat::kMedium: DateFormat::kShort, locale);
 
 	if (format.Length() > 0) {
 		SimpleDateFormat* timeFormatterImpl
@@ -703,4 +1025,38 @@ CreateTimeFormat(bool longFormat, const Locale& locale,
 	}
 
 	return timeFormatter;
+}
+
+
+static void
+FetchDateFormat(bool longFormat, const Locale& locale, BString& format)
+{
+	DateFormat* dateFormatter = DateFormat::createDateInstance(
+		longFormat ? DateFormat::kFull : DateFormat::kShort, locale);
+
+	SimpleDateFormat* dateFormatterImpl
+		= static_cast<SimpleDateFormat*>(dateFormatter);
+
+	UnicodeString pattern;
+	dateFormatterImpl->toPattern(pattern);
+	format.Truncate(0);
+	BStringByteSink stringConverter(&format);
+	pattern.toUTF8(stringConverter);
+}
+
+
+static void
+FetchTimeFormat(bool longFormat, const Locale& locale, BString& format)
+{
+	DateFormat* timeFormatter = DateFormat::createTimeInstance(
+		longFormat ? DateFormat::kMedium : DateFormat::kShort, locale);
+
+	SimpleDateFormat* timeFormatterImpl
+		= static_cast<SimpleDateFormat*>(timeFormatter);
+
+	UnicodeString pattern;
+	timeFormatterImpl->toPattern(pattern);
+	format.Truncate(0);
+	BStringByteSink stringConverter(&format);
+	pattern.toUTF8(stringConverter);
 }

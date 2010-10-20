@@ -1,11 +1,11 @@
 /*
+ * Copyright 2010, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2000-2010, Stephan Aßmus <superstippi@gmx.de>,
+ * Copyright 2000-2008, Ingo Weinhold <ingo_weinhold@gmx.de>,
+ * All Rights Reserved. Distributed under the terms of the MIT license.
+ *
  * Copyright (c) 1998-99, Be Incorporated, All Rights Reserved.
  * Distributed under the terms of the Be Sample Code license.
- *
- * Copyright 2010, Axel Dörfler, axeld@pinc-software.de.
- * Copyright 2000-2008, Ingo Weinhold <ingo_weinhold@gmx.de>,
- * Copyright 2000-2008, Stephan Aßmus <superstippi@gmx.de>,
- * All Rights Reserved. Distributed under the terms of the MIT license.
  */
 
 
@@ -65,21 +65,22 @@ init_media_file(media_format format, BMediaTrack** _track)
 		media_file_format fileFormat;
 		int32 cookie = 0;
 		while (get_next_file_format(&cookie, &fileFormat) == B_OK) {
-			if (strcmp(fileFormat.short_name, "wav") == 0) {
+			if (strcmp(fileFormat.short_name, "wav") == 0)
 				break;
-			}
 		}
 		file = new BMediaFile(&ref, &fileFormat);
 
 		media_codec_info info;
 		cookie = 0;
 		while (get_next_encoder(&cookie, &info) == B_OK) {
-			if (strcmp(info.short_name, "raw-audio") == 0)
+			if (strcmp(info.short_name, "raw-audio") == 0
+				|| strcmp(info.short_name, "pcm") == 0) {
 				break;
+			}
 		}
 
 		track = file->CreateTrack(&format, &info);
-		if (!track)
+		if (track == NULL)
 			printf("failed to create track\n");
 
 		file->CommitHeader();
@@ -496,7 +497,7 @@ void
 AudioProducer::LateNoticeReceived(const media_source& what, bigtime_t howMuch,
 	bigtime_t performanceTime)
 {
-	ERROR("%p->AudioProducer::LateNoticeReceived(%lld, %lld)\n", this, howMuch,
+	TRACE("%p->AudioProducer::LateNoticeReceived(%lld, %lld)\n", this, howMuch,
 		performanceTime);
 	// If we're late, we need to catch up. Respond in a manner appropriate
 	// to our current run mode.
@@ -519,12 +520,15 @@ AudioProducer::LateNoticeReceived(const media_source& what, bigtime_t howMuch,
 
 			SetEventLatency(fLatency + fInternalLatency);
 		} else {
+			// Skip one buffer ahead in the audio data.
 			size_t sampleSize
 				= fOutput.format.u.raw_audio.format
 					& media_raw_audio_format::B_AUDIO_SIZE_MASK;
-			size_t nSamples
+			size_t samplesPerBuffer
 				= fOutput.format.u.raw_audio.buffer_size / sampleSize;
-			fFramesSent += nSamples;
+			size_t framesPerBuffer
+				= samplesPerBuffer / fOutput.format.u.raw_audio.channel_count;
+			fFramesSent += framesPerBuffer;
 		}
 	}
 }
@@ -619,7 +623,6 @@ AudioProducer::HandleEvent(const media_timed_event* event, bigtime_t lateness,
 			if (RunState() != B_STARTED) {
 				fFramesSent = 0;
 				fStartTime = event->event_time + fSupplier->InitialLatency();
-printf("B_START: start time: %lld\n", fStartTime);
 				media_timed_event firstBufferEvent(
 					fStartTime - fSupplier->InitialLatency(),
 					BTimedEventQueue::B_HANDLE_BUFFER);
@@ -641,13 +644,13 @@ printf("B_START: start time: %lld\n", fStartTime);
 			if (RunState() == BMediaEventLooper::B_STARTED
 				&& fOutput.destination != media_destination::null) {
 				BBuffer* buffer = _FillNextBuffer(event->event_time);
-				if (buffer) {
+				if (buffer != NULL) {
 					status_t err = B_ERROR;
 					if (fOutputEnabled) {
 						err = SendBuffer(buffer, fOutput.source,
 							fOutput.destination);
 					}
-					if (err)
+					if (err != B_OK)
 						buffer->Recycle();
 				}
 				size_t sampleSize = fOutput.format.u.raw_audio.format
@@ -755,6 +758,7 @@ AudioProducer::_SpecializeFormat(media_format* format)
 		// 25, which it usually is.)
 		format->u.raw_audio.buffer_size
 			= uint32(format->u.raw_audio.frame_rate / 25.0)
+				* format->u.raw_audio.channel_count
 				* (format->u.raw_audio.format
 					& media_raw_audio_format::B_AUDIO_SIZE_MASK);
 
@@ -805,11 +809,18 @@ AudioProducer::_AllocateBuffers(const media_format& format)
 BBuffer*
 AudioProducer::_FillNextBuffer(bigtime_t eventTime)
 {
+	fBufferGroup->WaitForBuffers();
 	BBuffer* buffer = fBufferGroup->RequestBuffer(
 		fOutput.format.u.raw_audio.buffer_size, BufferDuration());
 
-	if (!buffer) {
-		ERROR("AudioProducer::_FillNextBuffer() - no buffer\n");
+	if (buffer == NULL) {
+		static bool errorPrinted = false;
+		if (!errorPrinted) {
+			ERROR("AudioProducer::_FillNextBuffer() - no buffer "
+				"(size: %ld, duration: %lld)\n",
+				fOutput.format.u.raw_audio.buffer_size, BufferDuration());
+			errorPrinted = true;
+		}
 		return NULL;
 	}
 
@@ -824,16 +835,14 @@ AudioProducer::_FillNextBuffer(bigtime_t eventTime)
 	header->time_source = TimeSource()->ID();
 	buffer->SetSizeUsed(fOutput.format.u.raw_audio.buffer_size);
 
-	bigtime_t performanceTime = bigtime_t(double(fFramesSent)
-		* 1000000.0 / double(fOutput.format.u.raw_audio.frame_rate));
-
 	// fill in data from audio supplier
 	int64 frameCount = numSamples / fOutput.format.u.raw_audio.channel_count;
-	bigtime_t startTime = performanceTime;
+	bigtime_t startTime = bigtime_t(double(fFramesSent)
+		* 1000000.0 / fOutput.format.u.raw_audio.frame_rate);
 	bigtime_t endTime = bigtime_t(double(fFramesSent + frameCount)
 		* 1000000.0 / fOutput.format.u.raw_audio.frame_rate);
 
-	if (!fSupplier || fSupplier->InitCheck() != B_OK
+	if (fSupplier == NULL || fSupplier->InitCheck() != B_OK
 		|| fSupplier->GetFrames(buffer->Data(), frameCount, startTime,
 			endTime) != B_OK) {
 		ERROR("AudioProducer::_FillNextBuffer() - supplier error -> silence\n");
@@ -841,17 +850,15 @@ AudioProducer::_FillNextBuffer(bigtime_t eventTime)
 	}
 
 	// stamp buffer
-	if (RunMode() == B_RECORDING) {
+	if (RunMode() == B_RECORDING)
 		header->start_time = eventTime;
-	} else {
-		header->start_time = fStartTime + performanceTime;
-	}
+	else
+		header->start_time = fStartTime + startTime;
 
 #if DEBUG_TO_FILE
 	BMediaTrack* track;
-	if (BMediaFile* file = init_media_file(fOutput.format, &track)) {
+	if (init_media_file(fOutput.format, &track) != NULL)
 		track->WriteFrames(buffer->Data(), frameCount);
-	}
 #endif // DEBUG_TO_FILE
 
 	if (fPeakListener
@@ -881,7 +888,7 @@ AudioProducer::_FillNextBuffer(bigtime_t eventTime)
 			message.AddFloat("max", maxAbs);
 		}
 		bigtime_t realTime = TimeSource()->RealTimeFor(
-			fStartTime + performanceTime, 0);
+			fStartTime + startTime, 0);
 		MessageEvent* event = new (std::nothrow) MessageEvent(realTime,
 			fPeakListener, message);
 		if (event != NULL)

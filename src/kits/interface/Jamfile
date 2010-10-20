@@ -31,6 +31,7 @@ SEARCH_SOURCE += [ FDirName $(SUBDIR) textview_support ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) layouter ] ;
 
 MergeObject <libbe>interface_kit.o :
+	AbstractLayout.cpp
 	AbstractLayoutItem.cpp
 	AffineTransform.cpp
 	Alert.cpp
@@ -120,6 +121,7 @@ MergeObject <libbe>interface_kit.o :
 	View.cpp
 	ViewLayoutItem.cpp
 	Window.cpp
+	WindowStack.cpp
 	ZombieReplicantView.cpp
 
 	# BTextView support

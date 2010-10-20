@@ -221,3 +221,19 @@ int glutGetModifiers() {
 	return gState.modifierKeys;
 }
 
+
+#ifdef __HAIKU__
+
+extern "C" {
+GLUTproc __glutGetProcAddress(const char* procName);
+}
+
+GLUTproc
+__glutGetProcAddress(const char* procName)
+{
+	if (gState.currentWindow)
+		return (GLUTproc) gState.currentWindow->GetGLProcAddress(procName);
+	return NULL;
+}
+
+#endif

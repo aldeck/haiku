@@ -445,10 +445,8 @@ MultiLocker::WriteLock()
 		locked = true;
 	} else {
 		// new writer acquiring the lock
-#if DEBUG
 		if (IsReadLocked())
 			debugger("Reader wants to become writer!");
-#endif
 
 		status_t status;
 		do {
@@ -501,16 +499,17 @@ MultiLocker::WriteUnlock()
 			fWriterNest--;
 			unlocked = true;
 		} else {
-			unlocked = release_sem_etc(fLock, LARGE_NUMBER, B_DO_NOT_RESCHEDULE) == B_OK;
-			if (unlocked) {
-				// clear the information
-				fWriterThread = -1;
-				fWriterStackBase = 0;
-			}
+			// clear the information while still holding the lock
+			fWriterThread = -1;
+			fWriterStackBase = 0;
+			unlocked = release_sem_etc(fLock, LARGE_NUMBER,
+				B_DO_NOT_RESCHEDULE) == B_OK;
 		}
 	} else {
-		debug_printf("write holder %ld\n", fWriterThread);
-		debugger("Non-writer attempting to WriteUnlock()");
+		char message[256];
+		snprintf(message, sizeof(message), "Non-writer attempting to "
+			"WriteUnlock() - write holder: %ld", fWriterThread);
+		debugger(message);
 	}
 
 	return unlocked;

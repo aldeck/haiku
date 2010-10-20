@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2007, Haiku, Inc. All Rights Reserved.
+ * Copyright 2002-2010, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -32,7 +32,6 @@
 using namespace BPrivate;
 
 
-StyledEditApp * styled_edit_app;
 BRect gWindowRect(7-15, 26-15, 507, 426);
 
 
@@ -80,50 +79,56 @@ namespace
 
 //	#pragma mark -
 
+
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "Open_and_SaveAsPanel"
 
+
 StyledEditApp::StyledEditApp()
-	: BApplication(APP_SIGNATURE),
+	:
+	BApplication(APP_SIGNATURE),
 	fOpenPanel(NULL)
 {
 	fOpenPanel = new BFilePanel();
-	BMenuBar* menuBar =
-		dynamic_cast<BMenuBar*>(fOpenPanel->Window()->FindView("MenuBar"));
 
 	fOpenAsEncoding = 0;
-	fOpenPanelEncodingMenu= new BMenu(B_TRANSLATE("Encoding"));
-	menuBar->AddItem(fOpenPanelEncodingMenu);
-	fOpenPanelEncodingMenu->SetRadioMode(true);
 
-	BCharacterSetRoster roster;
-	BCharacterSet charset;
-	while (roster.GetNextCharacterSet(&charset) == B_NO_ERROR) {
-		BString name;
-		if (charset.GetFontID() == B_UNICODE_UTF8)
-			name = B_TRANSLATE("Default");
-		else
-			name = charset.GetPrintName();
+	BMenuBar* menuBar
+		= dynamic_cast<BMenuBar*>(fOpenPanel->Window()->FindView("MenuBar"));
+	if (menuBar != NULL) {
+		fOpenPanelEncodingMenu = new BMenu(B_TRANSLATE("Encoding"));
+		fOpenPanelEncodingMenu->SetRadioMode(true);
 
-		const char* mime = charset.GetMIMEName();
-		if (mime) {
-			name.Append(" (");
-			name.Append(mime);
-			name.Append(")");
+		menuBar->AddItem(fOpenPanelEncodingMenu);
+
+		BCharacterSetRoster roster;
+		BCharacterSet charset;
+		while (roster.GetNextCharacterSet(&charset) == B_NO_ERROR) {
+			BString name;
+			if (charset.GetFontID() == B_UNICODE_UTF8)
+				name = B_TRANSLATE("Default");
+			else
+				name = charset.GetPrintName();
+
+			const char* mime = charset.GetMIMEName();
+			if (mime != NULL) {
+				name.Append(" (");
+				name.Append(mime);
+				name.Append(")");
+			}
+			BMenuItem* item =
+				new BMenuItem(name.String(), new BMessage(OPEN_AS_ENCODING));
+			item->SetTarget(this);
+			fOpenPanelEncodingMenu->AddItem(item);
+			if (charset.GetFontID() == fOpenAsEncoding)
+				item->SetMarked(true);
 		}
-		BMenuItem* item =
-			new BMenuItem(name.String(), new BMessage(OPEN_AS_ENCODING));
-		item->SetTarget(this);
-		fOpenPanelEncodingMenu->AddItem(item);
-		if (charset.GetFontID() == fOpenAsEncoding)
-			item->SetMarked(true);
-	}
+	} else
+		fOpenPanelEncodingMenu = NULL;
 
 	fWindowCount = 0;
 	fNextUntitledWindow = 1;
 	fBadArguments = false;
-
-	styled_edit_app = this;
 }
 
 
@@ -149,8 +154,9 @@ StyledEditApp::MessageReceived(BMessage* message)
 		case OPEN_AS_ENCODING:
 			void* ptr;
 			if (message->FindPointer("source", &ptr) == B_OK
-				&& fOpenPanelEncodingMenu != 0) {
-				fOpenAsEncoding = (uint32)fOpenPanelEncodingMenu->IndexOf((BMenuItem*)ptr);
+				&& fOpenPanelEncodingMenu != NULL) {
+				fOpenAsEncoding = (uint32)fOpenPanelEncodingMenu->IndexOf(
+					(BMenuItem*)ptr);
 			}
 			break;
 

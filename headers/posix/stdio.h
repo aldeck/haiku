@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2009, Haiku Inc. All Rights Reserved.
+ * Copyright 2004-2010, Haiku Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _STDIO_H_
@@ -95,6 +95,10 @@ extern FILE		*popen(const char *command, const char *mode);
 extern int		pclose(FILE *stream);
 extern void		perror(const char *errorPrefix);
 
+/* memory streams */
+extern FILE		*fmemopen(void *buf, size_t size, const char *mode);
+extern FILE		*open_memstream(void **buf, size_t *size);
+
 /* file I/O */
 extern int		fflush(FILE *stream);
 extern int		fflush_unlocked(FILE *stream);
@@ -137,6 +141,10 @@ extern int		fgetc(FILE *stream);
 extern char		*gets(char *buffer);
 extern char		*fgets(char *string, int stringLength, FILE *stream);
 
+extern ssize_t	getdelim(char **_line, size_t *_length, int delimiter,
+					FILE *stream);
+extern ssize_t	getline(char **_line, size_t *_length, FILE *stream);
+
 /* formatted I/O */
 extern int		printf(char const *format, ...) __PRINTFLIKE(1,2);
 extern int		fprintf(FILE *stream, char const *format, ...) __PRINTFLIKE(2,3);
@@ -171,5 +179,6 @@ extern char 	*tmpnam_r(char *nameBuffer);
 #ifdef __cplusplus
 }
 #endif
+
 
 #endif	/* _STDIO_H_ */

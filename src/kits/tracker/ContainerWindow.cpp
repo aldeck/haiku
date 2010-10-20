@@ -98,7 +98,7 @@ All rights reserved.
 
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "ContainerWindow"
 
 const uint32 kRedo = 'REDO';
 	// this is the same as B_REDO in Dano/Zeta/Haiku

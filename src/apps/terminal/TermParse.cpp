@@ -44,6 +44,8 @@ extern int gIesTable[];				/* ignore ESC table */
 extern int gEscIgnoreTable[];		/* ESC ignore table */
 extern int gMbcsTable[];			/* ESC $ */
 
+extern int gLineDrawTable[];		/* ESC ( 0 */
+
 
 #define DEFAULT -1
 #define NPARAM 10		// Max parameters
@@ -67,6 +69,7 @@ TermParse::_NextParseChar()
 TermParse::TermParse(int fd)
 	:
 	fFd(fd),
+	fAttr(FORECOLORED(7)),
 	fParseThread(-1),
 	fReaderThread(-1),
 	fReaderSem(-1),
@@ -328,6 +331,10 @@ TermParse::EscParse()
 	int *groundtable = gUTF8GroundTable;
 	int *parsestate = gUTF8GroundTable;
 
+	/* Handle switch between G0 and G1 character sets */
+	int *alternateParseTable = gUTF8GroundTable;
+	bool shifted_in = false;
+
 	int32 srcLen;
 	int32 dstLen;
 	long dummyState = 0;
@@ -335,7 +342,7 @@ TermParse::EscParse()
 	int width = 1;
 	BAutolock locker(fBuffer);
 
-	fAttr = fSavedAttr = BACKCOLOR;
+	fAttr = fSavedAttr = FORECOLORED(7);
 
 	while (!fQuitting) {
 		try {
@@ -387,10 +394,10 @@ TermParse::EscParse()
 					/* case iso8859 gr character, or euc */
 					ptr = cbuf;
 					if (currentEncoding == B_EUC_CONVERSION
-						|| currentEncoding == B_EUC_KR_CONVERSION
-						|| currentEncoding == B_JIS_CONVERSION
-						|| currentEncoding == B_GBK_CONVERSION
-						|| currentEncoding == B_BIG5_CONVERSION) {
+							|| currentEncoding == B_EUC_KR_CONVERSION
+							|| currentEncoding == B_JIS_CONVERSION
+							|| currentEncoding == B_GBK_CONVERSION
+							|| currentEncoding == B_BIG5_CONVERSION) {
 						switch (parsestate[curess]) {
 							case CASE_SS2:		/* JIS X 0201 */
 								width = 1;
@@ -427,10 +434,10 @@ TermParse::EscParse()
 					srcLen = strlen(cbuf);
 					if (currentEncoding != B_JIS_CONVERSION) {
 						convert_to_utf8(currentEncoding, cbuf, &srcLen,
-							dstbuf, &dstLen, &dummyState, '?');
+								dstbuf, &dstLen, &dummyState, '?');
 					} else {
 						convert_to_utf8(B_EUC_CONVERSION, cbuf, &srcLen,
-							dstbuf, &dstLen, &dummyState, '?');
+								dstbuf, &dstLen, &dummyState, '?');
 					}
 
 					fBuffer->InsertChar(dstbuf, dstLen, width, fAttr);
@@ -444,8 +451,52 @@ TermParse::EscParse()
 					srcLen = 2;
 					dstLen = 0;
 					convert_to_utf8(B_EUC_CONVERSION, cbuf, &srcLen,
-						dstbuf, &dstLen, &dummyState, '?');
+							dstbuf, &dstLen, &dummyState, '?');
 					fBuffer->InsertChar(dstbuf, dstLen, fAttr);
+					break;
+
+				case CASE_PRINT_GRA:
+					/* "Special characters and line drawing" enabled by \E(0 */
+					switch (c) {
+						case 'a':
+							fBuffer->InsertChar("\xE2\x96\x92",3,fAttr);
+							break;
+						case 'j':
+							fBuffer->InsertChar("\xE2\x94\x98",3,fAttr);
+							break;
+						case 'k':
+							fBuffer->InsertChar("\xE2\x94\x90",3,fAttr);
+							break;
+						case 'l':
+							fBuffer->InsertChar("\xE2\x94\x8C",3,fAttr);
+							break;
+						case 'm':
+							fBuffer->InsertChar("\xE2\x94\x94",3,fAttr);
+							break;
+						case 'n':
+							fBuffer->InsertChar("\xE2\x94\xBC",3,fAttr);
+							break;
+						case 'q':
+							fBuffer->InsertChar("\xE2\x94\x80",3,fAttr);
+							break;
+						case 't':
+							fBuffer->InsertChar("\xE2\x94\x9C",3,fAttr);
+							break;
+						case 'u':
+							fBuffer->InsertChar("\xE2\x94\xA4",3,fAttr);
+							break;
+						case 'v':
+							fBuffer->InsertChar("\xE2\x94\xB4",3,fAttr);
+							break;
+						case 'w':
+							fBuffer->InsertChar("\xE2\x94\xAC",3,fAttr);
+							break;
+						case 'x':
+							fBuffer->InsertChar("\xE2\x94\x82",3,fAttr);
+							break;
+						default:
+							fBuffer->InsertChar((char)c, fAttr);
+					}
 					break;
 
 				case CASE_LF:
@@ -462,7 +513,7 @@ TermParse::EscParse()
 					srcLen = 1;
 					dstLen = 0;
 					convert_to_utf8(currentEncoding, cbuf, &srcLen,
-						dstbuf, &dstLen, &dummyState, '?');
+							dstbuf, &dstLen, &dummyState, '?');
 					fBuffer->InsertChar(dstbuf, dstLen, fAttr);
 					break;
 
@@ -474,7 +525,7 @@ TermParse::EscParse()
 					srcLen = 2;
 					dstLen = 0;
 					convert_to_utf8(currentEncoding, cbuf, &srcLen,
-						dstbuf, &dstLen, &dummyState, '?');
+							dstbuf, &dstLen, &dummyState, '?');
 					fBuffer->InsertChar(dstbuf, dstLen, fAttr);
 					break;
 
@@ -517,12 +568,29 @@ TermParse::EscParse()
 
 				case CASE_SCS_STATE:
 				{
-					cs96 = 0;
-					_NextParseChar();
-						// skip next char
+					char page = _NextParseChar();
+
+					int* newTable = gUTF8GroundTable;
+					if (page == '0')
+						newTable = gLineDrawTable;
+
+					if (c == '(') {
+						if (shifted_in)
+							alternateParseTable = newTable;
+						else
+							groundtable = newTable;
+					} else if (c == ')') {
+						if (!shifted_in)
+							alternateParseTable = newTable;
+						else
+							groundtable = newTable;
+					}
+
 					parsestate = groundtable;
+
 					break;
 				}
+
 				case CASE_GROUND_STATE:
 					/* exit ignore mode */
 					parsestate = groundtable;
@@ -560,9 +628,21 @@ TermParse::EscParse()
 					break;
 
 				case CASE_SI:
+					/* shift in (to G1 charset) */
+					if (shifted_in == false) {
+						int* tmp = alternateParseTable;
+						alternateParseTable = parsestate;
+						parsestate = tmp;
+					}
 					break;
 
 				case CASE_SO:
+					/* shift out (to G0 charset) */
+					if (shifted_in == true) {
+						int* tmp = alternateParseTable;
+						alternateParseTable = parsestate;
+						parsestate = tmp;
+					}
 					break;
 
 				case CASE_SCR_STATE:	// ESC #
@@ -721,16 +801,17 @@ TermParse::EscParse()
 					break;
 
 				case CASE_SGR:
+				{
 					/* SGR */
 					for (row = 0; row < nparam; ++row) {
 						switch (param[row]) {
 							case DEFAULT:
 							case 0: /* Reset attribute */
-								fAttr = 0;
+								fAttr = FORECOLORED(7);
 								break;
 
-							case 1:
-							case 5:	/* Bold		*/
+							case 1: /* Bold     */
+							case 5:
 								fAttr |= BOLD;
 								break;
 
@@ -767,6 +848,19 @@ TermParse::EscParse()
 								fAttr |= FORESET;
 								break;
 
+							case 38:
+							{
+								if (nparam != 3 || param[1] != 5)
+									break;
+								fAttr &= ~FORECOLOR;
+								fAttr |= FORECOLORED(param[2]);
+								fAttr |= FORESET;
+
+								row = nparam; // force exit of the parsing
+
+								break;
+							}
+
 							case 39:
 								fAttr &= ~FORESET;
 								break;
@@ -784,6 +878,19 @@ TermParse::EscParse()
 								fAttr |= BACKSET;
 								break;
 
+							case 48:
+							{
+								if (nparam != 3 || param[1] != 5)
+									break;
+								fAttr &= ~BACKCOLOR;
+								fAttr |= BACKCOLORED(param[2]);
+								fAttr |= BACKSET;
+
+								row = nparam; // force exit of the parsing
+
+								break;
+							}
+
 							case 49:
 								fAttr &= ~BACKSET;
 								break;
@@ -791,142 +898,143 @@ TermParse::EscParse()
 					}
 					parsestate = groundtable;
 					break;
+				}
 
-					case CASE_CPR:
-						// Q & D hack by Y.Hayakawa (hida@sawada.riec.tohoku.ac.jp)
-						// 21-JUL-99
-						_DeviceStatusReport(param[0]);
-						parsestate = groundtable;
-						break;
+				case CASE_CPR:
+				// Q & D hack by Y.Hayakawa (hida@sawada.riec.tohoku.ac.jp)
+				// 21-JUL-99
+				_DeviceStatusReport(param[0]);
+				parsestate = groundtable;
+				break;
 
-					case CASE_DA1:
-						// DA - report device attributes
-						if (param[0] < 1) {
-							// claim to be a VT102
-							write(fFd, "\033[?6c", 5);
-						}
-						parsestate = groundtable;
-						break;
+				case CASE_DA1:
+				// DA - report device attributes
+				if (param[0] < 1) {
+					// claim to be a VT102
+					write(fFd, "\033[?6c", 5);
+				}
+				parsestate = groundtable;
+				break;
 
-					case CASE_DECSTBM:
-						/* DECSTBM - set scrolling region */
+				case CASE_DECSTBM:
+				/* DECSTBM - set scrolling region */
 
-						if ((top = param[0]) < 1)
-							top = 1;
+				if ((top = param[0]) < 1)
+					top = 1;
 
-						if (nparam < 2)
-							bottom = fBuffer->Height();
-						else
-							bottom = param[1];
+				if (nparam < 2)
+					bottom = fBuffer->Height();
+				else
+					bottom = param[1];
 
-						top--;
-						bottom--;
+				top--;
+					bottom--;
 
-						if (bottom > top)
-							fBuffer->SetScrollRegion(top, bottom);
+					if (bottom > top)
+						fBuffer->SetScrollRegion(top, bottom);
 
-						parsestate = groundtable;
-						break;
+					parsestate = groundtable;
+					break;
 
-					case CASE_DECREQTPARM:
-						// DEXREQTPARM - request terminal parameters
-						_DecReqTermParms(param[0]);
-						parsestate = groundtable;
-						break;
+				case CASE_DECREQTPARM:
+					// DEXREQTPARM - request terminal parameters
+					_DecReqTermParms(param[0]);
+					parsestate = groundtable;
+					break;
 
-					case CASE_DECSET:
-						/* DECSET */
-						for (int i = 0; i < nparam; i++)
-							_DecPrivateModeSet(param[i]);
-						parsestate = groundtable;
-						break;
+				case CASE_DECSET:
+					/* DECSET */
+					for (int i = 0; i < nparam; i++)
+						_DecPrivateModeSet(param[i]);
+					parsestate = groundtable;
+					break;
 
-					case CASE_DECRST:
-						/* DECRST */
-						for (int i = 0; i < nparam; i++)
-							_DecPrivateModeReset(param[i]);
-						parsestate = groundtable;
-						break;
+				case CASE_DECRST:
+					/* DECRST */
+					for (int i = 0; i < nparam; i++)
+						_DecPrivateModeReset(param[i]);
+					parsestate = groundtable;
+					break;
 
-					case CASE_DECALN:
-						/* DECALN */
-						fBuffer->FillScreen(UTF8Char('E'), 1, 0);
-						parsestate = groundtable;
-						break;
+				case CASE_DECALN:
+					/* DECALN */
+					fBuffer->FillScreen(UTF8Char('E'), 1, 0);
+					parsestate = groundtable;
+					break;
 
-				//	case CASE_GSETS:
-				//		screen->gsets[scstype] = GSET(c) | cs96;
-				//		parsestate = groundtable;
-				//		break;
+					//	case CASE_GSETS:
+					//		screen->gsets[scstype] = GSET(c) | cs96;
+					//		parsestate = groundtable;
+					//		break;
 
-					case CASE_DECSC:
-						/* DECSC */
-						_DecSaveCursor();
-						parsestate = groundtable;
-						break;
+				case CASE_DECSC:
+					/* DECSC */
+					_DecSaveCursor();
+					parsestate = groundtable;
+					break;
 
-					case CASE_DECRC:
-						/* DECRC */
-						_DecRestoreCursor();
-						parsestate = groundtable;
-						break;
+				case CASE_DECRC:
+					/* DECRC */
+					_DecRestoreCursor();
+					parsestate = groundtable;
+					break;
 
-					case CASE_HTS:
-						/* HTS */
-						fBuffer->SetTabStop(fBuffer->Cursor().x);
-						parsestate = groundtable;
-						break;
+				case CASE_HTS:
+					/* HTS */
+					fBuffer->SetTabStop(fBuffer->Cursor().x);
+					parsestate = groundtable;
+					break;
 
-					case CASE_TBC:
-						/* TBC */
-						if (param[0] < 1)
-							fBuffer->ClearTabStop(fBuffer->Cursor().x);
-						else if (param[0] == 3)
-							fBuffer->ClearAllTabStops();
-						parsestate = groundtable;
-						break;
+				case CASE_TBC:
+					/* TBC */
+					if (param[0] < 1)
+						fBuffer->ClearTabStop(fBuffer->Cursor().x);
+					else if (param[0] == 3)
+						fBuffer->ClearAllTabStops();
+					parsestate = groundtable;
+					break;
 
-					case CASE_RI:
-						/* RI */
-						fBuffer->InsertRI();
-						parsestate = groundtable;
-						break;
+				case CASE_RI:
+					/* RI */
+					fBuffer->InsertRI();
+					parsestate = groundtable;
+					break;
 
-					case CASE_SS2:
-						/* SS2 */
-						curess = c;
-						parsestate = groundtable;
-						break;
+				case CASE_SS2:
+					/* SS2 */
+					curess = c;
+					parsestate = groundtable;
+					break;
 
-					case CASE_SS3:
-						/* SS3 */
-						curess = c;
-						parsestate = groundtable;
-						break;
+				case CASE_SS3:
+					/* SS3 */
+					curess = c;
+					parsestate = groundtable;
+					break;
 
-					case CASE_CSI_STATE:
-						/* enter csi state */
-						nparam = 1;
-						param[0] = DEFAULT;
-						parsestate = gCsiTable;
-						break;
+				case CASE_CSI_STATE:
+					/* enter csi state */
+					nparam = 1;
+					param[0] = DEFAULT;
+					parsestate = gCsiTable;
+					break;
 
-					case CASE_OSC:
+				case CASE_OSC:
 					{
 						/* Operating System Command: ESC ] */
 						char string[512];
 						uint32 len = 0;
 						uchar mode_char = _NextParseChar();
 						if (mode_char != '0'
-							&& mode_char != '1'
-							&& mode_char != '2') {
+								&& mode_char != '1'
+								&& mode_char != '2') {
 							parsestate = groundtable;
 							break;
 						}
 						uchar currentChar = _NextParseChar();
 						while ((currentChar = _NextParseChar()) != 0x7) {
 							if (!isprint(currentChar & 0x7f)
-								|| len+2 >= sizeof(string))
+									|| len+2 >= sizeof(string))
 								break;
 							string[len++] = currentChar;
 						}
@@ -945,84 +1053,84 @@ TermParse::EscParse()
 						break;
 					}
 
-					case CASE_RIS:		// ESC c ... Reset terminal.
-						break;
+				case CASE_RIS:		// ESC c ... Reset terminal.
+					break;
 
-					case CASE_LS2:
-						/* LS2 */
-						//      screen->curgl = 2;
-						parsestate = groundtable;
-						break;
+				case CASE_LS2:
+					/* LS2 */
+					//      screen->curgl = 2;
+					parsestate = groundtable;
+					break;
 
-					case CASE_LS3:
-						/* LS3 */
-						//      screen->curgl = 3;
-						parsestate = groundtable;
-						break;
+				case CASE_LS3:
+					/* LS3 */
+					//      screen->curgl = 3;
+					parsestate = groundtable;
+					break;
 
-					case CASE_LS3R:
-						/* LS3R */
-						//      screen->curgr = 3;
-						parsestate = groundtable;
-						break;
+				case CASE_LS3R:
+					/* LS3R */
+					//      screen->curgr = 3;
+					parsestate = groundtable;
+					break;
 
-					case CASE_LS2R:
-						/* LS2R */
-						//      screen->curgr = 2;
-						parsestate = groundtable;
-						break;
+				case CASE_LS2R:
+					/* LS2R */
+					//      screen->curgr = 2;
+					parsestate = groundtable;
+					break;
 
-					case CASE_LS1R:
-						/* LS1R */
-						//      screen->curgr = 1;
-						parsestate = groundtable;
-						break;
+				case CASE_LS1R:
+					/* LS1R */
+					//      screen->curgr = 1;
+					parsestate = groundtable;
+					break;
 
-					case CASE_VPA:		// ESC [...d move cursor absolute vertical
-						/* VPA (CV) */
-						if ((row = param[0]) < 1)
-							row = 1;
+				case CASE_VPA:		// ESC [...d move cursor absolute vertical
+					/* VPA (CV) */
+					if ((row = param[0]) < 1)
+						row = 1;
 
-						// note beterm wants it 1-based unlike usual terminals
-						fBuffer->SetCursorY(row - 1);
-						parsestate = groundtable;
-						break;
+					// note beterm wants it 1-based unlike usual terminals
+					fBuffer->SetCursorY(row - 1);
+					parsestate = groundtable;
+					break;
 
-					case CASE_HPA:		// ESC [...G move cursor absolute horizontal
-						/* HPA (CH) */
-						if ((column = param[0]) < 1)
-							column = 1;
+				case CASE_HPA:		// ESC [...G move cursor absolute horizontal
+					/* HPA (CH) */
+					if ((column = param[0]) < 1)
+						column = 1;
 
-						// note beterm wants it 1-based unlike usual terminals
-						fBuffer->SetCursorX(column - 1);
-						parsestate = groundtable;
-						break;
+					// note beterm wants it 1-based unlike usual terminals
+					fBuffer->SetCursorX(column - 1);
+					parsestate = groundtable;
+					break;
 
-					case CASE_SU:	// scroll screen up
-						if ((row = param[0]) < 1)
-							row = 1;
-						fBuffer->ScrollBy(row);
-						parsestate = groundtable;
-						break;
+				case CASE_SU:	// scroll screen up
+					if ((row = param[0]) < 1)
+						row = 1;
+					fBuffer->ScrollBy(row);
+					parsestate = groundtable;
+					break;
 
-					case CASE_SD:	// scroll screen down
-						if ((row = param[0]) < 1)
-							row = 1;
-						fBuffer->ScrollBy(-row);
-						parsestate = groundtable;
-						break;
+				case CASE_SD:	// scroll screen down
+					if ((row = param[0]) < 1)
+						row = 1;
+					fBuffer->ScrollBy(-row);
+					parsestate = groundtable;
+					break;
 
 
-					case CASE_ECH:	// erase characters
-						if ((column = param[0]) < 1)
-							column = 1;
-						fBuffer->EraseChars(column);
-						parsestate = groundtable;
-						break;
+				case CASE_ECH:	// erase characters
+					if ((column = param[0]) < 1)
+						column = 1;
+					fBuffer->EraseChars(column);
+					parsestate = groundtable;
+					break;
 
-					default:
-						break;
-				}
+				default:
+					break;
+			}
 		} catch (...) {
 			break;
 		}
@@ -1087,10 +1195,10 @@ TermParse::_ReadParserBuffer()
 
 	int32 bufferSize = atomic_add(&fReadBufferSize, -toRead);
 
-  	// If the pty reader thread waits and we have made enough space in the
+	// If the pty reader thread waits and we have made enough space in the
 	// buffer now, let it run again.
 	if (bufferSize > READ_BUF_SIZE - MIN_PTY_BUFFER_SPACE
-		&& bufferSize - toRead <= READ_BUF_SIZE - MIN_PTY_BUFFER_SPACE) {
+			&& bufferSize - toRead <= READ_BUF_SIZE - MIN_PTY_BUFFER_SPACE) {
 		release_sem(fReaderLocker);
 	}
 
@@ -1110,18 +1218,18 @@ TermParse::_DeviceStatusReport(int n)
 
 	switch (n) {
 		case 5:
-		{
-			// Device status report requested
-			// reply with "no malfunction detected"
-			const char* toWrite = "\033[0n";
-			write(fFd, toWrite, strlen(toWrite));
-			break ;
-		}
+			{
+				// Device status report requested
+				// reply with "no malfunction detected"
+				const char* toWrite = "\033[0n";
+				write(fFd, toWrite, strlen(toWrite));
+				break ;
+			}
 		case 6:
 			// Cursor position report requested
 			len = sprintf(sbuf, "\033[%ld;%ldR",
-				fBuffer->Cursor().y + 1,
-				fBuffer->Cursor().x + 1);
+					fBuffer->Cursor().y + 1,
+					fBuffer->Cursor().x + 1);
 			write(fFd, sbuf, len);
 			break ;
 		default:

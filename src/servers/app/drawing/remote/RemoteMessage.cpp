@@ -259,10 +259,15 @@ RemoteMessage::ReadString(char** _string, size_t& _length)
 		return B_NO_MEMORY;
 
 	int32 readSize = fSource->Read(string, length);
-	if (readSize < 0)
+	if (readSize < 0) {
+		free(string);
 		return readSize;
-	if ((uint32)readSize != length)
+	}
+
+	if ((uint32)readSize != length) {
+		free(string);
 		return B_ERROR;
+	}
 
 	fDataLeft -= readSize;
 
@@ -471,8 +476,10 @@ RemoteMessage::ReadGradient(BGradient** _gradient)
 
 	int32 stopCount;
 	status_t result = Read(stopCount);
-	if (result != B_OK)
+	if (result != B_OK) {
+		delete gradient;
 		return result;
+	}
 
 	for (int32 i = 0; i < stopCount; i++) {
 		rgb_color color;

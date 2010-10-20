@@ -77,7 +77,7 @@ All rights reserved.
 
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "InfoWindow"
 
 
 namespace BPrivate {
@@ -431,7 +431,8 @@ BInfoWindow::MessageReceived(BMessage *message)
 		case kEditItem:
 		{
 			BEntry entry(fModel->EntryRef());
-			if (ConfirmChangeIfWellKnownDirectory(&entry, "rename"))
+			if (ConfirmChangeIfWellKnownDirectory(&entry,
+				B_TRANSLATE("rename")))
 				fAttributeView->BeginEditingTitle();
 			break;
 		}
@@ -1220,7 +1221,8 @@ AttributeView::MouseDown(BPoint point)
 	} else if (fTitleRect.Contains(point)) {
 		// You can't change the name of the trash
 		if (!fModel->IsTrash()
-			&& ConfirmChangeIfWellKnownDirectory(&entry, "rename", true)
+			&& ConfirmChangeIfWellKnownDirectory(&entry,
+				B_TRANSLATE("rename"), true)
 			&& fTitleEditView == 0)
 			BeginEditingTitle();
 	} else if (fTitleEditView) {
@@ -1775,7 +1777,7 @@ AttributeView::Draw(BRect)
 		MovePenTo(BPoint(fDivider - (StringWidth(B_TRANSLATE("Link to:"))),
 			lineBase));
 		SetHighColor(kAttrTitleColor);
-		DrawString(B_TRANSLATE("Link To:"));
+		DrawString(B_TRANSLATE("Link to:"));
 		MovePenTo(BPoint(fDivider + kDrawMargin, lineBase));
 		SetHighColor(kLinkColor);
 

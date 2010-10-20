@@ -19,7 +19,6 @@
 #include <Bitmap.h>
 #include <Catalog.h>
 #include <Country.h>
-#include <Locale.h>
 #include <Window.h>
 
 
@@ -90,9 +89,9 @@ LanguageListItem::DrawItem(BView* owner, BRect frame, bool complete)
 		owner->SetHighColor(kBlack);
 	else {
 		owner->SetHighColor(tint_color(owner->LowColor(), B_DARKEN_3_TINT));
-		text += " (";
+		text += "   [";
 		text += B_TRANSLATE("already chosen");
-		text += ")";
+		text += "]";
 	}
 
 	BFont font = be_plain_font;
@@ -104,7 +103,7 @@ LanguageListItem::DrawItem(BView* owner, BRect frame, bool complete)
 		+ (frame.Height() - (finfo.ascent + finfo.descent + finfo.leading)) / 2
 		+ (finfo.ascent + finfo.descent) - 1);
 	owner->DrawString(text.String());
-	
+
 	// Draw the icon
 	frame.left = frame.right - 17;
 	BRect iconFrame(frame);

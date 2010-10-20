@@ -692,6 +692,16 @@ test_ctype(const char* locale, const unsigned short int classInfos[],
 	for (int i = -1; i < 256; ++i) {
 		unsigned short classInfo = determineFullClassInfo(i);
 
+		if (i < 255) {
+			char iAsChar = (char)i;
+			unsigned short classInfoFromChar = determineFullClassInfo(iAsChar);
+
+			if (classInfo != classInfoFromChar) {
+				printf("\tPROBLEM: ctype((int)%d)=%x, but ctype((char)%d)=%x\n",
+					i, classInfo, i, classInfoFromChar);
+				problemCount++;
+			}
+		}
 		if (classInfo != classInfos[i + 1]) {
 			printf("\tPROBLEM: ctype(%d) = %x (expected %x)\n", i, classInfo,
 				classInfos[i + 1]);
@@ -1120,6 +1130,9 @@ test_wctype()
 }
 
 
+// #pragma mark - wctrans ------------------------------------------------------
+
+
 void
 test_wctrans(const char* locale, const wchar_t* text, wctrans_t transition,
 	const wchar_t* expectedResult)
@@ -1209,6 +1222,70 @@ test_wctrans()
 	test_wctrans("de_DE.ISO8859-15", text, toL, textL);
 	test_wctrans("de_DE.UTF-8", text, toL, textL);
 	test_wctrans("fr_Fr", text, toL, textL);
+}
+
+
+// #pragma mark - wcwidth ------------------------------------------------------
+
+
+void
+test_wcwidth()
+{
+	setlocale(LC_ALL, "fr_FR.UTF-8");
+	printf("wcwidth()\n");
+
+	/* many of the following tests have been copied from gnulib */
+
+	int problemCount = 0;
+	int result = 0;
+
+	/* Test width of ASCII characters.  */
+	for (wchar_t wc = 0x20; wc < 0x7F; wc++) {
+		result = wcwidth(wc);
+		if (result != 1) {
+			printf("\tPROBLEM: wcwidth(%x)=%x (expected %x)\n", wc, result, 1);
+			problemCount++;
+		}
+	}
+
+	struct {
+		wchar_t wc;
+		int result;
+	} data[] = {
+		{ 0x0, 0 },
+		{ 0x1, -1 },
+		{ 0x1F, -1 },
+		{ 0x80, -1 },
+		{ 0x9F, -1 },
+		{ 0xA0, 1 },
+		{ 0x0301, 0 },
+		{ 0x05B0, 0 },
+		{ 0x200E, 0 },
+		{ 0x2060, 0 },
+		{ 0xE0001, 0 },
+		{ 0xE0044, 0 },
+		{ 0x200B, 0 },
+		{ 0xFEFF, 0 },
+		{ 0x3000, 2 },
+		{ 0xB250, 2 },
+		{ 0xFF1A, 2 },
+		{ 0x20369, 2 },
+		{ 0x2F876, 2 },
+		{ 0x0, 0 },
+	};
+	for (int i = 0; data[i].wc != 0 || i == 0; i++) {
+		result = wcwidth(data[i].wc);
+		if (result != data[i].result) {
+			printf("\tPROBLEM: wcwidth(%x)=%x (expected %x)\n", data[i].wc,
+				result, data[i].result);
+			problemCount++;
+		}
+	}
+
+	if (problemCount)
+		printf("\t%d problem(s) found!\n", problemCount);
+	else
+		printf("\tall fine\n");
 }
 
 
@@ -1545,6 +1622,396 @@ test_collation()
 }
 
 
+// #pragma mark - time conversion ----------------------------------------------
+
+
+void
+test_localtime(const char* tz, time_t nowSecs, const tm& expected)
+{
+	setenv("TZ", tz, 1);
+	printf("localtime for '%s'\n", tz);
+
+	tm now;
+	tm* result = localtime_r(&nowSecs, &now);
+	int problemCount = 0;
+	if (result == NULL) {
+		printf("\tPROBLEM: localtime(\"%ld\") = NULL\n", nowSecs);
+		problemCount++;
+	}
+	if (now.tm_year != expected.tm_year) {
+		printf("\tPROBLEM: localtime().tm_year = %d (expected %d)\n",
+			now.tm_year, expected.tm_year);
+		problemCount++;
+	}
+	if (now.tm_mon != expected.tm_mon) {
+		printf("\tPROBLEM: localtime().tm_mon = %d (expected %d)\n",
+			now.tm_mon, expected.tm_mon);
+		problemCount++;
+	}
+	if (now.tm_mday != expected.tm_mday) {
+		printf("\tPROBLEM: localtime().tm_mday = %d (expected %d)\n",
+			now.tm_mday, expected.tm_mday);
+		problemCount++;
+	}
+	if (now.tm_hour != expected.tm_hour) {
+		printf("\tPROBLEM: localtime().tm_hour = %d (expected %d)\n",
+			now.tm_hour, expected.tm_hour);
+		problemCount++;
+	}
+	if (now.tm_min != expected.tm_min) {
+		printf("\tPROBLEM: localtime().tm_min = %d (expected %d)\n",
+			now.tm_min, expected.tm_min);
+		problemCount++;
+	}
+	if (now.tm_sec != expected.tm_sec) {
+		printf("\tPROBLEM: localtime().tm_sec = %d (expected %d)\n",
+			now.tm_sec, expected.tm_sec);
+		problemCount++;
+	}
+	if (now.tm_wday != expected.tm_wday) {
+		printf("\tPROBLEM: localtime().tm_wday = %d (expected %d)\n",
+			now.tm_wday, expected.tm_wday);
+		problemCount++;
+	}
+	if (now.tm_yday != expected.tm_yday) {
+		printf("\tPROBLEM: localtime().tm_yday = %d (expected %d)\n",
+			now.tm_yday, expected.tm_yday);
+		problemCount++;
+	}
+	if (now.tm_isdst != expected.tm_isdst) {
+		printf("\tPROBLEM: localtime().tm_isdst = %d (expected %d)\n",
+			now.tm_isdst, expected.tm_isdst);
+		problemCount++;
+	}
+	if (now.tm_gmtoff != expected.tm_gmtoff) {
+		printf("\tPROBLEM: localtime().tm_gmtoff = %d (expected %d)\n",
+			now.tm_gmtoff, expected.tm_gmtoff);
+		problemCount++;
+	}
+	if (strcasecmp(now.tm_zone, expected.tm_zone) != 0) {
+		printf("\tPROBLEM: localtime().tm_zone = '%s' (expected '%s')\n",
+			now.tm_zone, expected.tm_zone);
+		problemCount++;
+	}
+	if (problemCount)
+		printf("\t%d problem(s) found!\n", problemCount);
+	else
+		printf("\tall fine\n");
+}
+
+
+void
+test_gmtime(const char* tz, time_t nowSecs, const tm& expected)
+{
+	setenv("TZ", tz, 1);
+	printf("gmtime for '%s'\n", tz);
+
+	tm now;
+	tm* result = gmtime_r(&nowSecs, &now);
+	int problemCount = 0;
+	if (result == NULL) {
+		printf("\tPROBLEM: localtime(\"%ld\") = NULL\n", nowSecs);
+		problemCount++;
+	}
+	if (now.tm_year != expected.tm_year) {
+		printf("\tPROBLEM: localtime().tm_year = %d (expected %d)\n",
+			now.tm_year, expected.tm_year);
+		problemCount++;
+	}
+	if (now.tm_mon != expected.tm_mon) {
+		printf("\tPROBLEM: localtime().tm_mon = %d (expected %d)\n",
+			now.tm_mon, expected.tm_mon);
+		problemCount++;
+	}
+	if (now.tm_mday != expected.tm_mday) {
+		printf("\tPROBLEM: localtime().tm_mday = %d (expected %d)\n",
+			now.tm_mday, expected.tm_mday);
+		problemCount++;
+	}
+	if (now.tm_hour != expected.tm_hour) {
+		printf("\tPROBLEM: localtime().tm_hour = %d (expected %d)\n",
+			now.tm_hour, expected.tm_hour);
+		problemCount++;
+	}
+	if (now.tm_min != expected.tm_min) {
+		printf("\tPROBLEM: localtime().tm_min = %d (expected %d)\n",
+			now.tm_min, expected.tm_min);
+		problemCount++;
+	}
+	if (now.tm_sec != expected.tm_sec) {
+		printf("\tPROBLEM: localtime().tm_sec = %d (expected %d)\n",
+			now.tm_sec, expected.tm_sec);
+		problemCount++;
+	}
+	if (now.tm_wday != expected.tm_wday) {
+		printf("\tPROBLEM: localtime().tm_wday = %d (expected %d)\n",
+			now.tm_wday, expected.tm_wday);
+		problemCount++;
+	}
+	if (now.tm_yday != expected.tm_yday) {
+		printf("\tPROBLEM: localtime().tm_yday = %d (expected %d)\n",
+			now.tm_yday, expected.tm_yday);
+		problemCount++;
+	}
+	if (now.tm_isdst != expected.tm_isdst) {
+		printf("\tPROBLEM: localtime().tm_isdst = %d (expected %d)\n",
+			now.tm_isdst, expected.tm_isdst);
+		problemCount++;
+	}
+	if (now.tm_gmtoff != expected.tm_gmtoff) {
+		printf("\tPROBLEM: localtime().tm_gmtoff = %d (expected %d)\n",
+			now.tm_gmtoff, expected.tm_gmtoff);
+		problemCount++;
+	}
+	if (strcasecmp(now.tm_zone, expected.tm_zone) != 0) {
+		printf("\tPROBLEM: localtime().tm_zone = '%s' (expected '%s')\n",
+			now.tm_zone, expected.tm_zone);
+		problemCount++;
+	}
+	if (problemCount)
+		printf("\t%d problem(s) found!\n", problemCount);
+	else
+		printf("\tall fine\n");
+}
+
+
+void
+test_mktime(const char* tz, tm& tm, time_t expected, int expectedWeekDay,
+	int expectedYearDay)
+{
+	setenv("TZ", tz, 1);
+	printf("mktime for '%s'\n", tz);
+
+	time_t result = mktime(&tm);
+	int problemCount = 0;
+	if (result != expected) {
+		printf("\tPROBLEM: mktime() = %ld (expected %ld)\n", result, expected);
+		problemCount++;
+	}
+	if (tm.tm_wday != expectedWeekDay) {
+		printf("\tPROBLEM: mktime().tm_wday = %d (expected %d)\n",
+			tm.tm_wday, expectedWeekDay);
+		problemCount++;
+	}
+	if (tm.tm_yday != expectedYearDay) {
+		printf("\tPROBLEM: mktime().tm_yday = %d (expected %d)\n",
+			tm.tm_yday, expectedYearDay);
+		problemCount++;
+	}
+	if (problemCount)
+		printf("\t%d problem(s) found!\n", problemCount);
+	else
+		printf("\tall fine\n");
+}
+
+
+void
+test_timeconversions()
+{
+	setlocale(LC_ALL, "");
+	{
+		time_t testTime = 1279391169;	// Sat Jul 17 18:26:09 GMT 2010
+		tm gtm = {
+			9, 26, 18, 17, 6, 110, 6, 197, 0, 0, (char*)"GMT"
+		};
+		test_localtime("GMT", testTime, gtm);
+		test_gmtime("GMT", testTime, gtm);
+		gtm.tm_wday = -1;
+		gtm.tm_yday = -1;
+		test_mktime("GMT", gtm, testTime, 6, 197);
+		tm btm = {
+			9, 26, 20, 17, 6, 110, 6, 197, 1, 2 * 3600, (char*)"CEST"
+		};
+		test_localtime("Europe/Berlin", testTime, btm);
+		test_gmtime("Europe/Berlin", testTime, gtm);
+		btm.tm_wday = -1;
+		btm.tm_yday = -1;
+		test_mktime("Europe/Berlin", btm, testTime, 6, 197);
+		tm latm = {
+			9, 26, 11, 17, 6, 110, 6, 197, 1, -7 * 3600, (char*)"PDT"
+		};
+		test_localtime("America/Los_Angeles", testTime, latm);
+		test_gmtime("America/Los_Angeles", testTime, gtm);
+		latm.tm_wday = -1;
+		latm.tm_yday = -1;
+		test_mktime("America/Los_Angeles", latm, testTime, 6, 197);
+		tm ttm = {
+			9, 26, 3, 18, 6, 110, 0, 198, 0, 9 * 3600, (char*)"JST"
+		};
+		test_localtime("Asia/Tokyo", testTime, ttm);
+		test_gmtime("Asia/Tokyo", testTime, gtm);
+		ttm.tm_wday = -1;
+		ttm.tm_yday = -1;
+		test_mktime("Asia/Tokyo", ttm, testTime, 0, 198);
+	}
+
+	{
+		time_t testTime = 1268159169;	// Tue Mar 9 18:26:09 GMT 2010
+		tm gtm = {
+			9, 26, 18, 9, 2, 110, 2, 67, 0, 0, (char*)"GMT"
+		};
+		test_localtime("GMT", testTime, gtm);
+		test_gmtime("GMT", testTime, gtm);
+		gtm.tm_wday = -1;
+		gtm.tm_yday = -1;
+		test_mktime("GMT", gtm, testTime, 2, 67);
+		tm btm = {
+			9, 26, 19, 9, 2, 110, 2, 67, 0, 3600, (char*)"CET"
+		};
+		test_localtime("Europe/Berlin", testTime, btm);
+		test_gmtime("Europe/Berlin", testTime, gtm);
+		btm.tm_wday = -1;
+		btm.tm_yday = -1;
+		test_mktime("Europe/Berlin", btm, testTime, 2, 67);
+		tm latm = {
+			9, 26, 10, 9, 2, 110, 2, 67, 0, -8 * 3600, (char*)"PST"
+		};
+		test_localtime("America/Los_Angeles", testTime, latm);
+		test_gmtime("America/Los_Angeles", testTime, gtm);
+		latm.tm_wday = -1;
+		latm.tm_yday = -1;
+		test_mktime("America/Los_Angeles", latm, testTime, 2, 67);
+		tm ttm = {
+			9, 26, 3, 10, 2, 110, 3, 68, 0, 9 * 3600, (char*)"JST"
+		};
+		test_localtime("Asia/Tokyo", testTime, ttm);
+		test_gmtime("Asia/Tokyo", testTime, gtm);
+		ttm.tm_wday = -1;
+		ttm.tm_yday = -1;
+		test_mktime("Asia/Tokyo", ttm, testTime, 3, 68);
+	}
+
+	{
+		time_t testTime = 0;	// Thu Jan 1 00:00:00 GMT 1970
+		tm gtm = {
+			0, 0, 0, 1, 0, 70, 4, 0, 0, 0, (char*)"GMT"
+		};
+		test_localtime("GMT", testTime, gtm);
+		test_gmtime("GMT", testTime, gtm);
+		gtm.tm_wday = -1;
+		gtm.tm_yday = -1;
+		test_mktime("GMT", gtm, testTime, 4, 0);
+		tm btm = {
+			0, 0, 1, 1, 0, 70, 4, 0, 0, 1 * 3600, (char*)"CET"
+		};
+		test_localtime("Europe/Berlin", testTime, btm);
+		test_gmtime("Europe/Berlin", testTime, gtm);
+		btm.tm_wday = -1;
+		btm.tm_yday = -1;
+		test_mktime("Europe/Berlin", btm, testTime, 4, 0);
+		tm latm = {
+			0, 0, 16, 31, 11, 69, 3, 364, 0, -8 * 3600, (char*)"PST"
+		};
+		test_localtime("America/Los_Angeles", testTime, latm);
+		test_gmtime("America/Los_Angeles", testTime, gtm);
+		latm.tm_wday = -1;
+		latm.tm_yday = -1;
+		test_mktime("America/Los_Angeles", latm, testTime, 3, 364);
+		tm ttm = {
+			0, 0, 9, 1, 0, 70, 4, 0, 0, 9 * 3600, (char*)"JST"
+		};
+		test_localtime("Asia/Tokyo", testTime, ttm);
+		test_gmtime("Asia/Tokyo", testTime, gtm);
+		ttm.tm_wday = -1;
+		ttm.tm_yday = -1;
+		test_mktime("Asia/Tokyo", ttm, testTime, 4, 0);
+	}
+}
+
+
+// #pragma mark - printf -------------------------------------------------------
+
+
+struct sprintf_data {
+	const char* format;
+	double value;
+	const char* result;
+};
+
+
+void
+test_sprintf(const char* locale, const sprintf_data data[])
+{
+	setlocale(LC_ALL, locale);
+	printf("sprintf for '%s'\n", locale);
+
+	int problemCount = 0;
+	for(int i = 0; data[i].format != NULL; ++i) {
+		char buf[100];
+		if (strchr(data[i].format, 'd') != NULL)
+			sprintf(buf, data[i].format, (int)data[i].value);
+		else if (strchr(data[i].format, 'f') != NULL)
+			sprintf(buf, data[i].format, data[i].value);
+		if (strcmp(buf, data[i].result) != 0) {
+			printf("\tPROBLEM: sprintf(\"%s\") = \"%s\" (expected \"%s\")\n",
+				data[i].format, buf, data[i].result);
+			problemCount++;
+		}
+	}
+	if (problemCount)
+		printf("\t%d problem(s) found!\n", problemCount);
+	else
+		printf("\tall fine\n");
+}
+
+
+void
+test_sprintf()
+{
+	const sprintf_data sprintf_posix[] = {
+		{ "%d", 123, "123" },
+		{ "%d", -123, "-123" },
+		{ "%d", 123456, "123456" },
+		{ "%'d", 123456, "123456" },
+		{ "%f", 123, "123.000000" },
+		{ "%f", -123, "-123.000000" },
+		{ "%.2f", 123456.789, "123456.79" },
+		{ "%'.2f", 123456.789, "123456.79" },
+		{ NULL, 0.0, NULL }
+	};
+	test_sprintf("POSIX", sprintf_posix);
+
+	const sprintf_data sprintf_de[] = {
+		{ "%d", 123, "123" },
+		{ "%d", -123, "-123" },
+		{ "%d", 123456, "123456" },
+		{ "%'d", 123456, "123.456" },
+		{ "%f", 123, "123,000000" },
+		{ "%f", -123, "-123,000000" },
+		{ "%.2f", 123456.789, "123456,79" },
+		{ "%'.2f", 123456.789, "123.456,79" },
+		{ NULL, 0.0, NULL }
+	};
+	test_sprintf("de_DE.UTF-8", sprintf_de);
+
+	const sprintf_data sprintf_gu[] = {
+		{ "%d", 123, "123" },
+		{ "%d", -123, "-123" },
+		{ "%d", 123456, "123456" },
+		{ "%'d", 123456, "123,456" },
+		{ "%f", 123, "123.000000" },
+		{ "%f", -123, "-123.000000" },
+		{ "%.2f", 123456.789, "123456.79" },
+		{ "%'.2f", 123456.789, "1,23,456.79" },
+		{ NULL, 0.0, NULL }
+	};
+	test_sprintf("gu_IN", sprintf_gu);
+
+	const sprintf_data sprintf_nb[] = {
+		{ "%d", 123, "123" },
+		{ "%d", -123, "-123" },
+		{ "%d", 123456, "123456" },
+		{ "%'d", 123456, "123 456" },
+		{ "%f", 123, "123,000000" },
+		{ "%f", -123, "-123,000000" },
+		{ "%.2f", 123456.789, "123456,79" },
+		{ "%'.2f", 123456.789, "123 456,79" },
+		{ NULL, 0.0, NULL }
+	};
+	test_sprintf("nb_NO", sprintf_nb);
+}
+
+
 // #pragma mark - main ---------------------------------------------------------
 
 
@@ -1561,8 +2028,11 @@ main(void)
 	test_ctype();
 	test_wctype();
 	test_wctrans();
+	test_wcwidth();
 	test_langinfo();
 	test_collation();
+	test_timeconversions();
+	test_sprintf();
 
 	return 0;
 }

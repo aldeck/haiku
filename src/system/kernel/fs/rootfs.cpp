@@ -1174,6 +1174,7 @@ fs_vnode_ops sVnodeOps = {
 	NULL,	// fs_access()
 	&rootfs_read_stat,
 	&rootfs_write_stat,
+	NULL,
 
 	/* file */
 	&rootfs_create,

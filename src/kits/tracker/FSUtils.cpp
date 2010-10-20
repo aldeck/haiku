@@ -102,7 +102,7 @@ enum ConflictCheckResult {
 namespace BPrivate {
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "FSUtils"
 
 static status_t FSDeleteFolder(BEntry *, CopyLoopControl *, bool updateStatus,
 	bool deleteTopDir = true, bool upateFileNameInStatus = false);
@@ -1493,8 +1493,8 @@ CopyFolder(BEntry *srcEntry, BDirectory *destDir, CopyLoopControl *loopControl,
 
 			// entry is a mount point, do not copy it
 			if (statbuf.st_dev != sourceDeviceID) {
-				PRINT(("Avoiding mount point %d, %d	\n", statbuf.st_dev,
-					sourceDeviceID));
+				PRINT(("Avoiding mount point %" B_PRIdDEV ", %" B_PRIdDEV "\n",
+					statbuf.st_dev, sourceDeviceID));
 				continue;
 			}
 
@@ -1988,8 +1988,9 @@ FileStatToString(StatStruct *stat, char *buffer, int32 length)
 	tm timeData;
 	localtime_r(&stat->st_mtime, &timeData);
 
-	sprintf(buffer, "\n\t(%Ld bytes, ", stat->st_size);
-	uint32 pos = strlen(buffer);
+
+	uint32 pos = sprintf(buffer,
+		B_TRANSLATE("\n\t(%Ld bytes, "), stat->st_size);
 	strftime(buffer + pos, length - pos,"%b %d %Y, %I:%M:%S %p)", &timeData);
 }
 

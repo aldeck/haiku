@@ -10,7 +10,6 @@
 #include "TermApp.h"
 
 #include <errno.h>
-#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +19,8 @@
 #include <Catalog.h>
 #include <Clipboard.h>
 #include <Catalog.h>
+#include <FindDirectory.h>
+#include <InterfaceDefs.h>
 #include <Locale.h>
 #include <NodeInfo.h>
 #include <Path.h>
@@ -39,7 +40,6 @@
 static bool sUsageRequested = false;
 //static bool sGeometryRequested = false;
 
-const char *kDefaultShell = "/bin/bash";
 const ulong MSG_ACTIVATE_TERM = 'msat';
 const ulong MSG_TERM_WINDOW_INFO = 'mtwi';
 
@@ -63,19 +63,8 @@ TermApp::TermApp()
 	fTermWindow(NULL),
 	fArgs(NULL)
 {
-	const char *defaultArgs[2];
-	defaultArgs[0] = kDefaultShell;
-	defaultArgs[1] = "--login";
 
-	struct passwd passwdStruct;
-	struct passwd *passwdResult;
-	char stringBuffer[256];
-	if (!getpwuid_r(getuid(), &passwdStruct, stringBuffer,
-			sizeof(stringBuffer), &passwdResult)) {
-		defaultArgs[0] = passwdStruct.pw_shell;
-	}
-
-	fArgs = new Arguments(2, defaultArgs);
+	fArgs = new Arguments(0, NULL);
 
 	fWindowTitle = B_TRANSLATE("Terminal");
 	_RegisterTerminal();
@@ -83,12 +72,15 @@ TermApp::TermApp()
 	if (fWindowNumber > 0)
 		fWindowTitle << " " << fWindowNumber;
 
-	int i = fWindowNumber / 16;
-	int j = fWindowNumber % 16;
-	int k = (j * 16) + (i * 64) + 50;
-	int l = (j * 16)  + 50;
+	if (_LoadWindowPosition(&fTermFrame, &fTermWorkspaces) != B_OK) {
+		int i = fWindowNumber / 16;
+		int j = fWindowNumber % 16;
+		int k = (j * 16) + (i * 64) + 50;
+		int l = (j * 16)  + 50;
 
-	fTermFrame.Set(k, l, k + 50, k + 50);
+		fTermFrame.Set(k, l, k + 50, k + 50);
+		fTermWorkspaces = B_CURRENT_WORKSPACE;
+	}
 }
 
 
@@ -127,7 +119,7 @@ TermApp::ReadyToRun()
 	// init the mouse copy'n'paste clipboard
 	gMouseClipboard = new BClipboard(MOUSE_CLIPBOARD_NAME, true);
 
-	status_t status = _MakeTermWindow(fTermFrame);
+	status_t status = _MakeTermWindow(fTermFrame, fTermWorkspaces);
 
 	// failed spawn, print stdout and open alert panel
 	// TODO: This alert does never show up.
@@ -183,6 +175,10 @@ TermApp::MessageReceived(BMessage* msg)
 			msg->SendReply(&reply);
 			break;
 		}
+
+		case MSG_SAVE_WINDOW_POSITION:
+			_SaveWindowPosition(msg);
+			break;
 
 		case MSG_CHECK_CHILDREN:
 			_HandleChildCleanup();
@@ -252,10 +248,102 @@ TermApp::RefsReceived(BMessage* message)
 
 
 status_t
-TermApp::_MakeTermWindow(BRect &frame)
+TermApp::_GetWindowPositionFile(BFile* file, uint32 openMode)
+{
+	BPath path;
+	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path, true);
+	if (status != B_OK)
+		return status;
+
+	status = path.Append("Terminal_windows");
+	if (status != B_OK)
+		return status;
+
+	return file->SetTo(path.Path(), openMode);
+}
+
+
+status_t
+TermApp::_LoadWindowPosition(BRect* frame, uint32* workspaces)
+{
+	status_t status;
+	BMessage position;
+
+	BFile file;
+	status = _GetWindowPositionFile(&file, B_READ_ONLY);
+	if (status != B_OK)
+		return status;
+
+	status = position.Unflatten(&file);
+
+	file.Unset();
+
+	if (status != B_OK)
+		return status;
+
+	status = position.FindRect("rect", fWindowNumber - 1, frame);
+	if (status != B_OK)
+		return status;
+
+	int32 _workspaces;
+	status = position.FindInt32("workspaces", fWindowNumber - 1, &_workspaces);
+	if (status != B_OK)
+		return status;
+	if (modifiers() & B_SHIFT_KEY)
+		*workspaces = _workspaces;
+	else
+		*workspaces = B_CURRENT_WORKSPACE;
+
+	return B_OK;
+}
+
+
+status_t
+TermApp::_SaveWindowPosition(BMessage* position)
+{
+	BFile file;
+	BMessage originalSettings;
+
+	// We append ourself to the existing settings file
+	// So we have to read it, insert our BMessage, and rewrite it.
+
+	status_t status = _GetWindowPositionFile(&file, B_READ_ONLY);
+	if (status == B_OK) {
+		originalSettings.Unflatten(&file);
+			// No error checking on that : it fails if the settings
+			// file is missing, but we can create it.
+
+		file.Unset();
+	}
+
+	// Append the new settings
+	BRect rect;
+	position->FindRect("rect", &rect);
+	if (originalSettings.ReplaceRect("rect", fWindowNumber - 1, rect) != B_OK)
+		originalSettings.AddRect("rect", rect);
+
+	int32 workspaces;
+	position->FindInt32("workspaces", &workspaces);
+	if (originalSettings.ReplaceInt32("workspaces", fWindowNumber - 1, workspaces)
+			!= B_OK)
+		originalSettings.AddInt32("workspaces", workspaces);
+
+	// Resave the whole thing
+	status = _GetWindowPositionFile (&file,
+		B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (status != B_OK)
+		return status;
+
+	return originalSettings.Flatten(&file);
+}
+
+
+status_t
+TermApp::_MakeTermWindow(BRect &frame, uint32 workspaces)
 {
 	try {
-		fTermWindow = new TermWindow(frame, fWindowTitle.String(), fArgs);
+		fTermWindow = new TermWindow(frame, fWindowTitle.String(), workspaces,
+			fArgs);
 	} catch (int error) {
 		return (status_t)error;
 	} catch (...) {

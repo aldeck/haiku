@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <Cursor.h>
 #include <InterfaceKit.h>
 #include <FindDirectory.h>
 
@@ -433,6 +434,9 @@ ObjectView::MouseDown(BPoint point)
 
 			SetMouseEventMask(B_POINTER_EVENTS,
 						B_LOCK_WINDOW_FOCUS | B_NO_POINTER_HISTORY);
+
+			BCursor grabbingCursor(B_CURSOR_ID_GRABBING);
+			SetViewCursor(&grabbingCursor);
 		} else {
 			ConvertToScreen(&point);
 			object->MenuInvoked(point);
@@ -465,6 +469,9 @@ ObjectView::MouseUp(BPoint point)
 		fTrackingInfo.lastY = 0.0f;
 		fTrackingInfo.lastDx = 0.0f;
 		fTrackingInfo.lastDy = 0.0f;
+
+		BCursor grabCursor(B_CURSOR_ID_GRAB);
+		SetViewCursor(&grabCursor);
 	}
 }
 
@@ -509,6 +516,11 @@ ObjectView::MouseMoved(BPoint point, uint32 transit, const BMessage *msg)
 			fForceRedraw = true;
 			setEvent(drawEvent);
 		}
+	} else {
+		void* object = fObjects.ItemAt(ObjectAtPoint(point));
+		BCursor cursor(object != NULL
+			? B_CURSOR_ID_GRAB : B_CURSOR_ID_SYSTEM_DEFAULT);
+		SetViewCursor(&cursor);
 	}
 }
 

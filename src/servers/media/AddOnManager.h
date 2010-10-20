@@ -54,8 +54,10 @@ public:
 									media_format* _outputFormat, int32 cookie);
 
 private:
-			status_t			_RegisterAddOn(BEntry& entry);
 			void				_RegisterAddOns();
+
+			status_t			_RegisterAddOn(const entry_ref& ref);
+			status_t			_UnregisterAddOn(const entry_ref& ref);
 
 			void				_RegisterReader(ReaderPlugin* reader,
 									const entry_ref& ref);
@@ -66,6 +68,13 @@ private:
 									const entry_ref& ref);
 			void				_RegisterEncoder(EncoderPlugin* encoder,
 									const entry_ref& ref);
+
+			bool				_FindDecoder(const media_format& format,
+									const BPath& path,
+									xfer_entry_ref* _decoderRef);
+			void				_GetReaders(const BPath& path,
+									xfer_entry_ref* outRefs, int32* outCount,
+									int32 maxCount);
 
 private:
 			struct reader_info {
@@ -99,7 +108,7 @@ private:
 			uint32				fNextWriterFormatFamilyID;
 			uint32				fNextEncoderCodecInfoID;
 
-			AddOnMonitorHandler* fHandler;
+			AddOnMonitorHandler* fAddOnMonitorHandler;
 			AddOnMonitor*		fAddOnMonitor;
 };
 

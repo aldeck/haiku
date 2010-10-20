@@ -13,6 +13,7 @@
 
 
 class BBitmap;
+class BLanguage;
 class BMessage;
 
 namespace icu_44 {
@@ -26,17 +27,6 @@ enum {
 	B_US
 };
 
-typedef enum {
-	B_DATE_ELEMENT_INVALID = B_BAD_DATA,
-	B_DATE_ELEMENT_YEAR = 0,
-	B_DATE_ELEMENT_MONTH,
-	B_DATE_ELEMENT_DAY,
-	B_DATE_ELEMENT_AM_PM,
-	B_DATE_ELEMENT_HOUR,
-	B_DATE_ELEMENT_MINUTE,
-	B_DATE_ELEMENT_SECOND
-} BDateElement;
-
 
 class BCountry {
 public:
@@ -48,21 +38,25 @@ public:
 								BCountry& operator=(const BCountry& other);
 								~BCountry();
 
-			bool				GetName(BString& name) const;
+			status_t			GetNativeName(BString& name) const;
+			status_t			GetName(BString& name,
+									const BLanguage* displayLanguage = NULL
+									) const;
+
 			const char*			Code() const;
 			status_t			GetIcon(BBitmap* result) const;
 
 			const char*			GetLocalizedString(uint32 id) const;
 
-								// measurements
+			status_t			GetAvailableTimeZones(
+									BMessage* timeZones) const;
 
 			int8				Measurement() const;
 
-								// timezones
-
-			int					GetTimeZones(BList& timezones) const;
-
+			class Private;
 private:
+	friend	class Private;
+
 			icu_44::Locale*		fICULocale;
 };
 

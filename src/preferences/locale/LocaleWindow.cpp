@@ -5,9 +5,7 @@
  */
 
 
-#include "Locale.h"
 #include "LocaleWindow.h"
-#include "LanguageListView.h"
 
 #include <iostream>
 
@@ -27,6 +25,11 @@
 #include <UnicodeChar.h>
 
 #include "FormatSettingsView.h"
+#include "LocalePreflet.h"
+#include "LanguageListView.h"
+
+
+#include <stdio.h>
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -73,12 +76,10 @@ compare_void_list_items(const void* _a, const void* _b)
 
 LocaleWindow::LocaleWindow()
 	:
-	BWindow(BRect(0, 0, 0, 0), "Locale", B_TITLED_WINDOW, B_QUIT_ON_WINDOW_CLOSE
-		| B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS)
+	BWindow(BRect(0, 0, 0, 0), B_TRANSLATE("Locale"), B_TITLED_WINDOW,
+		B_QUIT_ON_WINDOW_CLOSE | B_ASYNCHRONOUS_CONTROLS
+			| B_AUTO_UPDATE_SIZE_LIMITS)
 {
-	BLocale defaultLocale;
-	be_locale_roster->GetDefaultLocale(&defaultLocale);
-
 	SetLayout(new BGroupLayout(B_HORIZONTAL));
 
 	float spacing = be_control_look->DefaultItemSpacing();
@@ -96,48 +97,48 @@ LocaleWindow::LocaleWindow()
 	fLanguageListView->SetInvocationMessage(new BMessage(kMsgLanguageInvoked));
 	fLanguageListView->SetDragMessage(new BMessage(kMsgLanguageDragged));
 
+	BFont font;
+	fLanguageListView->GetFont(&font);
+
 	// Fill the language list from the LocaleRoster data
 	BMessage installedLanguages;
-	if (be_locale_roster->GetInstalledLanguages(&installedLanguages) == B_OK) {
+	if (be_locale_roster->GetAvailableLanguages(&installedLanguages) == B_OK) {
 		BString currentID;
 		LanguageListItem* lastAddedCountryItem = NULL;
 
-		for (int i = 0; installedLanguages.FindString("langs", i, &currentID)
+		for (int i = 0; installedLanguages.FindString("language", i, &currentID)
 				== B_OK; i++) {
-			// Now get an human-readable, localized name for each language
-			BLanguage* currentLanguage;
-			be_locale_roster->GetLanguage(currentID.String(),
-				&currentLanguage);
-
+			// Now get the human-readable, native name for each language
 			BString name;
-			currentLanguage->GetName(name);
+			BLanguage currentLanguage(currentID.String());
+			currentLanguage.GetNativeName(name);
 
-			// TODO: as long as the app_server doesn't support font overlays,
-			// use the translated name if problematic characters are used...
-			const char* string = name.String();
-			while (uint32 code = BUnicodeChar::FromUTF8(&string)) {
-				if (code > 1424) {
-					currentLanguage->GetTranslatedName(name);
+			// TODO: the following block fails to detect a couple of language
+			// names as containing glyphs we can't render. Why's that?
+			bool hasGlyphs[name.CountChars()];
+			font.GetHasGlyphs(name.String(), name.CountChars(), hasGlyphs);
+			for (int32 i = 0; i < name.CountChars(); ++i) {
+				if (!hasGlyphs[i]) {
+					// replace by name translated to current language
+					currentLanguage.GetName(name);
 					break;
 				}
 			}
 
 			LanguageListItem* item = new LanguageListItem(name,
-				currentID.String(), currentLanguage->Code());
-			if (currentLanguage->IsCountrySpecific()
+				currentID.String(), currentLanguage.Code());
+			if (currentLanguage.IsCountrySpecific()
 				&& lastAddedCountryItem != NULL
 				&& lastAddedCountryItem->Code() == item->Code()) {
 				fLanguageListView->AddUnder(item, lastAddedCountryItem);
 			} else {
 				// This is a language variant, add it at top-level
 				fLanguageListView->AddItem(item);
-				if (!currentLanguage->IsCountrySpecific()) {
+				if (!currentLanguage.IsCountrySpecific()) {
 					item->SetExpanded(false);
 					lastAddedCountryItem = item;
 				}
 			}
-
-			delete currentLanguage;
 		}
 
 		fLanguageListView->FullListSortItems(compare_typed_list_items);
@@ -174,32 +175,31 @@ LocaleWindow::LocaleWindow()
 			.End()
 		.SetInsets(spacing, spacing, spacing, spacing);
 
-	BView* countryTab = new BView(B_TRANSLATE("Country"), B_WILL_DRAW);
+	BView* countryTab = new BView(B_TRANSLATE("Formatting"), B_WILL_DRAW);
 	countryTab->SetLayout(new BGroupLayout(B_VERTICAL, 0));
 
-	BListView* listView = new BListView("country", B_SINGLE_SELECTION_LIST);
+	BListView* listView = new BListView("formatting", B_SINGLE_SELECTION_LIST);
 	scrollView = new BScrollView("scroller", listView,
 		B_WILL_DRAW | B_FRAME_EVENTS, false, true);
 	listView->SetSelectionMessage(new BMessage(kMsgCountrySelection));
 
-	// get all available countries
-	BMessage countryList;
-	be_locale_roster->GetInstalledLanguages(&countryList);
-	BString countryCode;
-
+	// get all available formatting conventions (by language)
+	BString formattingConventionCode;
 	LanguageListItem* currentItem = NULL;
-	for (int i = 0; countryList.FindString("langs", i, &countryCode) == B_OK;
-			i++) {
-		BLocale locale(countryCode);
-		BString countryName;
+	BCountry defaultFormattingConvention;
+	be_locale->GetCountry(&defaultFormattingConvention);
+	for (int i = 0;
+		installedLanguages.FindString("language", i, &formattingConventionCode)
+			== B_OK; i++) {
+		BCountry formattingConvention(formattingConventionCode);
+		BString formattingConventionName;
+		formattingConvention.GetName(formattingConventionName);
 
-		locale.GetName(countryName);
-
-		LanguageListItem* item
-			= new LanguageListItem(countryName, countryCode,
-				NULL);
+		LanguageListItem* item = new LanguageListItem(formattingConventionName,
+			formattingConventionCode, NULL);
 		listView->AddItem(item);
-		if (!strcmp(countryCode, defaultLocale.Code()))
+		if (!strcmp(formattingConventionCode,
+				defaultFormattingConvention.Code()))
 			currentItem = item;
 	}
 
@@ -211,7 +211,7 @@ LocaleWindow::LocaleWindow()
 	listView->SetExplicitMinSize(
 		BSize(25 * be_plain_font->Size(), B_SIZE_UNSET));
 
-	fFormatView = new FormatView(defaultLocale);
+	fFormatView = new FormatView(*be_locale);
 
 	countryTab->AddChild(BLayoutBuilder::Group<>(B_HORIZONTAL, spacing)
 		.AddGroup(B_VERTICAL, 3)
@@ -360,7 +360,8 @@ LocaleWindow::MessageReceived(BMessage* message)
 			be_app_messenger.SendMessage(&newMessage);
 			SettingsChanged();
 
-			BLocale locale(item->ID());
+			BCountry country(item->ID());
+			BLocale locale(NULL, &country);
 			fFormatView->SetLocale(locale);
 			break;
 		}

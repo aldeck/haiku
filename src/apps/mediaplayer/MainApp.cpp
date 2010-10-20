@@ -247,7 +247,6 @@ MainApp::ArgvReceived(int32 argc, char** argv)
 	BMessage message(B_REFS_RECEIVED);
 
 	for (int i = 1; i < argc; i++) {
-		printf("MainApp::ArgvReceived %s\n", argv[i]);
 		BPath path;
 		if (argv[i][0] != '/')
 			path.SetTo(cwd, argv[i]);
@@ -262,10 +261,8 @@ MainApp::ArgvReceived(int32 argc, char** argv)
 			message.AddRef("refs", &ref);
 	}
 
-	if (message.HasRef("refs")) {
-		printf("MainApp::ArgvReceived calling RefsReceived\n");
+	if (message.HasRef("refs"))
 		RefsReceived(&message);
-	}
 }
 
 
@@ -273,6 +270,13 @@ void
 MainApp::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case M_NEW_PLAYER:
+		{
+			MainWin* window = NewWindow();
+			if (window != NULL)
+				window->Show();
+			break;
+		}
 		case M_PLAYER_QUIT:
 		{
 			// store the window settings of this instance

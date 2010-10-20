@@ -10,7 +10,6 @@
 #ifndef MAIN_WINDOW_H
 #define MAIN_WINDOW_H
 
-
 #include <Window.h>
 
 
@@ -18,8 +17,6 @@ class BVolume;
 class ControlsView;
 struct FileInfo;
 class PieView;
-class StatusView;
-
 
 class MainWindow: public BWindow {
 public:
@@ -29,15 +26,14 @@ public:
 	virtual	void				MessageReceived(BMessage* message);
 	virtual	bool				QuitRequested();
 
-			void				ShowInfo(const FileInfo* info);
 			void				SetRescanEnabled(bool enabled);
 			BVolume*			FindDeviceFor(dev_t device,
 									bool invoke = false);
 
+			void				ShowInfo(const FileInfo* info);
+
 private:
 			ControlsView*		fControlsView;
-			PieView*			fPieView;
-			StatusView*			fStatusView;
 };
 
 #endif // MAIN_WINDOW_H

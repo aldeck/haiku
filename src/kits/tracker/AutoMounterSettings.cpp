@@ -39,14 +39,14 @@ All rights reserved.
 #include <Button.h>
 #include <Catalog.h>
 #include <CheckBox.h>
+#include <ControlLook.h>
 #include <Debug.h>
-#include <GridLayoutBuilder.h>
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <Locale.h>
-#include <SpaceLayoutItem.h>
-#include <SeparatorView.h>
 #include <Message.h>
 #include <RadioButton.h>
+#include <SeparatorView.h>
+#include <SpaceLayoutItem.h>
 #include <Window.h>
 
 #include <MountServer.h>
@@ -57,7 +57,7 @@ const uint32 kBootMountSettingsChanged = 'bchg';
 const uint32 kEjectWhenUnmountingChanged = 'ejct';
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "AutoMounterSettings"
 
 class AutomountSettingsPanel : public BBox {
 public:
@@ -101,17 +101,17 @@ AutomountSettingsPanel::AutomountSettingsPanel(BMessage* settings,
 	BBox("", B_WILL_DRAW | B_FRAME_EVENTS | B_NAVIGABLE_JUMP, B_NO_BORDER),
 	fTarget(target)
 {
-	const float spacing = 8;
+	const float spacing = be_control_look->DefaultItemSpacing();
 
 	// "Automatic Disk Mounting" group
 
 	BBox* autoMountBox = new BBox("autoMountBox", B_WILL_DRAW | B_FRAME_EVENTS
 		| B_PULSE_NEEDED | B_NAVIGABLE_JUMP);
 	autoMountBox->SetLabel(B_TRANSLATE("Automatic disk mounting"));
-	BGroupLayout* autoMountLayout = new BGroupLayout(B_VERTICAL, spacing);
+	BGroupLayout* autoMountLayout = new BGroupLayout(B_VERTICAL, 0);
 	autoMountBox->SetLayout(autoMountLayout);
 	autoMountLayout->SetInsets(spacing,
-		autoMountBox->InnerFrame().top + spacing, spacing, spacing);
+		autoMountBox->InnerFrame().top + spacing / 2, spacing, spacing);
 
 	fScanningDisabledCheck = new BRadioButton("scanningOff",
 		B_TRANSLATE("Don't automount"),
@@ -128,10 +128,10 @@ AutomountSettingsPanel::AutomountSettingsPanel(BMessage* settings,
 	BBox* bootMountBox = new BBox("", B_WILL_DRAW | B_FRAME_EVENTS
 		| B_PULSE_NEEDED | B_NAVIGABLE_JUMP);
 	bootMountBox->SetLabel(B_TRANSLATE("Disk mounting during boot"));
-	BGroupLayout* bootMountLayout = new BGroupLayout(B_VERTICAL, spacing);
+	BGroupLayout* bootMountLayout = new BGroupLayout(B_VERTICAL, 0);
 	bootMountBox->SetLayout(bootMountLayout);
 	bootMountLayout->SetInsets(spacing,
-		bootMountBox->InnerFrame().top + spacing, spacing, spacing);
+		bootMountBox->InnerFrame().top + spacing / 2, spacing, spacing);
 
 	fInitialDontMountCheck = new BRadioButton("initialNone",
 		B_TRANSLATE("Only the boot disk"),
@@ -162,34 +162,33 @@ AutomountSettingsPanel::AutomountSettingsPanel(BMessage* settings,
 	fDone->MakeDefault(true);
 
 	// Layout the controls
-	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0)
-		.Add(BGroupLayoutBuilder(B_VERTICAL, spacing)
-			.Add(BGroupLayoutBuilder(autoMountLayout)
+	BGroupView* contentView = new BGroupView(B_VERTICAL, 0);
+	AddChild(contentView);
+	BLayoutBuilder::Group<>(contentView)
+		.AddGroup(B_VERTICAL, spacing)
+			.SetInsets(spacing, spacing, spacing, spacing)
+			.AddGroup(autoMountLayout)
 				.Add(fScanningDisabledCheck)
 				.Add(fAutoMountAllBFSCheck)
 				.Add(fAutoMountAllCheck)
-			)
-			.Add(BGroupLayoutBuilder(bootMountLayout)
+				.End()
+			.AddGroup(bootMountLayout)
 				.Add(fInitialDontMountCheck)
 				.Add(fInitialMountRestoreCheck)
 				.Add(fInitialMountAllBFSCheck)
 				.Add(fInitialMountAllCheck)
-			)
-			.Add(BGroupLayoutBuilder(B_HORIZONTAL)
-				.Add(BSpaceLayoutItem::CreateHorizontalStrut(spacing - 1))
+				.End()
+			.AddGroup(B_HORIZONTAL)
+				.AddStrut(spacing - 1)
 				.Add(fEjectWhenUnmountingCheckBox)
-			)
-			.SetInsets(spacing, spacing, spacing, spacing)
-		)
+				.End()
+			.End()
 		.Add(new BSeparatorView(B_HORIZONTAL/*, B_FANCY_BORDER*/))
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL, spacing)
+		.AddGroup(B_HORIZONTAL, spacing)
+			.SetInsets(0, spacing, spacing, spacing)
 			.AddGlue()
 			.Add(fMountAllNow)
-			.Add(fDone)
-			.SetInsets(spacing, spacing, spacing, spacing)
-		)
-	);
-
+			.Add(fDone);
 
 	// Apply the settings
 
@@ -335,7 +334,7 @@ AutomountSettingsDialog::RunAutomountSettings(const BMessenger& target)
 	status_t ret = target.SendMessage(&message, &reply, 2500000);
 	if (ret != B_OK) {
 		(new BAlert(B_TRANSLATE("Mount server error"),
-			B_TRANSLATE("The mount server could not be  contacted."),
+			B_TRANSLATE("The mount server could not be contacted."),
 			B_TRANSLATE("OK"),
 			NULL, NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go();
 		return;

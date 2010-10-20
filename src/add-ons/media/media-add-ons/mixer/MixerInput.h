@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2009 Haiku Inc. All rights reserved.
+ * Copyright 2003-2010 Haiku Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -29,8 +29,11 @@ public:
 								~MixerInput();
 
 			int32				ID();
-			void				BufferReceived(BBuffer* buffer);
 			media_input&		MediaInput();
+
+			void				BufferReceived(BBuffer* buffer);
+
+			void				UpdateResamplingAlgorithm();
 
 	// The physical input channels
 			int					GetInputChannelCount();
@@ -73,8 +76,8 @@ protected:
 									int32 frames);
 
 private:
-			void				UpdateInputChannelDestinationMask();
-			void				UpdateInputChannelDestinations();
+			void				_UpdateInputChannelDestinationMask();
+			void				_UpdateInputChannelDestinations();
 
 	struct input_chan_info {
 		float*					buffer_base;
@@ -120,32 +123,47 @@ MixerInput::GetMixerChannelCount()
 
 
 inline bool
-MixerInput::GetMixerChannelInfo(int mixer_channel, int64 framepos,
-	bigtime_t time, const float **buffer, uint32 *sample_offset, int *type,
-	float *gain)
+MixerInput::GetMixerChannelInfo(int mixerChannel, int64 framepos,
+	bigtime_t time, const float** buffer, uint32* sampleOffset, int* type,
+	float* gain)
 {
 	// this function should not be called if we don't have a mix buffer!
-	ASSERT(fMixBuffer);
-	ASSERT(mixer_channel >= 0 && mixer_channel < fMixerChannelCount);
+	ASSERT(fMixBuffer != NULL);
+	ASSERT(mixerChannel >= 0 && mixerChannel < fMixerChannelCount);
 	if (!fEnabled)
 		return false;
 
-#if 1
-	if (time < (fLastDataAvailableTime - duration_for_frames(fMixBufferFrameRate, fMixBufferFrameCount))
-		|| (time + duration_for_frames(fMixBufferFrameRate, fDebugMixBufferFrames)) >= fLastDataAvailableTime)
-		ERROR("MixerInput::GetMixerChannelInfo: reading wrong data, have %Ld to %Ld, reading from %Ld to %Ld\n",
-				fLastDataAvailableTime - duration_for_frames(fMixBufferFrameRate, fMixBufferFrameCount), fLastDataAvailableTime, time, time + duration_for_frames(fMixBufferFrameRate, fDebugMixBufferFrames));
+#if DEBUG
+	if (time < (fLastDataAvailableTime - duration_for_frames(
+			fMixBufferFrameRate, fMixBufferFrameCount))
+		|| (time + duration_for_frames(fMixBufferFrameRate,
+			fDebugMixBufferFrames)) >= fLastDataAvailableTime) {
+		// Print this error for the first channel only.
+		if (mixerChannel == 0) {
+			ERROR("MixerInput::GetMixerChannelInfo: reading wrong data, have %Ld "
+				"to %Ld, reading from %Ld to %Ld\n",
+				fLastDataAvailableTime - duration_for_frames(fMixBufferFrameRate,
+					fMixBufferFrameCount), fLastDataAvailableTime, time,
+				time + duration_for_frames(fMixBufferFrameRate,
+				fDebugMixBufferFrames));
+		}
+	}
 #endif
 
 	if (time > fLastDataAvailableTime)
 		return false;
 
 	int32 offset = framepos % fMixBufferFrameCount;
-	if (mixer_channel == 0) PRINT(3, "GetMixerChannelInfo: frames %ld to %ld\n", offset, offset + fDebugMixBufferFrames - 1);
-	*buffer = reinterpret_cast<float *>(reinterpret_cast<char *>(fMixerChannelInfo[mixer_channel].buffer_base) + (offset * sizeof(float) * fInputChannelCount));
-	*sample_offset = sizeof(float) * fInputChannelCount;
-	*type = fMixerChannelInfo[mixer_channel].destination_type;
-	*gain = fMixerChannelInfo[mixer_channel].destination_gain;
+	if (mixerChannel == 0) {
+		PRINT(3, "GetMixerChannelInfo: frames %ld to %ld\n", offset,
+			offset + fDebugMixBufferFrames - 1);
+	}
+	*buffer = reinterpret_cast<float*>(reinterpret_cast<char*>(
+		fMixerChannelInfo[mixerChannel].buffer_base)
+		+ (offset * sizeof(float) * fInputChannelCount));
+	*sampleOffset = sizeof(float) * fInputChannelCount;
+	*type = fMixerChannelInfo[mixerChannel].destination_type;
+	*gain = fMixerChannelInfo[mixerChannel].destination_gain;
 	return true;
 }
 

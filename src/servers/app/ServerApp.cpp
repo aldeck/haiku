@@ -197,7 +197,7 @@ ServerApp::~ServerApp()
 		_DeleteBitmap(fBitmapMap.begin()->second);
 
 	while (!fPictureMap.empty())
-		RemovePicture(fPictureMap.begin()->second);
+		fPictureMap.begin()->second->SetOwner(NULL);
 
 	fDesktop->GetCursorManager().DeleteCursors(fClientTeam);
 
@@ -453,10 +453,13 @@ ServerApp::GetPicture(int32 token) const
 }
 
 
+/*! To be called only by ServerPicture itself.*/
 bool
 ServerApp::AddPicture(ServerPicture* picture)
 {
 	BAutolock _(fMapLocker);
+
+	ASSERT(picture->Owner() == NULL);
 
 	try {
 		fPictureMap.insert(std::make_pair(picture->Token(), picture));
@@ -468,10 +471,13 @@ ServerApp::AddPicture(ServerPicture* picture)
 }
 
 
+/*! To be called only by ServerPicture itself.*/
 void
 ServerApp::RemovePicture(ServerPicture* picture)
 {
 	BAutolock _(fMapLocker);
+
+	ASSERT(picture->Owner() == this);
 
 	fPictureMap.erase(picture->Token());
 	picture->ReleaseReference();
@@ -834,8 +840,7 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 					int32 token = -1;
 					link.Read<int32>(&token);
 
-					// TODO: do we actually need another reference here?
-					if (ServerPicture* subPicture = GetPicture(token))
+					if (ServerPicture* subPicture = _FindPicture(token))
 						picture->NestPicture(subPicture);
 				}
 				status = picture->ImportData(link);
@@ -859,7 +864,7 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 
 				ServerPicture* picture = _FindPicture(token);
 				if (picture != NULL)
-					RemovePicture(picture);
+					picture->SetOwner(NULL);
 			}
 			break;
 		}
@@ -2963,16 +2968,21 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 			BRect bounds;
 			link.Read<BRect>(&bounds);
 
+			bool success = false;
+
 			ServerBitmap* bitmap = GetBitmap(token);
 			if (bitmap != NULL) {
-				if (fDesktop->GetDrawingEngine()->ReadBitmap(bitmap,
-						drawCursor, bounds) == B_OK) {
-					fLink.StartMessage(B_OK);
-				} else
-					fLink.StartMessage(B_BAD_VALUE);
-
+				if (fDesktop->GetDrawingEngine()->LockExclusiveAccess()) {
+					success = fDesktop->GetDrawingEngine()->ReadBitmap(bitmap,
+						drawCursor, bounds) == B_OK;
+					fDesktop->GetDrawingEngine()->UnlockExclusiveAccess();
+				}
 				bitmap->ReleaseReference();
-			} else
+			}
+
+			if (success)
+				fLink.StartMessage(B_OK);
+			else
 				fLink.StartMessage(B_BAD_VALUE);
 
 			fLink.Flush();

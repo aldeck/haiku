@@ -427,8 +427,8 @@ OpenWithContainerWindow::_Init(const BMessage *message)
 		// if opening just one file, use it in the title
 		entry_ref ref;
 		fEntriesToOpen->FindRef("refs", &ref);
-		BString buffer;
-		buffer << "Open " << ref.name << " with:";
+		BString buffer(B_TRANSLATE("Open %name with:"));
+		buffer.ReplaceFirst("%name", ref.name);
 		SetTitle(buffer.String());
 	} else
 		// use generic title
@@ -683,9 +683,9 @@ OpenWithPoseView::OpenSelection(BPose *pose, int32 *)
 
 	BEntry entry(pose->TargetModel()->EntryRef());
 	if (entry.InitCheck() != B_OK) {
-		BString errorString;
-		errorString << "Could not find application \""
-			<< pose->TargetModel()->Name() << "\"";
+		BString errorString(
+			B_TRANSLATE("Could not find application \"%appname\""));
+		errorString.ReplaceFirst("%appname", pose->TargetModel()->Name());
 
 		(new BAlert("", errorString.String(), B_TRANSLATE("OK"), 0, 0,
 			B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go();
@@ -694,13 +694,14 @@ OpenWithPoseView::OpenSelection(BPose *pose, int32 *)
 
 	if (OpenWithRelation(pose->TargetModel()) == kNoRelation) {
 		if (!fIterator->GenericFilesOnly()) {
-			BString warning;
-			warning << "The application \"" << pose->TargetModel()->Name()
-				<< "\" does not support the type of document you are "
-				"about to open. Are you sure you want to proceed? If you know that "
-				"the application supports the document type, you should contact the "
-				"publisher of the application and ask them to update their application "
-				"to list the type of your document as supported.";
+			BString warning(B_TRANSLATE(
+				"The application \"%appname\" does not support the type of "
+				"document you are about to open. Are you sure you want to "
+				"proceed? If you know that the application supports the "
+				"document type, you should contact the publisher of the "
+				"application and ask them to update their application to list "
+				"the type of your document as supported."));
+			warning.ReplaceFirst("%appname", pose->TargetModel()->Name());
 
 			BAlert* alert = new BAlert("", warning.String(),
 				B_TRANSLATE("Cancel"), B_TRANSLATE("Open"),	0, B_WIDTH_AS_USUAL,
@@ -1458,7 +1459,7 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 			break;
 
 		if (preferredAppForFile && ref == *preferredAppForFile) {
-			*description = "Preferred for file";
+			description->SetTo(B_TRANSLATE("Preferred for file"));
 			return;
 		}
 
@@ -1473,7 +1474,7 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 				continue;
 
 			case kSuperhandler:
-				*description = "Handles any file";
+				description->SetTo(B_TRANSLATE("Handles any file"));
 				return;
 
 			case kSupportsSupertype:
@@ -1488,9 +1489,9 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 
 				//PRINT(("getting supertype for %s, result %s, got %s\n",
 				//	model.MimeType(), strerror(result), mimeType.Type()));
-				*description = "Handles any ";
+				description->SetTo(B_TRANSLATE("Handles any %type"));
 				// *description += mimeType.Type();
-				*description += type;
+				description->ReplaceFirst("%type", type);
 				return;
 			}
 
@@ -1498,23 +1499,24 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 			{
 				mimeType.SetTo(model.MimeType());
 
-				if (preferredApp && *applicationModel->EntryRef() == *preferredApp)
+				if (preferredApp
+					&& *applicationModel->EntryRef() == *preferredApp) {
 					// application matches cached preferred app, we are done
-					*description = "Preferred for ";
-				else
-					*description = "Handles ";
+					description->SetTo(B_TRANSLATE("Preferred for %type"));
+				} else
+					description->SetTo(B_TRANSLATE("Handles %type"));
 
 				char shortDescription[256];
 				if (mimeType.GetShortDescription(shortDescription) == B_OK)
-					*description += shortDescription;
+					description->ReplaceFirst("%type", shortDescription);
 				else
-					*description += mimeType.Type();
+					description->ReplaceFirst("%type", mimeType.Type());
 				return;
 			}
 		}
 	}
 
-	*description = "Does not handle file";
+	description->SetTo(B_TRANSLATE("Does not handle file"));
 }
 
 

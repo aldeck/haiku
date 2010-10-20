@@ -30,8 +30,6 @@
 #include <Autolock.h>
 #include <Bitmap.h>
 #include <Debug.h>
-#include <MediaFile.h>
-#include <MediaTrack.h>
 #include <Path.h>
 #include <Window.h> // for debugging only
 
@@ -48,6 +46,8 @@
 #include "MediaTrackVideoSupplier.h"
 #include "ProxyAudioSupplier.h"
 #include "ProxyVideoSupplier.h"
+#include "SubTitles.h"
+#include "TrackSupplier.h"
 #include "VideoTrackSupplier.h"
 
 using std::nothrow;
@@ -73,10 +73,12 @@ void Controller::Listener::FileFinished() {}
 void Controller::Listener::FileChanged(PlaylistItem* item, status_t result) {}
 void Controller::Listener::VideoTrackChanged(int32) {}
 void Controller::Listener::AudioTrackChanged(int32) {}
+void Controller::Listener::SubTitleTrackChanged(int32) {}
 void Controller::Listener::VideoStatsChanged() {}
 void Controller::Listener::AudioStatsChanged() {}
 void Controller::Listener::PlaybackStateChanged(uint32) {}
 void Controller::Listener::PositionChanged(float) {}
+void Controller::Listener::SeekHandled(int64 seekFrame) {}
 void Controller::Listener::VolumeChanged(float) {}
 void Controller::Listener::MutedChanged(bool) {}
 
@@ -98,20 +100,22 @@ Controller::Controller()
 	fMuted(false),
 
 	fItem(NULL),
-	fMediaFile(NULL),
+	fTrackSupplier(NULL),
 
 	fVideoSupplier(new ProxyVideoSupplier()),
 	fAudioSupplier(new ProxyAudioSupplier(this)),
 	fVideoTrackSupplier(NULL),
 	fAudioTrackSupplier(NULL),
+	fSubTitles(NULL),
+	fSubTitlesIndex(-1),
 
-	fAudioTrackList(4),
-	fVideoTrackList(2),
-
-	fPosition(0),
+	fCurrentFrame(0),
 	fDuration(0),
 	fVideoFrameRate(25.0),
-	fSeekRequested(false),
+
+	fPendingSeekRequests(0),
+	fSeekFrame(-1),
+	fRequestedSeekFrame(-1),
 
 	fGlobalSettingsListener(this),
 
@@ -167,12 +171,7 @@ Controller::MessageReceived(BMessage* message)
 int64
 Controller::Duration()
 {
-	// This should really be total frames (video frames at that)
-	// TODO: It is not so nice that the MediaPlayer still measures
-	// in video frames if only playing audio. Here for example, it will
-	// return a duration of 0 if the audio clip happens to be shorter than
-	// one video frame at 25 fps.
-	return (int64)((double)fDuration * fVideoFrameRate / 1000000.0);
+	return _FrameDuration();
 }
 
 
@@ -241,12 +240,8 @@ Controller::SetTo(const PlaylistItemRef& item)
 	fAudioSupplier->SetSupplier(NULL, fVideoFrameRate);
 	fVideoSupplier->SetSupplier(NULL);
 
-	fAudioTrackList.MakeEmpty();
-	fVideoTrackList.MakeEmpty();
-
-	ObjectDeleter<BMediaFile> oldMediaFileDeleter(fMediaFile);
-		// BMediaFile destructor will call ReleaseAllTracks()
-	fMediaFile = NULL;
+	ObjectDeleter<TrackSupplier> oldTrackSupplierDeleter(fTrackSupplier);
+	fTrackSupplier = NULL;
 
 	// Do not delete the supplier chain until after we called
 	// NodeManager::Init() to setup a new media node chain
@@ -257,62 +252,41 @@ Controller::SetTo(const PlaylistItemRef& item)
 
 	fVideoTrackSupplier = NULL;
 	fAudioTrackSupplier = NULL;
+	fSubTitles = NULL;
+	fSubTitlesIndex = -1;
 
+	fCurrentFrame = 0;
 	fDuration = 0;
 	fVideoFrameRate = 25.0;
+
+	fPendingSeekRequests = 0;
+	fSeekFrame = -1;
+	fRequestedSeekFrame = -1;
 
 	if (fItem.Get() == NULL)
 		return B_BAD_VALUE;
 
-	BMediaFile* mf = fItem->CreateMediaFile();
-	ObjectDeleter<BMediaFile> mediaFileDeleter(mf);
+	TrackSupplier* trackSupplier = fItem->CreateTrackSupplier();
+	if (trackSupplier == NULL) {
+		_NotifyFileChanged(item.Get(), B_NO_MEMORY);
+		return B_NO_MEMORY;
+	}
+	ObjectDeleter<TrackSupplier> trackSupplierDeleter(trackSupplier);
 
-	status_t err = mf->InitCheck();
+	status_t err = trackSupplier->InitCheck();
 	if (err != B_OK) {
-		printf("Controller::SetTo: initcheck failed\n");
+		printf("Controller::SetTo: InitCheck failed\n");
 		_NotifyFileChanged(item.Get(), err);
 		return err;
 	}
 
-	int trackcount = mf->CountTracks();
-	if (trackcount <= 0) {
-		printf("Controller::SetTo: trackcount %d\n", trackcount);
+	if (trackSupplier->CountAudioTracks() == 0
+		&& trackSupplier->CountVideoTracks() == 0) {
 		_NotifyFileChanged(item.Get(), B_MEDIA_NO_HANDLER);
 		return B_MEDIA_NO_HANDLER;
 	}
 
-	for (int i = 0; i < trackcount; i++) {
-		BMediaTrack* t = mf->TrackAt(i);
-		media_format f;
-		err = t->EncodedFormat(&f);
-		if (err != B_OK) {
-			printf("Controller::SetTo: EncodedFormat failed for track index %d, error 0x%08lx (%s)\n",
-				i, err, strerror(err));
-			mf->ReleaseTrack(t);
-			continue;
-		}
-
-		if (t->Duration() <= 0) {
-			printf("Controller::SetTo: warning! track index %d has no duration\n", i);
-		}
-
-		if (f.IsAudio()) {
-			if (!fAudioTrackList.AddItem(t))
-				return B_NO_MEMORY;
-		} else if (f.IsVideo()) {
-			if (!fVideoTrackList.AddItem(t))
-				return B_NO_MEMORY;
-		} else {
-			printf("Controller::SetTo: track index %d has unknown type\n", i);
-			mf->ReleaseTrack(t);
-		}
-	}
-
-	//printf("Controller::SetTo: %d audio track, %d video track\n",
-	//	AudioTrackCount(), VideoTrackCount());
-
-	fMediaFile = mf;
-	mediaFileDeleter.Detach();
+	fTrackSupplier = trackSupplier;
 
 	SelectAudioTrack(0);
 	SelectVideoTrack(0);
@@ -320,11 +294,12 @@ Controller::SetTo(const PlaylistItemRef& item)
 	if (fAudioTrackSupplier == NULL && fVideoTrackSupplier == NULL) {
 		printf("Controller::SetTo: no audio or video tracks found or "
 			"no decoders\n");
+		fTrackSupplier = NULL;
 		_NotifyFileChanged(item.Get(), B_MEDIA_NO_HANDLER);
-		delete fMediaFile;
-		fMediaFile = NULL;
 		return B_MEDIA_NO_HANDLER;
 	}
+
+	trackSupplierDeleter.Detach();
 
 	// prevent blocking the creation of new overlay buffers
 	fVideoView->DisableOverlay();
@@ -355,8 +330,6 @@ Controller::SetTo(const PlaylistItemRef& item)
 		const media_format& audioTrackFormat = fAudioTrackSupplier->Format();
 		audioFrameRate = audioTrackFormat.u.raw_audio.frame_rate;
 		audioChannels = audioTrackFormat.u.raw_audio.channel_count;
-//		if (fVideoTrackSupplier == NULL)
-//			fVideoFrameRate = audioFrameRate;
 	}
 
 	if (InitCheck() != B_OK) {
@@ -371,7 +344,6 @@ Controller::SetTo(const PlaylistItemRef& item)
 
 	_NotifyFileChanged(item.Get(), B_OK);
 
-	SetPosition(0.0);
 	if (fAutoplay)
 		StartPlaying(true);
 
@@ -450,7 +422,9 @@ Controller::AudioTrackCount()
 {
 	BAutolock _(this);
 
-	return fAudioTrackList.CountItems();
+	if (fTrackSupplier != NULL)
+		return fTrackSupplier->CountAudioTracks();
+	return 0;
 }
 
 
@@ -459,7 +433,20 @@ Controller::VideoTrackCount()
 {
 	BAutolock _(this);
 
-	return fVideoTrackList.CountItems();
+	if (fTrackSupplier != NULL)
+		return fTrackSupplier->CountVideoTracks();
+	return 0;
+}
+
+
+int
+Controller::SubTitleTrackCount()
+{
+	BAutolock _(this);
+
+	if (fTrackSupplier != NULL)
+		return fTrackSupplier->CountSubTitleTracks();
+	return 0;
 }
 
 
@@ -467,16 +454,17 @@ status_t
 Controller::SelectAudioTrack(int n)
 {
 	BAutolock _(this);
-
-	BMediaTrack* track = (BMediaTrack *)fAudioTrackList.ItemAt(n);
-	if (!track)
-		return B_ERROR;
+	if (fTrackSupplier == NULL)
+		return B_NO_INIT;
 
 	ObjectDeleter<AudioTrackSupplier> deleter(fAudioTrackSupplier);
-	fAudioTrackSupplier = new MediaTrackAudioSupplier(track, n);
+	fAudioTrackSupplier = fTrackSupplier->CreateAudioTrackForIndex(n);
+	if (fAudioTrackSupplier == NULL)
+		return B_BAD_INDEX;
 
 	bigtime_t a = fAudioTrackSupplier->Duration();
-	bigtime_t v = fVideoTrackSupplier ? fVideoTrackSupplier->Duration() : 0;;
+	bigtime_t v = fVideoTrackSupplier != NULL
+		? fVideoTrackSupplier->Duration() : 0;
 	fDuration = max_c(a, v);
 	DurationChanged();
 	// TODO: notify duration changed!
@@ -500,23 +488,29 @@ Controller::CurrentAudioTrack()
 }
 
 
+int
+Controller::AudioTrackChannelCount()
+{
+	media_format format;
+	if (GetEncodedAudioFormat(&format) == B_OK)
+		return format.u.encoded_audio.output.channel_count;
+
+	return 2;
+}
+
+
 status_t
 Controller::SelectVideoTrack(int n)
 {
 	BAutolock _(this);
 
-	BMediaTrack* track = (BMediaTrack *)fVideoTrackList.ItemAt(n);
-	if (!track)
-		return B_ERROR;
+	if (fTrackSupplier == NULL)
+		return B_NO_INIT;
 
-	status_t initStatus;
 	ObjectDeleter<VideoTrackSupplier> deleter(fVideoTrackSupplier);
-	fVideoTrackSupplier = new MediaTrackVideoSupplier(track, n, initStatus);
-	if (initStatus < B_OK) {
-		delete fVideoTrackSupplier;
-		fVideoTrackSupplier = NULL;
-		return initStatus;
-	}
+	fVideoTrackSupplier = fTrackSupplier->CreateVideoTrackForIndex(n);
+	if (fVideoTrackSupplier == NULL)
+		return B_BAD_INDEX;
 
 	bigtime_t a = fAudioTrackSupplier ? fAudioTrackSupplier->Duration() : 0;
 	bigtime_t v = fVideoTrackSupplier->Duration();
@@ -547,6 +541,58 @@ Controller::CurrentVideoTrack()
 		return -1;
 
 	return fVideoTrackSupplier->TrackIndex();
+}
+
+
+status_t
+Controller::SelectSubTitleTrack(int n)
+{
+	BAutolock _(this);
+
+	if (fTrackSupplier == NULL)
+		return B_NO_INIT;
+
+	fSubTitlesIndex = n;
+	fSubTitles = fTrackSupplier->SubTitleTrackForIndex(n);
+
+	const SubTitle* subTitle = NULL;
+	if (fSubTitles != NULL)
+		subTitle = fSubTitles->SubTitleAt(_TimePosition());
+	if (subTitle != NULL)
+		fVideoView->SetSubTitle(subTitle->text.String());
+	else
+		fVideoView->SetSubTitle(NULL);
+
+	_NotifySubTitleTrackChanged(n);
+	return B_OK;
+}
+
+
+int
+Controller::CurrentSubTitleTrack()
+{
+	BAutolock _(this);
+
+	if (fSubTitles == NULL)
+		return -1;
+
+	return fSubTitlesIndex;
+}
+
+
+const char*
+Controller::SubTitleTrackName(int n)
+{
+	BAutolock _(this);
+
+	if (fTrackSupplier == NULL)
+		return NULL;
+
+	const SubTitles* subTitles = fTrackSupplier->SubTitleTrackForIndex(n);
+	if (subTitles == NULL)
+		return NULL;
+
+	return subTitles->Name();
 }
 
 
@@ -630,7 +676,7 @@ Controller::TimePosition()
 {
 	BAutolock _(this);
 
-	return fPosition;
+	return _TimePosition();
 }
 
 
@@ -638,8 +684,7 @@ void
 Controller::SetVolume(float value)
 {
 //	printf("Controller::SetVolume %.4f\n", value);
-	if (!Lock())
-		return;
+	BAutolock _(this);
 
 	value = max_c(0.0, min_c(2.0, value));
 
@@ -652,8 +697,6 @@ Controller::SetVolume(float value)
 
 		_NotifyVolumeChanged(fVolume);
 	}
-
-	Unlock();
 }
 
 void
@@ -673,8 +716,7 @@ Controller::VolumeDown()
 void
 Controller::ToggleMute()
 {
-	if (!Lock())
-		return;
+	BAutolock _(this);
 
 	fMuted = !fMuted;
 
@@ -684,8 +726,6 @@ Controller::ToggleMute()
 		fAudioSupplier->SetVolume(fVolume);
 
 	_NotifyMutedChanged(fMuted);
-
-	Unlock();
 }
 
 
@@ -698,36 +738,57 @@ Controller::Volume()
 }
 
 
-void
+int64
 Controller::SetPosition(float value)
 {
 	BAutolock _(this);
 
-	SetFramePosition(Duration() * value);
+	return SetFramePosition(_FrameDuration() * value);
 }
 
 
-void
-Controller::SetFramePosition(int32 value)
+int64
+Controller::SetFramePosition(int64 value)
 {
 	BAutolock _(this);
 
-	int32 seekFrame = max_c(0, min_c(Duration(), value));
-	int32 currentFrame = CurrentFrame();
-	if (seekFrame != currentFrame) {
-		fSeekFrame = seekFrame;
-		fSeekRequested = true;
-		SetCurrentFrame(seekFrame);
+	fPendingSeekRequests++;
+	fRequestedSeekFrame = max_c(0, min_c(_FrameDuration(), value));
+	fSeekFrame = fRequestedSeekFrame;
+
+	int64 currentFrame = CurrentFrame();
+
+	// Snap to a video keyframe, since that will be the fastest
+	// to display and seeking will feel more snappy. Note that we
+	// don't store this change in fSeekFrame, since we still want
+	// to report the originally requested seek frame in TimePosition()
+	// until we could reach that frame.
+	if (Duration() > 240 && fVideoTrackSupplier != NULL
+		&& abs(value - currentFrame) > 5) {
+		fVideoTrackSupplier->FindKeyFrameForFrame(&fSeekFrame);
 	}
+
+//printf("SetFramePosition(%lld) -> %lld (current: %lld, duration: %lld) "
+//"(video: %p)\n", value, fSeekFrame, currentFrame, _FrameDuration(),
+//fVideoTrackSupplier);
+	if (fSeekFrame != currentFrame) {
+		int64 seekFrame = fSeekFrame;
+		SetCurrentFrame(fSeekFrame);
+			// May trigger the notification and reset fSeekFrame,
+			// if next current frame == seek frame.
+		return seekFrame;
+	} else
+		NotifySeekHandled(fRequestedSeekFrame);
+	return currentFrame;
 }
 
 
-void
+int64
 Controller::SetTimePosition(bigtime_t value)
 {
 	BAutolock _(this);
 
-	SetPosition((float)value / TimeDuration());
+	return SetPosition((float)value / TimeDuration());
 }
 
 
@@ -738,7 +799,7 @@ bool
 Controller::HasFile()
 {
 	// you need to hold the data lock
-	return fMediaFile != NULL;
+	return fTrackSupplier != NULL;
 }
 
 
@@ -746,9 +807,9 @@ status_t
 Controller::GetFileFormatInfo(media_file_format* fileFormat)
 {
 	// you need to hold the data lock
-	if (!fMediaFile)
+	if (!fTrackSupplier)
 		return B_NO_INIT;
-	return fMediaFile->GetFileFormatInfo(fileFormat);
+	return fTrackSupplier->GetFileFormatInfo(fileFormat);
 }
 
 
@@ -756,10 +817,9 @@ status_t
 Controller::GetCopyright(BString* copyright)
 {
 	// you need to hold the data lock
-	if (!fMediaFile)
+	if (!fTrackSupplier)
 		return B_NO_INIT;
-	*copyright = fMediaFile->Copyright();
-	return B_OK;
+	return fTrackSupplier->GetCopyright(copyright);
 }
 
 
@@ -822,6 +882,36 @@ Controller::GetAudioCodecInfo(media_codec_info* info)
 	if (fAudioTrackSupplier)
 		return fAudioTrackSupplier->GetCodecInfo(info);
 	return B_NO_INIT;
+}
+
+
+status_t
+Controller::GetMetaData(BMessage* metaData)
+{
+	// you need to hold the data lock
+	if (fTrackSupplier == NULL)
+		return B_NO_INIT;
+	return fTrackSupplier->GetMetaData(metaData);
+}
+
+
+status_t
+Controller::GetVideoMetaData(int32 index, BMessage* metaData)
+{
+	// you need to hold the data lock
+	if (fTrackSupplier == NULL)
+		return B_NO_INIT;
+	return fTrackSupplier->GetVideoMetaData(index, metaData);
+}
+
+
+status_t
+Controller::GetAudioMetaData(int32 index, BMessage* metaData)
+{
+	// you need to hold the data lock
+	if (fTrackSupplier == NULL)
+		return B_NO_INIT;
+	return fTrackSupplier->GetAudioMetaData(index, metaData);
 }
 
 
@@ -909,6 +999,39 @@ Controller::_PlaybackState(int32 playingMode) const
 }
 
 
+bigtime_t
+Controller::_TimePosition() const
+{
+	if (fDuration == 0)
+		return 0;
+
+	// Check if we are still waiting to reach the seekframe,
+	// pass the last pending seek frame back to the caller, so
+	// that the view of the current frame/time from the outside
+	// does not depend on the internal latency to reach requested
+	// frames asynchronously.
+	int64 frame;
+	if (fPendingSeekRequests > 0)
+		frame = fRequestedSeekFrame;
+	else
+		frame = fCurrentFrame;
+
+	return frame * fDuration / _FrameDuration();
+}
+
+
+int64
+Controller::_FrameDuration() const
+{
+	// This should really be total frames (video frames at that)
+	// TODO: It is not so nice that the MediaPlayer still measures
+	// in video frames if only playing audio. Here for example, it will
+	// return a duration of 0 if the audio clip happens to be shorter than
+	// one video frame at 25 fps.
+	return (int64)((double)fDuration * fVideoFrameRate / 1000000.0);
+}
+
+
 // #pragma mark - Notifications
 
 
@@ -961,6 +1084,18 @@ Controller::_NotifyAudioTrackChanged(int32 index) const
 
 
 void
+Controller::_NotifySubTitleTrackChanged(int32 index) const
+{
+	BList listeners(fListeners);
+	int32 count = listeners.CountItems();
+	for (int32 i = 0; i < count; i++) {
+		Listener* listener = (Listener*)listeners.ItemAtFast(i);
+		listener->SubTitleTrackChanged(index);
+	}
+}
+
+
+void
 Controller::_NotifyVideoStatsChanged() const
 {
 	BList listeners(fListeners);
@@ -1004,6 +1139,18 @@ Controller::_NotifyPositionChanged(float position) const
 	for (int32 i = 0; i < count; i++) {
 		Listener* listener = (Listener*)listeners.ItemAtFast(i);
 		listener->PositionChanged(position);
+	}
+}
+
+
+void
+Controller::_NotifySeekHandled(int64 seekFrame) const
+{
+	BList listeners(fListeners);
+	int32 count = listeners.CountItems();
+	for (int32 i = 0; i < count; i++) {
+		Listener* listener = (Listener*)listeners.ItemAtFast(i);
+		listener->SeekHandled(seekFrame);
 	}
 }
 
@@ -1067,22 +1214,19 @@ Controller::NotifyFPSChanged(float fps) const
 
 
 void
-Controller::NotifyCurrentFrameChanged(int32 frame) const
+Controller::NotifyCurrentFrameChanged(int64 frame) const
 {
-	// check if we are still waiting to reach the seekframe,
-	// don't pass the event on to the listeners in that case
-	if (fSeekRequested && fSeekFrame != frame)
-		return;
+	fCurrentFrame = frame;
+	bigtime_t timePosition = _TimePosition();
+	_NotifyPositionChanged((float)timePosition / fDuration);
 
-	fSeekFrame = -1;
-	fSeekRequested = false;
-
-	float position = 0.0;
-	double duration = (double)fDuration * fVideoFrameRate / 1000000.0;
-	if (duration > 0)
-		position = (float)frame / duration;
-	fPosition = (bigtime_t)(position * fDuration + 0.5);
-	_NotifyPositionChanged(position);
+	if (fSubTitles != NULL) {
+		const SubTitle* subTitle = fSubTitles->SubTitleAt(timePosition);
+		if (subTitle != NULL)
+			fVideoView->SetSubTitle(subTitle->text.String());
+		else
+			fVideoView->SetSubTitle(NULL);
+	}
 }
 
 
@@ -1109,9 +1253,17 @@ Controller::NotifyStopFrameReached() const
 
 
 void
-Controller::NotifySeekHandled() const
+Controller::NotifySeekHandled(int64 seekedFrame) const
 {
-	fSeekRequested = false;
-	fSeekFrame = -1;
+	if (fPendingSeekRequests == 0)
+		return;
+
+	fPendingSeekRequests--;
+	if (fPendingSeekRequests == 0) {
+		fSeekFrame = -1;
+		fRequestedSeekFrame = -1;
+	}
+
+	_NotifySeekHandled(seekedFrame);
 }
 

@@ -94,10 +94,9 @@ SYSTEM_LIBS =
 	$(HAIKU_SHARED_LIBSTDC++) $(HAIKU_SHARED_LIBSUPC++)
 ;
 PRIVATE_SYSTEM_LIBS =
-	libalm.so
 	libfluidsynth.so
 	libilmimf.so
-	liblinprog.so liblpsolve55.so
+	liblpsolve55.so
 ;
 SYSTEM_SERVERS = app_server cddb_daemon debug_server input_server mail_daemon
 	media_addon_server media_server midi_server mount_server net_server
@@ -139,18 +138,15 @@ SYSTEM_ADD_ONS_MEDIA = cortex_audioadapter.media_addon
 	firewire_dv.media_addon
 	#legacy.media_addon
 ;
-SYSTEM_ADD_ONS_MEDIA_PLUGINS = $(GPL_ONLY)ac3_decoder
-	aiff_reader asf_reader au_reader avi_reader $(X86_ONLY)ffmpeg
-	matroska mov_reader
-	mp3_decoder mp3_reader
-	mp4_reader musepack
-	ogg raw_decoder speex
-	$(X86_ONLY)ape_reader
-	# theora
-	vorbis wav_reader
-;
-SYSTEM_ADD_ONS_PRINT = Canon\ LIPS3\ Compatible Canon\ LIPS4\ Compatible
-	PCL5\ Compatible PCL6\ Compatible PDF\ Writer PS\ Compatible Preview
+SYSTEM_ADD_ONS_MEDIA_PLUGINS = $(X86_ONLY)ffmpeg raw_decoder ;
+SYSTEM_ADD_ONS_PRINT = 
+	Canon\ LIPS3\ Compatible 
+	Canon\ LIPS4\ Compatible
+	PCL5\ Compatible
+	PCL6\ Compatible
+	PDF\ Writer
+	PS\ Compatible
+	Preview
 ;
 SYSTEM_ADD_ONS_PRINT_TRANSPORT = HP\ JetDirect IPP LPR Parallel\ Port
 	Print\ To\ File Serial\ Port USB\ Port
@@ -195,6 +191,13 @@ for driver in $(SYSTEM_ADD_ONS_DRIVERS_NET) {
 	if $(archive) {
 		AddWifiFirmwareToHaikuImage $(driver) : $(package) : $(archive)
 			: $(extract) ;
+	}
+	local packages = [ on $(driver) return $(HAIKU_WIFI_FIRMWARE_PACKAGES) ] ;
+	local archives = [ on $(driver) return $(HAIKU_WIFI_FIRMWARE_ARCHIVES) ] ;
+	for archive in $(archives) {
+		AddWifiFirmwareToHaikuImage $(driver) : $(packages[1]) : $(archive)
+			: $(extract) ;
+		packages = $(packages[2-]) ;
 	}
 }
 
@@ -251,6 +254,7 @@ AddDriversToHaikuImage midi			: $(SYSTEM_ADD_ONS_DRIVERS_MIDI) ;
 AddDriversToHaikuImage bus			: usb_raw fw_raw ;
 AddDriversToHaikuImage disk floppy	: $(X86_ONLY)pc_floppy ;
 AddDriversToHaikuImage disk usb		: usb_disk ;
+AddDriversToHaikuImage disk usb		: usb_floppy ;
 AddDriversToHaikuImage printer usb	: usb_printer ;
 AddDriversToHaikuImage disk virtual	: nbd ;
 AddDriversToHaikuImage dvb			: cx23882 ;
@@ -557,8 +561,9 @@ AddFilesToHaikuImage system add-ons disk_systems
 	: <disk_system>intel <disk_system>bfs ;
 
 # decorators
+AddDirectoryToHaikuImage home config add-ons decorators ;
 AddFilesToHaikuImage home config add-ons decorators :
-	MacDecorator WinDecorator ClassicBe ;
+	MacDecorator WinDecorator ClassicBe SATDecorator ;
 
 # create directories that will remain empty
 AddDirectoryToHaikuImage common bin ;
@@ -577,6 +582,7 @@ AddDirectoryToHaikuImage home config add-ons kernel drivers dev ;
 AddDirectoryToHaikuImage home config add-ons input_server devices ;
 AddDirectoryToHaikuImage home config add-ons input_server filters ;
 AddDirectoryToHaikuImage home config add-ons input_server methods ;
+AddDirectoryToHaikuImage home config add-ons media plugins ;
 AddDirectoryToHaikuImage home config add-ons Tracker ;
 AddDirectoryToHaikuImage home config add-ons Print ;
 AddDirectoryToHaikuImage home config add-ons Screen\ Savers ;
@@ -670,6 +676,7 @@ if $(HAIKU_ADD_ALTERNATIVE_GCC_LIBS) = 1
 		cd $(DIRECTORY)
 		export HAIKU_IGNORE_USER_BUILD_CONFIG=1
 		export HAIKU_ADD_OPTIONAL_PACKAGES=$(OPTIONAL_PACKAGES)
+		export HAIKU_PRIMARY_GCC=$(HAIKU_GCC_VERSION[1])
 		$(JAM:E=jam) -q $(COMMAND_LINE) ;
 	}
 

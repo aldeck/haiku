@@ -122,7 +122,7 @@ CatalogAddOnInfo::UnloadIfPossible()
 }
 
 
-// #pragma mark - MutableLocaleRoster
+// #pragma mark - RosterData
 
 
 RosterData gRosterData;
@@ -132,7 +132,8 @@ static const char* kPriorityAttr = "ADDON:priority";
 
 RosterData::RosterData()
 	:
-	fLock("LocaleRosterData")
+	fLock("LocaleRosterData"),
+	fAreResourcesLoaded(false)
 {
 	openlog_team("liblocale.so", LOG_PID, LOG_USER);
 #ifndef DEBUG
@@ -169,11 +170,10 @@ RosterData::Refresh()
 	if (!lock.IsLocked())
 		return B_ERROR;
 
-	status_t status = _LoadLocaleSettings();
-	if (status == B_OK)
-		status = _LoadTimeSettings();
+	_LoadLocaleSettings();
+	_LoadTimeSettings();
 
-	return status;
+	return B_OK;
 }
 
 /*
@@ -435,15 +435,15 @@ RosterData::_LoadLocaleSettings()
 	BMessage settings;
 	if (status == B_OK)
 		status = settings.Unflatten(&file);
-	if (status == B_OK)
-		status = _SetPreferredLanguages(&settings);
 
 	if (status == B_OK) {
 		BString codeName;
 		BLocale newDefaultLocale;
 
-		if (settings.FindString("country", &codeName) == B_OK)
-			newDefaultLocale = BLocale(codeName);
+		if (settings.FindString("country", &codeName) == B_OK) {
+			BCountry country(codeName);
+			newDefaultLocale = BLocale(NULL, &country);
+		}
 
 		BString timeFormat;
 		if (settings.FindString("shortTimeFormat", &timeFormat) == B_OK)
@@ -453,13 +453,19 @@ RosterData::_LoadLocaleSettings()
 
 		_SetDefaultLocale(newDefaultLocale);
 
+		_SetPreferredLanguages(&settings);
+
 		return B_OK;
 	}
 
+
 	// Something went wrong (no settings file or invalid BMessage), so we
 	// set everything to default values
+
+	fPreferredLanguages.MakeEmpty();
 	fPreferredLanguages.AddString("language", "en");
-	log_team(LOG_ERR, "*** No locale settings found!\n");
+	BLanguage defaultLanguage("en_US");
+	_SetDefaultLocale(BLocale(&defaultLanguage));
 
 	return status;
 }
@@ -479,9 +485,9 @@ RosterData::_LoadTimeSettings()
 	if (status == B_OK)
 		status = settings.Unflatten(&file);
 	if (status == B_OK) {
-		BString timeZoneCode;
-		if (settings.FindString("timezone", &timeZoneCode) == B_OK)
-			_SetDefaultTimeZone(BTimeZone(timeZoneCode.String()));
+		BString timeZoneID;
+		if (settings.FindString("timezone", &timeZoneID) == B_OK)
+			_SetDefaultTimeZone(BTimeZone(timeZoneID.String()));
 		else
 			_SetDefaultTimeZone(BTimeZone(BTimeZone::kNameOfGmtZone));
 
@@ -491,7 +497,6 @@ RosterData::_LoadTimeSettings()
 	// Something went wrong (no settings file or invalid BMessage), so we
 	// set everything to default values
 	_SetDefaultTimeZone(BTimeZone(BTimeZone::kNameOfGmtZone));
-	log_team(LOG_ERR, "*** No time settings found!\n");
 
 	return status;
 }
@@ -554,6 +559,15 @@ RosterData::_SetDefaultCountry(const BCountry& newCountry)
 {
 	fDefaultLocale.SetCountry(newCountry);
 
+	UErrorCode icuError = U_ZERO_ERROR;
+	Locale icuLocale = Locale::createCanonical(newCountry.Code());
+	if (icuLocale.isBogus())
+		return B_ERROR;
+
+	Locale::setDefault(icuLocale, icuError);
+	if (!U_SUCCESS(icuError))
+		return B_ERROR;
+
 	return B_OK;
 }
 
@@ -563,6 +577,17 @@ RosterData::_SetDefaultLocale(const BLocale& newLocale)
 {
 	fDefaultLocale = newLocale;
 
+	UErrorCode icuError = U_ZERO_ERROR;
+	BCountry defaultCountry;
+	newLocale.GetCountry(&defaultCountry);
+	Locale icuLocale = Locale::createCanonical(defaultCountry.Code());
+	if (icuLocale.isBogus())
+		return B_ERROR;
+
+	Locale::setDefault(icuLocale, icuError);
+	if (!U_SUCCESS(icuError))
+		return B_ERROR;
+
 	return B_OK;
 }
 
@@ -571,6 +596,11 @@ status_t
 RosterData::_SetDefaultTimeZone(const BTimeZone& newZone)
 {
 	fDefaultTimeZone = newZone;
+
+	TimeZone* timeZone = TimeZone::createTimeZone(newZone.ID().String());
+	if (timeZone == NULL)
+		return B_ERROR;
+	TimeZone::adoptDefault(timeZone);
 
 	return B_OK;
 }
@@ -582,17 +612,8 @@ RosterData::_SetPreferredLanguages(const BMessage* languages)
 	BString langName;
 	if (languages != NULL
 		&& languages->FindString("language", &langName) == B_OK) {
-		UErrorCode icuError = U_ZERO_ERROR;
-		Locale icuLocale = Locale::createCanonical(langName.String());
-		if (icuLocale.isBogus())
-			return B_ERROR;
-
-		Locale::setDefault(icuLocale, icuError);
-		if (!U_SUCCESS(icuError))
-			return B_ERROR;
-
 		fDefaultLocale.SetCollator(BCollator(langName.String()));
-		fDefaultLanguage.SetTo(langName.String());
+		fDefaultLocale.SetLanguage(BLanguage(langName.String()));
 
 		fPreferredLanguages.RemoveName("language");
 		for (int i = 0; languages->FindString("language", i, &langName) == B_OK;
@@ -602,6 +623,7 @@ RosterData::_SetPreferredLanguages(const BMessage* languages)
 	} else {
 		fPreferredLanguages.MakeEmpty();
 		fPreferredLanguages.AddString("language", "en");
+		fDefaultLocale.SetCollator(BCollator("en"));
 	}
 
 	return B_OK;
@@ -611,7 +633,9 @@ RosterData::_SetPreferredLanguages(const BMessage* languages)
 status_t
 RosterData::_AddDefaultCountryToMessage(BMessage* message) const
 {
-	status_t status = message->AddString("country", fDefaultLocale.Code());
+	BCountry defaultCountry;
+	fDefaultLocale.GetCountry(&defaultCountry);
+	status_t status = message->AddString("country", defaultCountry.Code());
 	BString timeFormat;
 	if (status == B_OK)
 		status = fDefaultLocale.GetTimeFormat(timeFormat, false);
@@ -629,7 +653,7 @@ RosterData::_AddDefaultCountryToMessage(BMessage* message) const
 status_t
 RosterData::_AddDefaultTimeZoneToMessage(BMessage* message) const
 {
-	status_t status = message->AddString("timezone", fDefaultTimeZone.Code());
+	status_t status = message->AddString("timezone", fDefaultTimeZone.ID());
 
 	// add the offset, too, since that is used by clockconfig when setting
 	// up timezone state during boot
@@ -699,6 +723,22 @@ status_t
 MutableLocaleRoster::SetPreferredLanguages(const BMessage* languages)
 {
 	return gRosterData.SetPreferredLanguages(languages);
+}
+
+
+status_t
+MutableLocaleRoster::GetDefaultLocale(BLocale* locale) const
+{
+	if (!locale)
+		return B_BAD_VALUE;
+
+	BAutolock lock(gRosterData.fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	*locale = gRosterData.fDefaultLocale;
+
+	return B_OK;
 }
 
 
@@ -908,3 +948,5 @@ MutableLocaleRoster::UnloadCatalog(BCatalogAddOn* catalog)
 
 
 BLocaleRoster* be_locale_roster = &BPrivate::gLocaleRoster;
+
+const BLocale* be_locale = &BPrivate::gRosterData.fDefaultLocale;

@@ -32,9 +32,11 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
-#ifndef	_UTILITIES_H
+#ifndef _UTILITIES_H
 #define _UTILITIES_H
 
+
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 
@@ -180,136 +182,130 @@ void DisallowMetaKeys(BTextView *);
 void DisallowFilenameKeys(BTextView *);
 
 
-inline bool
-IsDigit(const char c)
+// #pragma mark - Natural sorting
+
+
+struct natural_chunk {
+	enum chunk_type {
+		NUMBER,
+		ASCII,
+		END
+	};
+	chunk_type	type;
+	char		buffer[B_FILE_NAME_LENGTH];
+	int32		length;
+};
+
+
+inline int32
+FetchNaturalChunk(natural_chunk& chunk, const char* source)
 {
-	if ((c >= 48 && c <= 57) || c == 32)
-		return true;
-	else
-		return false;
+	if (chunk.type == natural_chunk::ASCII) {
+		// string chunk
+		int32 pos = 0;
+		while (!isdigit(source[pos]) && !isspace(source[pos])
+			&& source[pos] != '\0') {
+			pos++;
+		}
+		strlcpy(chunk.buffer, source, pos + 1);
+		chunk.length = pos;
+		return pos;
+	}
+	
+	// skip leading zeros and whitespace characters
+	int32 skip = 0;
+	while (source[0] == '0' || isspace(source[0])) {
+		source++;
+		skip++;
+	}
+
+	// number chunk (stop at next white space)
+	int32 pos = 0;
+	while (isdigit(source[pos]) && source[pos] != '\0') {
+		pos++;
+	}
+	strlcpy(&chunk.buffer[sizeof(chunk.buffer) - 1 - pos], source, pos + 1);
+	chunk.length = pos;
+
+	return pos + skip;
+}
+
+
+//! Makes sure both number strings have the same size
+inline void
+NormalizeNumberChunks(natural_chunk& a, natural_chunk& b)
+{
+	if (a.length > b.length) {
+		memset(&b.buffer[sizeof(b.buffer) - 1 - a.length], ' ',
+			a.length - b.length);
+		b.length = a.length;
+	} else if (b.length > a.length) {
+		memset(&a.buffer[sizeof(a.buffer) - 1 - b.length], ' ',
+			b.length - a.length);
+		a.length = b.length;
+	}
 }
 
 
 //! Compares two strings naturally, as opposed to lexicographically
 inline int
-NaturalCompare(const char *s1, const char *s2)
+NaturalCompare(const char* stringA, const char* stringB)
 {
-	struct Chunk {
-		int32	type;
-		union {
-			char*	ascii;
-				// Type = 0
-			int32	num;
-				// Type = 1
-		};
-	};
+	natural_chunk a;
+	natural_chunk b;
 
-	Chunk a;
-	Chunk b;
-
-	size_t len1 = strlen(s1);
-	size_t len2 = strlen(s2);
-
-	char bufferA[len1 + 1];
-	char bufferB[len2 + 1];
-
-	uint32 i = 0;
-	uint32 j = 0;
+	uint32 indexA = 0;
+	uint32 indexB = 0;
 
 	while (true) {
-		// determine type of next chunks in each string based on first char
-		if (i == len1)
-			a.type = -1;
-		else if (IsDigit(s1[i]))
-			a.type = 1;
+		// Determine type of next chunks in each string based on first char
+		if (stringA[indexA] == '\0')
+			a.type = natural_chunk::END;
+		else if (isdigit(stringA[indexA]) || isspace(stringA[indexA]))
+			a.type = natural_chunk::NUMBER;
 		else
-			a.type = 0;
+			a.type = natural_chunk::ASCII;
 
-		if (j == len2)
-			b.type = -1;
-		else if (IsDigit(s2[j]))
-			b.type = 1;
+		if (stringB[indexB] == '\0')
+			b.type = natural_chunk::END;
+		else if (isdigit(stringB[indexB]) || isspace(stringB[indexB]))
+			b.type = natural_chunk::NUMBER;
 		else
-			b.type = 0;
+			b.type = natural_chunk::ASCII;
 
-		// check if we reached the end of either string
-		if (a.type == b.type && a.type == -1)
-			return 0;
-		if (a.type == -1)
-			return -1;
-		if (b.type == -1)
+		// Check if we reached the end of either string
+		if (a.type == natural_chunk::END)
+			return b.type == natural_chunk::END ? 0 : -1;
+		if (b.type == natural_chunk::END)
 			return 1;
 
 		if (a.type != b.type) {
-			// different chunk types, just compare the remaining strings
-			return strcasecmp(&s1[i], &s2[j]);
+			// Different chunk types, just compare the remaining strings
+			return strcasecmp(&stringA[indexA], &stringB[indexB]);
 		}
 
-		// fetch the next chunk for a
-		if (a.type == 0) {
-			// string chunk
-			int32 k = i;
-			while (!IsDigit(s1[k]) && s1[k] != 0) {
-				bufferA[k - i] = s1[k];
-				k++;
-			}
-			bufferA[k - i] = 0;
-			a.ascii = bufferA;
-			i += k - i;
+		// Fetch the next chunks
+		indexA += FetchNaturalChunk(a, &stringA[indexA]);
+		indexB += FetchNaturalChunk(b, &stringB[indexB]);
+
+		// Compare the two chunks based on their type
+		if (a.type == natural_chunk::ASCII) {
+			// String chunks
+			int result = strcasecmp(a.buffer, b.buffer);
+			if (result != 0)
+				return result;
 		} else {
-			// number chunk
-			int32 k = i;
-			while (IsDigit(s1[k]) && s1[k] != 0) {
-				bufferA[k - i] = s1[k];
-				k++;
-			}
-			bufferA[k - i] = 0;
-			a.ascii = bufferA;
-			a.num = atoi(bufferA);
-			i += k - i;
+			// Number chunks - they are compared as strings to allow an
+			// arbitrary number of digits.
+			NormalizeNumberChunks(a, b);
+
+			int result = strcmp(a.buffer - 1 + sizeof(a.buffer) - a.length,
+				b.buffer - 1 + sizeof(b.buffer) - b.length);
+			if (result != 0)
+				return result;
 		}
 
-		// fetch the next chunk for b
-		if (b.type == 0) {
-			// string chunk
-			int32 k = j;
-			while (!IsDigit(s2[k]) && s2[k] != 0) {
-				bufferB[k - j] = s2[k];
-				k++;
-			}
-			bufferB[k - j] = 0;
-			b.ascii = bufferB;
-			j += k - j;
-		} else {
-			// number chunk
-			int32 k = j;
-			while (IsDigit(s2[k]) && s2[k] != 0) {
-				bufferB[k - j] = s2[k];
-				k++;
-			}
-			bufferB[k - j] = 0;
-			b.ascii = bufferB;
-			b.num = atoi(bufferB);
-			j += k - j;
-		}
-
-		// compare the two chunks based on their type
-		if (a.type == 0) {
-			// string chunks
-			int stringCompareResult = strcasecmp(a.ascii, b.ascii);
-			// if the chunk strings are the same, keep using natural
-			// sorting for the next chunks
-			if (stringCompareResult != 0)
-				return stringCompareResult;
-		} else {
-			// number chunks
-			if (a.num != b.num) {
-				if (a.num < b.num)
-					return -1;
-				if (a.num > b.num)
-					return 1;
-			}
-		}
+		// The chunks were equal, proceed with the next chunk
 	}
 
 	return 0;
