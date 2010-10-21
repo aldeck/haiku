@@ -108,25 +108,54 @@ PoseViewController::CreateMenus()
 }
 
 
-void
-PoseViewController::SetControlVisible(BView* control, bool visible)
+BLayoutItem*
+LayoutItemForView(BView* view)
 {
-	if (control != NULL) {
+	if (view != NULL) {
 		BLayout* layout = NULL;
 		
-		if (control->Parent() != NULL) {
+		if (view->Parent() != NULL) {
 			// control is on a view	
-			layout = control->Parent()->GetLayout();
-		} else if (control->Window() != NULL) {
+			layout = view->Parent()->GetLayout();
+		} else if (view->Window() != NULL) {
 			// control is on a window
-			layout = control->Window()->GetLayout();
+			layout = view->Window()->GetLayout();
+		} else {
+			// somethings wrong
+			return NULL;	
 		}
 		
 		if (layout != NULL) {
-			int32 index = layout->IndexOfView(control);
-			layout->ItemAt(index)->SetVisible(visible);
+			
+			//int32 index = layout->IndexOfView(view);
+			//BLayoutItem* layoutItem = layout->ItemAt(index);
+			//return layoutItem;
+				// This above doesn't find the layout item as expected since 
+				// the recent layout api changes, so we use the method
+				// below (it's not necessarily a BViewLayoutItem now) until
+				// that's fixed.
+			
+			int itemCount = layout->CountItems();
+			for (int32 i = 0; i < itemCount; i++) {
+				BLayoutItem* item = (BLayoutItem*)layout->ItemAt(i);
+				if (item->View() == view) {					
+					//printf("layout->ItemAt(%li) = view = %p\n", i, view);
+					return item;
+				}
+			}			
 		}
 	}
+	return NULL;
+}
+
+
+void
+PoseViewController::SetControlVisible(BView* control, bool visible)
+{
+	printf("PoseViewController::SetControlVisible %u\n", visible);
+	BLayoutItem* layoutItem = LayoutItemForView(control);
+	if (layoutItem != NULL)
+		layoutItem->SetVisible(visible);
 }
 
 

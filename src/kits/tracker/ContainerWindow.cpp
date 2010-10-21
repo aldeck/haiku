@@ -45,10 +45,8 @@ All rights reserved.
 #include <Directory.h>
 #include <Entry.h>
 #include <FindDirectory.h>
-#include <GroupLayout.h>
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <InterfaceDefs.h>
-#include <LayoutItem.h>
 #include <Locale.h>
 #include <Menu.h>
 #include <MenuItem.h>
@@ -848,22 +846,20 @@ BContainerWindow::_Init(const BMessage *message)
 	Controller()->CreateControls(fCreationModel);
 	
 	// layout controls
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-	AddChild(BGroupLayoutBuilder(B_VERTICAL)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
 		.Add(Controller()->MenuBar())
 		.Add(Controller()->Navigator())
 		.Add(Controller()->TitleView())
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+		.AddGroup(B_HORIZONTAL, 0.0f)
 			.Add(Controller()->PoseView())
 			.Add(Controller()->VerticalScrollBar())
-		)
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+		.End()
+		.AddGroup(B_HORIZONTAL, 0.0f)
 			.Add(Controller()->CountView())
 			.Add(Controller()->HorizontalScrollBar(), 3.0f)
 			.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
-				// avoid the window's resize handle
-		)
-	);
+				// give space to the window's resize handle
+		.End();
 	
 	// deal with new unconfigured folders
 	if (NeedsDefaultStateSetup())
@@ -938,6 +934,7 @@ BContainerWindow::_Init(const BMessage *message)
 	Controller()->SetScrollBarsEnabled(true);*/
 
 	Show();
+	
 
 	// done showing, turn the B_NO_WORKSPACE_ACTIVATION flag off;
 	// it was on to prevent workspace jerking during boot
@@ -1549,7 +1546,7 @@ BContainerWindow::MessageReceived(BMessage *message)
 						break;
 
 					case kShowNavigatorChanged:
-						printf("kShowNavigatorChanged");
+						printf("kShowNavigatorChanged\n");
 						Controller()->SetControlVisible(Controller()->Navigator(),
 							settings.ShowNavigator());
 						if (!IsPathWatchingEnabled() && settings.ShowNavigator())

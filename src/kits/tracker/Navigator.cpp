@@ -92,7 +92,7 @@ BNavigator::BNavigator(const Model *model)
 	const float kInsetSpacing = 2;
 	
 	SetLayout(new BGroupLayout(B_VERTICAL));
-	AddChild(BGroupLayoutBuilder(B_HORIZONTAL)
+	AddChild(BGroupLayoutBuilder(B_HORIZONTAL, 0.0f)
 		.Add(fBackButton)
 		.Add(fForwardButton)
 		.Add(fUpButton)

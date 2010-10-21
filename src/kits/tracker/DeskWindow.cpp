@@ -35,7 +35,7 @@ All rights reserved.
 #include <Catalog.h>
 #include <Debug.h>
 #include <FindDirectory.h>
-#include <GroupLayout.h>
+#include <LayoutBuilder.h>
 #include <Locale.h>
 #include <NodeMonitor.h>
 #include <Path.h>
@@ -218,8 +218,8 @@ BDeskWindow::_Init(const BMessage *message)
 	// TODO: disable scrollbars
 	
 	// layout controls	
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-	AddChild(Controller()->PoseView());
+	BLayoutBuilder::Group<>(this, B_HORIZONTAL, 0.0f)
+		.Add(Controller()->PoseView());
 
 	BScreen screen(this);
 	rgb_color desktopColor = screen.DesktopColor();

@@ -35,6 +35,7 @@ All rights reserved.
 #include "Attributes.h"
 #include "AutoLock.h"
 #include "Commands.h"
+#include <ControlLook.h>
 #include "CountView.h"
 #include "FSUtils.h"
 #include "IconMenuItem.h"
@@ -47,7 +48,7 @@ All rights reserved.
 #include <Alert.h>
 #include <Button.h>
 #include <Catalog.h>
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <Locale.h>
 #include <Mime.h>
 #include <NodeInfo.h>
@@ -367,34 +368,32 @@ OpenWithContainerWindow::_Init(const BMessage *message)
 
 	
 	// layout controls
-	const float kInsetSpacing = 8;
-	const float kElementSpacing = 8;
+	const float spacing = be_control_look->DefaultItemSpacing();
 	
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-	AddChild(BGroupLayoutBuilder(B_VERTICAL)
-		.Add(BGroupLayoutBuilder(B_VERTICAL, kElementSpacing)
-			.Add(BGroupLayoutBuilder(B_VERTICAL)
+	BLayoutBuilder::Group<>(this, B_VERTICAL)
+		.AddGroup(B_VERTICAL)
+			.AddGroup(B_VERTICAL, 0.0f)
 				.Add(Controller()->TitleView())
-				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
-				.Add(Controller()->PoseView())
-				.Add(Controller()->VerticalScrollBar()))
-				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+				.AddGroup(B_HORIZONTAL, 0.0f)
+					.Add(Controller()->PoseView())
+					.Add(Controller()->VerticalScrollBar())
+				.End()
+				.AddGroup(B_HORIZONTAL, 0.0f)
 					.Add(Controller()->CountView())
 					.Add(Controller()->HorizontalScrollBar(), 3.0f)
 					.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
-						// avoid the window's resize handle
-				)
-			)
-			.Add(BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
-				.AddGlue()
-				.Add(cancelButton)				
-				.Add(fLaunchAndMakeDefaultButton)
-				.Add(fLaunchButton)
-				.SetInsets(0, 0, 16, 0)	// avoid the window's resize handle
-			)
-			.SetInsets(kInsetSpacing, kInsetSpacing, kInsetSpacing, kInsetSpacing)
-		)
-	);
+						// make room for the window's resize handle
+				.End()
+			.End()
+		.End()
+		.AddGroup(B_HORIZONTAL)
+			.AddGlue()
+			.Add(cancelButton)				
+			.Add(fLaunchAndMakeDefaultButton)
+			.Add(fLaunchButton)
+			.SetInsets(0, 0, 16, 0)	// avoid the window's resize handle
+		.End()
+		.SetInsets(spacing, spacing, spacing, spacing);
 	
 	// deal with new unconfigured folders
 	if (NeedsDefaultStateSetup())

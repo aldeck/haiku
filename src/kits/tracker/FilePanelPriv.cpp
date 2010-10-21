@@ -56,10 +56,11 @@ All rights reserved.
 #include <Application.h>
 #include <Button.h>
 #include <Catalog.h>
+#include <ControlLook.h>
 #include <Debug.h>
 #include <Directory.h>
 #include <FindDirectory.h>
-#include <GroupLayoutBuilder.h>
+#include <LayoutBuilder.h>
 #include <Locale.h>
 #include <MenuBar.h>
 #include <MenuField.h>
@@ -653,50 +654,42 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 	defaultButton->MakeDefault(true);
 
 	// layout
-	const float kInsetSpacing = 8;
-	const float kElementSpacing = 8;
+	const float spacing = be_control_look->DefaultItemSpacing();
 	
-	// TODO: find a more elegant way for this conditional layout
-	BView* buttonsGroup = NULL;
-	if (fIsSavePanel) {		
-		buttonsGroup = BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
-			.Add(fTextControl)
-			.Add(cancelButton)
-			.Add(defaultButton)
-			.SetInsets(0, 0, 14, 0);		
-	} else {
-		buttonsGroup = BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
-			.AddGlue()
-			.Add(cancelButton)
-			.Add(defaultButton)
-			.SetInsets(0, 0, 14, 0);
-	}
+	BGroupView* buttonsGroup = new BGroupView(B_HORIZONTAL, spacing);	
+	if (fIsSavePanel)
+		buttonsGroup->AddChild(fTextControl);		
+	else
+		buttonsGroup->GroupLayout()->AddItem(BSpaceLayoutItem::CreateGlue(), 1.0f);
+
+	buttonsGroup->AddChild(cancelButton);
+	buttonsGroup->AddChild(defaultButton);
+	buttonsGroup->GroupLayout()->SetInsets(0, 0, 14, 0);
 	
-	SetLayout(new BGroupLayout(B_HORIZONTAL));
-	AddChild(BGroupLayoutBuilder(B_VERTICAL)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
 		.Add(Controller()->MenuBar())
-		.Add(BGroupLayoutBuilder(B_VERTICAL, kElementSpacing)
-			.Add(BGroupLayoutBuilder(B_HORIZONTAL, kElementSpacing)
-				.Add(fDirMenuField)
+		.AddGroup(B_VERTICAL)
+			.AddGroup(B_HORIZONTAL)
+				.Add(fDirMenuField, 0.0f)
+					// 0.0 wheigth makes menu width to be always minimal
 				.AddGlue()
-				.AddGlue()
-			)			
-			.Add(BGroupLayoutBuilder(B_VERTICAL)
+			.End()		
+			.AddGroup(B_VERTICAL, 0.0f)
 				.Add(Controller()->TitleView())		
-				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
-				.Add(Controller()->PoseView())
-				.Add(Controller()->VerticalScrollBar()))
-				.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+				.AddGroup(B_HORIZONTAL, 0.0f)
+					.Add(Controller()->PoseView())
+					.Add(Controller()->VerticalScrollBar())
+				.End()
+				.AddGroup(B_HORIZONTAL, 0.0f)
 					.Add(Controller()->CountView())
 					.Add(Controller()->HorizontalScrollBar(), 3.0f)
 					.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
 						// avoid the window's resize handle
-				)
-			)
-			.Add(buttonsGroup)
-			.SetInsets(kInsetSpacing, kInsetSpacing, kInsetSpacing, kInsetSpacing)
-		)
-	);
+				.End()
+			.End()
+			.Add(buttonsGroup)		
+		.SetInsets(spacing, spacing, spacing, spacing)
+		.End();
 	
 	RestoreState();
 	CheckScreenIntersect();

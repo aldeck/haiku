@@ -90,14 +90,14 @@ BQueryContainerWindow::_Init(const BMessage* message)
 
 	// layout controls
 	SetLayout(new BGroupLayout(B_HORIZONTAL));
-	AddChild(BGroupLayoutBuilder(B_VERTICAL)
+	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0.0f)
 		.Add(Controller()->MenuBar())
 		.Add(Controller()->TitleView())
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+		.Add(BGroupLayoutBuilder(B_HORIZONTAL, 0.0f)
 			.Add(Controller()->PoseView())
 			.Add(Controller()->VerticalScrollBar())
 		)
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL)
+		.Add(BGroupLayoutBuilder(B_HORIZONTAL, 0.0f)
 			.Add(Controller()->CountView())
 			.Add(Controller()->HorizontalScrollBar(), 3.0f)
 			.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
