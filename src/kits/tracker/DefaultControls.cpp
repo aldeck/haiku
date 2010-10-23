@@ -13,6 +13,8 @@
 #include <Catalog.h>
 #include <Locale.h>
 #include <MenuItem.h>
+#include <Volume.h>
+#include <VolumeRoster.h>
 
 #include "Attributes.h"
 #include "Commands.h"
@@ -98,95 +100,175 @@ DefaultFileContextMenu::DefaultFileContextMenu(PoseViewController* controller)
 
 DefaultFileMenu::DefaultFileMenu(PoseViewController* controller)
 	:
-	BMenu(B_TRANSLATE("File"))
+	BMenu(B_TRANSLATE("File")),
+	fController(controller)
 {
-	if (!controller->PoseView()->IsFilePanel()) {
-		AddItem(new BMenuItem(B_TRANSLATE("Find" B_UTF8_ELLIPSIS),
+	TargetModelChanged();
+	SelectionChanged();
+}
+
+
+void
+DefaultFileMenu::TargetModelChanged()
+{
+	Model* model = fController->PoseView()->TargetModel();
+	printf("DefaultFileMenu::TargetModelChanged() model = '%s'\n", model->Name());
+
+	// empty the menu
+	if (!IsHidden())
+		Hide();
+	RemoveItems(0, CountItems(), true);
+
+	if (model->IsRoot()) {
+		AddItem(new BMenuItem(B_TRANSLATE("Find"B_UTF8_ELLIPSIS),
 			new BMessage(kFindButton), 'F'));
-	}
+		AddSeparatorItem();
 
-	Model* targetModel = controller->PoseView()->TargetModel();
+		AddItem(new BMenuItem(B_TRANSLATE("Open"),
+			new BMessage(kOpenSelection), 'O'));
+		AddItem(new BMenuItem(B_TRANSLATE("Get info"),
+			new BMessage(kGetInfo), 'I'));
+		AddItem(new BMenuItem(B_TRANSLATE("Edit name"),
+			new BMessage(kEditItem), 'E'));
 
-	if (!targetModel->IsQuery()
-		&& !targetModel->IsTrash()
-		&& !targetModel->IsPrintersDir()) {
+		BMenuItem* item = new BMenuItem(B_TRANSLATE("Unmount"),
+			new BMessage(kUnmountVolume), 'U');
+		item->SetEnabled(false);
+		AddItem(item);
 
-		if (!controller->PoseView()->IsFilePanel()) {
-			TemplatesMenu* templateMenu = new TemplatesMenu(controller->PoseView(),
-				B_TRANSLATE("New"));
-			AddItem(templateMenu);
-			templateMenu->SetTargetForItems(controller->PoseView());
-		} else {
-			AddItem(new BMenuItem(B_TRANSLATE("New folder"),
-				new BMessage(kNewFolder), 'N'));
-		}
-	}
-	AddSeparatorItem();
+		AddItem(new BMenuItem(B_TRANSLATE("Mount settings" B_UTF8_ELLIPSIS),
+			new BMessage(kRunAutomounterSettings)));
 
-	AddItem(new BMenuItem(B_TRANSLATE("Open"),
-		new BMessage(kOpenSelection), 'O'));
-	AddItem(new BMenuItem(B_TRANSLATE("Get info"),
-		new BMessage(kGetInfo), 'I'));
-	AddItem(new BMenuItem(B_TRANSLATE("Edit name"),
-		new BMessage(kEditItem), 'E'));
-
-	if (targetModel->IsTrash() || targetModel->IsInTrash()) {
-		AddItem(new BMenuItem(B_TRANSLATE("Restore"),
-			new BMessage(kRestoreFromTrash)));
-		if (targetModel->IsTrash()) {
-			// add as first item in menu
-			AddItem(new BMenuItem(B_TRANSLATE("Empty Trash"),
-				new BMessage(kEmptyTrash)), 0);
-			AddItem(new BSeparatorItem(), 1);
-		}
-	} else if (targetModel->IsPrintersDir()) {
-		AddItem(new BMenuItem(B_TRANSLATE("Add printer"B_UTF8_ELLIPSIS),
-			new BMessage(kAddPrinter), 'N'), 0);
-		AddItem(new BSeparatorItem(), 1);
-		AddItem(new BMenuItem(B_TRANSLATE("Make active printer"),
-			new BMessage(kMakeActivePrinter)));
+		AddSeparatorItem();
+		AddItem(new BMenu(B_TRANSLATE("Add-ons")));
+		SetTargetForItems(fController->PoseView());
 	} else {
-		AddItem(new BMenuItem(B_TRANSLATE("Duplicate"),
-			new BMessage(kDuplicateSelection), 'D'));
 
-		AddItem(new BMenuItem(TrackerSettings().DontMoveFilesToTrash()
-			? B_TRANSLATE("Delete")	: B_TRANSLATE("Move to Trash"),
-			new BMessage(kMoveToTrash), 'T'));
+		if (!fController->PoseView()->IsFilePanel()) {
+			AddItem(new BMenuItem(B_TRANSLATE("Find" B_UTF8_ELLIPSIS),
+				new BMessage(kFindButton), 'F'));
+		}
 
+		if (!model->IsQuery()
+			&& !model->IsTrash()
+			&& !model->IsPrintersDir()) {
+
+			if (!fController->PoseView()->IsFilePanel()) {
+				TemplatesMenu* templateMenu = new TemplatesMenu(fController->PoseView(),
+					B_TRANSLATE("New"));
+				AddItem(templateMenu);
+				templateMenu->SetTargetForItems(fController->PoseView());
+			} else {
+				AddItem(new BMenuItem(B_TRANSLATE("New folder"),
+					new BMessage(kNewFolder), 'N'));
+			}
+		}
 		AddSeparatorItem();
 
-		// The "Move To", "Copy To", "Create Link" menus are inserted
-		// at this place, have a look at:
-		// BContainerWindow::SetupMoveCopyMenus()
+		AddItem(new BMenuItem(B_TRANSLATE("Open"),
+			new BMessage(kOpenSelection), 'O'));
+		AddItem(new BMenuItem(B_TRANSLATE("Get info"),
+			new BMessage(kGetInfo), 'I'));
+		AddItem(new BMenuItem(B_TRANSLATE("Edit name"),
+			new BMessage(kEditItem), 'E'));
+
+		if (model->IsTrash() || model->IsInTrash()) {
+			AddItem(new BMenuItem(B_TRANSLATE("Restore"),
+				new BMessage(kRestoreFromTrash)));
+			if (model->IsTrash()) {
+				// add as first item in menu
+				AddItem(new BMenuItem(B_TRANSLATE("Empty Trash"),
+					new BMessage(kEmptyTrash)), 0);
+				AddItem(new BSeparatorItem(), 1);
+			}
+		} else if (model->IsPrintersDir()) {
+			AddItem(new BMenuItem(B_TRANSLATE("Add printer"B_UTF8_ELLIPSIS),
+				new BMessage(kAddPrinter), 'N'), 0);
+			AddItem(new BSeparatorItem(), 1);
+			AddItem(new BMenuItem(B_TRANSLATE("Make active printer"),
+				new BMessage(kMakeActivePrinter)));
+		} else {
+			AddItem(new BMenuItem(B_TRANSLATE("Duplicate"),
+				new BMessage(kDuplicateSelection), 'D'));
+
+			AddItem(new BMenuItem(TrackerSettings().DontMoveFilesToTrash()
+				? B_TRANSLATE("Delete")	: B_TRANSLATE("Move to Trash"),
+				new BMessage(kMoveToTrash), 'T'));
+
+			AddSeparatorItem();
+
+			// The "Move To", "Copy To", "Create Link" menus are inserted
+			// at this place, have a look at:
+			// BContainerWindow::SetupMoveCopyMenus()
+		}
+
+		BMenuItem *cutItem = NULL, *copyItem = NULL, *pasteItem = NULL;
+		if (!model->IsPrintersDir()) {
+			AddSeparatorItem();
+
+			AddItem(cutItem = new BMenuItem(B_TRANSLATE("Cut"),
+				new BMessage(B_CUT), 'X'));
+			AddItem(copyItem = new BMenuItem(B_TRANSLATE("Copy"),
+				new BMessage(B_COPY), 'C'));
+			AddItem(pasteItem = new BMenuItem(B_TRANSLATE("Paste"),
+				new BMessage(B_PASTE), 'V'));
+
+			AddSeparatorItem();
+
+			AddItem(new BMenuItem(B_TRANSLATE("Identify"),
+				new BMessage(kIdentifyEntry)));
+			BMenu* addOnMenuItem = new BMenu(B_TRANSLATE("Add-ons"));
+			addOnMenuItem->SetFont(be_plain_font);
+			AddItem(addOnMenuItem);
+		}
+
+		SetTargetForItems(fController->PoseView());
+		if (cutItem)
+			cutItem->SetTarget(fController->PoseView()->Window());
+		if (copyItem)
+			copyItem->SetTarget(fController->PoseView()->Window());
+		if (pasteItem)
+			pasteItem->SetTarget(fController->PoseView()->Window());
 	}
+}
 
-	BMenuItem *cutItem = NULL, *copyItem = NULL, *pasteItem = NULL;
-	if (!targetModel->IsPrintersDir()) {
-		AddSeparatorItem();
 
-		AddItem(cutItem = new BMenuItem(B_TRANSLATE("Cut"),
-			new BMessage(B_CUT), 'X'));
-		AddItem(copyItem = new BMenuItem(B_TRANSLATE("Copy"),
-			new BMessage(B_COPY), 'C'));
-		AddItem(pasteItem = new BMenuItem(B_TRANSLATE("Paste"),
-			new BMessage(B_PASTE), 'V'));
+void
+DefaultFileMenu::SelectionChanged()
+{
+	printf("DefaultFileMenu::SelectionChanged()\n");
+	
+	PoseList* selection = fController->PoseView()->SelectionList();
+	Model* model = fController->PoseView()->TargetModel();
 
-		AddSeparatorItem();
+	if (model->IsRoot()) {
+		BVolume boot;
+		BVolumeRoster().GetBootVolume(&boot);
 
-		AddItem(new BMenuItem(B_TRANSLATE("Identify"),
-			new BMessage(kIdentifyEntry)));
-		BMenu* addOnMenuItem = new BMenu(B_TRANSLATE("Add-ons"));
-		addOnMenuItem->SetFont(be_plain_font);
-		AddItem(addOnMenuItem);
+		bool ejectableVolumeSelected = false;
+		int32 count = selection->CountItems();
+		for (int32 index = 0; index < count; index++) {
+			Model *model = selection->ItemAt(index)->TargetModel();
+			if (model->IsVolume()) {
+				BVolume volume;
+				volume.SetTo(model->NodeRef()->device);
+				if (volume != boot) {
+					ejectableVolumeSelected = true;
+					break;
+				}
+			}
+		}
+
+		BMenuItem* item = FindItem(kUnmountVolume);
+		if (item)
+			item->SetEnabled(ejectableVolumeSelected);
+
+	} else if (model->IsPrintersDir()) {
+
+		BMenuItem* item = FindItem(kMakeActivePrinter);
+		if (item)
+			item->SetEnabled(selection->CountItems() == 1);
 	}
-
-	SetTargetForItems(controller->PoseView());
-	if (cutItem)
-		cutItem->SetTarget(controller->PoseView()->Window());
-	if (copyItem)
-		copyItem->SetTarget(controller->PoseView()->Window());
-	if (pasteItem)
-		pasteItem->SetTarget(controller->PoseView()->Window());
 }
 
 

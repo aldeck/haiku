@@ -47,6 +47,7 @@ All rights reserved.
 #include "Model.h"
 #include "PendingNodeMonitorCache.h"
 #include "PoseList.h"
+#include "PoseViewListener.h"
 #include "TitleView.h"
 #include "Utilities.h"
 #include "ViewState.h"
@@ -59,6 +60,7 @@ All rights reserved.
 #include <View.h>
 #include <hash_set>
 #include <set>
+#include <vector>
 
 
 class BRefFilter;
@@ -111,6 +113,10 @@ class BPoseView : public BView {
 		virtual void Init(const BMessage &);
 	
 		virtual	void DetachedFromWindow();
+		
+		// listeners
+				void AddListener(PoseViewListener*);
+				void RemoveListener(PoseViewListener*);	// TODO unimplemented
 
 		// Returns true if for instance, node ref is a remote desktop directory and
 		// this is a desktop pose view.
@@ -175,7 +181,6 @@ class BPoseView : public BView {
 		void SetDropEnabled(bool);
 		void SetSelectionRectEnabled(bool);
 		void SetAlwaysAutoPlace(bool);
-		void SetSelectionChangedHook(bool);
 		void SetShowHideSelection(bool);
 		void SetEnsurePosesVisible(bool);
 		void SetIconMapping(bool);
@@ -392,6 +397,9 @@ class BPoseView : public BView {
 
 	protected:
 		void _InitCommon();
+		
+		void _NotifyTargetModelChanged();
+		void _NotifySelectionChanged();
 
 		// view setup
 		virtual void SetUpDefaultColumnsIfNeeded();
@@ -630,6 +638,9 @@ class BPoseView : public BView {
 
 	protected:
 		PoseViewController* fController;
+		typedef std::vector<PoseViewListener*> ListenerList;
+		ListenerList fListeners;
+
 		Model *fModel;
 		BPose *fActivePose;
 		BRect fExtent;
@@ -677,7 +688,6 @@ class BPoseView : public BView {
 		bool fSelectionRectEnabled : 1;
 		bool fAlwaysAutoPlace : 1;
 		bool fAllowPoseEditing : 1;
-		bool fSelectionChangedHook : 1;	// get rid of this
 		bool fSavePoseLocations : 1;
 		bool fShowHideSelection : 1;
 		bool fOkToMapIcons : 1;
@@ -942,11 +952,6 @@ BPoseView::SetMultipleSelection(bool state)
 	fMultipleSelection = state;
 }
 
-inline void
-BPoseView::SetSelectionChangedHook(bool state)
-{
-	fSelectionChangedHook = state;
-}
 
 inline void
 BPoseView::SetAutoScroll(bool state)
@@ -1107,6 +1112,8 @@ WhileEachTextWidget(BPose *pose, BPoseView *poseView,
 
 } // namespace BPrivate
 
+
 using namespace BPrivate;
+
 
 #endif	/* _POSE_VIEW_H */

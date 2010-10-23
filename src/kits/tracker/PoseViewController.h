@@ -11,6 +11,8 @@
 
 #include <ScrollBar.h>
 
+#include <vector>
+
 
 class BGridLayout;
 class BGroupLayout;
@@ -30,6 +32,7 @@ class BCountView;
 class BHScrollBar;
 class BPoseView;
 class Model;
+class PoseViewListener;
 
 
 class PoseViewController { // TODO: more abstraction
@@ -38,12 +41,12 @@ public:
 	virtual						~PoseViewController();
 
 			void				SetPoseView(BPoseView* poseView);
-			
+
 	virtual	void				CreateControls(Model* model); // temporary helper method
 									// model is needed for BNavigator.
 									// TODO: Just get the model out of fPoseView
 			void				CreateMenus();	// temporary helper method
-			
+
 	virtual	void				SetControlVisible(BView* control, bool visible);
 			void				ShowAttributeMenu();
 			void				HideAttributeMenu();
@@ -60,11 +63,11 @@ public:
 			void				SlowOperationStarted();
 			void				SlowOperationEnded();
 			void				AddPosesCompleted();
-		
+
 			BMenuBar*	 		MenuBar()		{ return fMenuBar; };
-			DefaultAttributeMenu*	AttributeMenu() { return fAttributesMenu; };			
+			DefaultAttributeMenu*	AttributeMenu() { return fAttributesMenu; };
 			BMenu*	 			WindowMenu()	{ return fWindowMenu; };
-			BMenu*	 			FileMenu()		{ return fFileMenu; };
+			BMenu*				FileMenu()		{ return fFileMenu; };
 			BNavigator* 		Navigator()		{ return fNavigator; };
 			BTitleView* 		TitleView()		{ return fTitleView; };
 			BPoseView*	 		PoseView()		{ return fPoseView; };

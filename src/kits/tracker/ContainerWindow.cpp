@@ -799,13 +799,8 @@ BContainerWindow::RepopulateMenus()
 	fWindowContextMenu->SetFont(be_plain_font);
 	AddWindowContextMenus(fWindowContextMenu);
 
-	// TODO: disabled until menu system rework
-	/*Controller()->MenuBar()->RemoveItem(Controller()->FileMenu());
-	delete Controller()->FileMenu();
-	///Controller()->FileMenu() = new BMenu(B_TRANSLATE("File"));
-	Controller()->AddFileMenu(Controller()->FileMenu());
-	Controller()->MenuBar()->AddItem(Controller()->FileMenu());
-
+	// TODO: disabled until menu system rework	
+	/*
 	Controller()->MenuBar()->RemoveItem(Controller()->WindowMenu());
 	delete Controller()->WindowMenu();
 	//Controller()->WindowMenu() = new BMenu(B_TRANSLATE("Window"));
@@ -820,12 +815,13 @@ BContainerWindow::RepopulateMenus()
 	if (PoseView()->ViewMode() == kListMode)
 		Controller()->ShowAttributeMenu();*/
 
-	int32 selectCount = PoseView()->SelectionList()->CountItems();
+	//int32 selectCount = PoseView()->SelectionList()->CountItems();
 
-	SetupOpenWithMenu(Controller()->FileMenu());
-	SetupMoveCopyMenus(selectCount
-			? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef() : NULL,
-		Controller()->FileMenu());
+	// TODO review that
+	//SetupOpenWithMenu(Controller()->FileMenu());
+	//SetupMoveCopyMenus(selectCount
+	//		? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef() : NULL,
+	//	Controller()->FileMenu());
 }
 
 
@@ -841,10 +837,10 @@ BContainerWindow::_Init(const BMessage *message)
 	// create controls
 	fPoseView = new BPoseView(fCreationModel, kListMode);
 	fController = new PoseViewController();
-	
+
 	Controller()->SetPoseView(fPoseView);
 	Controller()->CreateControls(fCreationModel);
-	
+
 	// layout controls
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
 		.Add(Controller()->MenuBar())
@@ -860,11 +856,11 @@ BContainerWindow::_Init(const BMessage *message)
 			.SetInsets(0, 0, B_V_SCROLL_BAR_WIDTH, 0)
 				// give space to the window's resize handle
 		.End();
-	
+
 	// deal with new unconfigured folders
 	if (NeedsDefaultStateSetup())
 		SetUpDefaultState();
-		
+
 	fMoveToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Move to"),
 		kMoveSelectionTo, this));
 	fCopyToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Copy to"),
@@ -885,7 +881,7 @@ BContainerWindow::_Init(const BMessage *message)
 		// check window frame TODO: should be done after/in restorewindowstate
 	
 	Controller()->TitleView()->Reset();
-		// TODO find a more elegant way for the titleview to get updates
+		// TODO just use PoseViewListener
 	
 	if (PoseView()->ViewMode() == kListMode) {
 		Controller()->ShowAttributeMenu();
@@ -899,9 +895,13 @@ BContainerWindow::_Init(const BMessage *message)
 			
 		Controller()->SetControlVisible(Controller()->Navigator(), settings.ShowNavigator());
 	}
+
+	// register some poseview listeners
+	fPoseView->AddListener(dynamic_cast<PoseViewListener*>(Controller()->FileMenu()));
+		// TODO avoid casting (still testing stuff)
 	
 	Controller()->TitleView()->Reset();
-		// TODO look for a more robust way for the titleview to get updates
+		// TODO make TitleView a poseview listener
 
 	if (fBackgroundImage && PoseView()->ViewMode() != kListMode)
 		fBackgroundImage->Show(PoseView(), current_workspace());
@@ -1434,7 +1434,7 @@ BContainerWindow::MessageReceived(BMessage *message)
 
 					// Update PoseView
 					PoseView()->SwitchDir(&ref, opener.StreamNode());
-
+					
 					if (wasInTrash ^ (PoseView()->TargetModel()->IsTrash()
 							|| PoseView()->TargetModel()->IsInTrash())
 						|| isRoot != PoseView()->TargetModel()->IsRoot())
@@ -1546,7 +1546,6 @@ BContainerWindow::MessageReceived(BMessage *message)
 						break;
 
 					case kShowNavigatorChanged:
-						printf("kShowNavigatorChanged\n");
 						Controller()->SetControlVisible(Controller()->Navigator(),
 							settings.ShowNavigator());
 						if (!IsPathWatchingEnabled() && settings.ShowNavigator())
@@ -1771,21 +1770,16 @@ BContainerWindow::MenusBeginning()
 		// invoked - this would prevent Cut/Copy/Paste from working
 		fPoseView->CommitActivePose();
 
+	// TODO review that
 	// File menu
-	int32 selectCount = PoseView()->SelectionList()->CountItems();
-
-	SetupOpenWithMenu(Controller()->FileMenu());
-	SetupMoveCopyMenus(selectCount
-		? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef() : NULL, Controller()->FileMenu());
+	//int32 selectCount = PoseView()->SelectionList()->CountItems();	
+	//SetupOpenWithMenu(Controller()->FileMenu());
+	//SetupMoveCopyMenus(selectCount
+	//	? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef() : NULL, Controller()->FileMenu());
 
 	UpdateMenu(Controller()->MenuBar(), kMenuBarContext);
 
 	fController->AttributeMenu()->MimeTypesChanged();
-
-	if (PoseView()->TargetModel()->IsPrintersDir()) {
-		EnableNamedMenuItem(Controller()->FileMenu(), B_TRANSLATE("Make active printer"),
-			selectCount == 1);
-	}
 }
 
 

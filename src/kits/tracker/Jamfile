@@ -64,6 +64,7 @@ SharedLibrary libtracker.so :
 	PoseList.cpp
 	PoseView.cpp
 	PoseViewController.cpp
+	PoseViewListener.cpp
 	PoseViewScripting.cpp
 	QueryContainerWindow.cpp
 	QueryPoseView.cpp
@@ -91,7 +92,6 @@ SharedLibrary libtracker.so :
 	TrashWatcher.cpp
 	Utilities.cpp
 	ViewState.cpp
-	VolumeWindow.cpp
 	WidgetAttributeText.cpp
 
 	: be translation $(vector_icon_libs) $(TARGET_LIBSTDC++) $(HAIKU_LOCALE_LIBS) libshared.a
@@ -132,7 +132,6 @@ DoCatalogs libtracker.so :
 	Tracker.cpp
 	TrackerInitialState.cpp
 	TrackerSettingsWindow.cpp
-	VolumeWindow.cpp
 	WidgetAttributeText.cpp
 ;
 

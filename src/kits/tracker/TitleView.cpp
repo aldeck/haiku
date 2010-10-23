@@ -108,7 +108,7 @@ BTitleView::BTitleView(BPoseView *poseView)
 	fTrackingState(NULL)
 {
 	SetExplicitMaxSize(BSize(B_SIZE_UNSET, 16));
-	SetExplicitMinSize(BSize(B_SIZE_UNSET, 16));
+	SetExplicitMinSize(BSize(0, 16));
 	
 	sTitleBackground = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.88f); // 216 -> 220
 	sDarkTitleBackground = tint_color(sTitleBackground, B_DARKEN_1_TINT);

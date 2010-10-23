@@ -597,7 +597,6 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 	PoseView()->SetDragEnabled(false);
 	PoseView()->SetDropEnabled(false);
 	PoseView()->SetSelectionHandler(this);
-	PoseView()->SetSelectionChangedHook(true);
 	PoseView()->DisableSaveLocation();
 	fPoseView->SetRefFilter(filter);
 	if (!fIsSavePanel)
@@ -705,7 +704,7 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 	AddCommonShortcuts();
 	
 	Controller()->TitleView()->Reset();
-		// TODO check for a more robust way for the titleview to get updates
+		// TODO just use PoseViewListener
 	
 		// configure/customize menus
 	FavoritesMenu* favorites = new FavoritesMenu(B_TRANSLATE("Favorites"),

@@ -12,6 +12,8 @@
 #include <Menu.h>
 #include <PopUpMenu.h>
 
+#include "PoseViewListener.h"
+
 
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "libtracker"
@@ -22,8 +24,8 @@ class BMimeType;
 
 
 namespace BPrivate {
-
-
+	
+class Model;
 class PoseViewController;
 
 
@@ -33,9 +35,14 @@ public:
 };
 
 
-class DefaultFileMenu : public BMenu {
+class DefaultFileMenu : public BMenu, public PoseViewListener {
 public:
 								DefaultFileMenu(PoseViewController* controller);
+	virtual void				TargetModelChanged();
+	virtual void				SelectionChanged();
+
+protected:
+			PoseViewController* fController;
 };
 
 

@@ -224,7 +224,6 @@ BPoseView::BPoseView(Model *model, uint32 viewMode)
 	fSelectionRectEnabled(true),
 	fAlwaysAutoPlace(false),
 	fAllowPoseEditing(true),
-	fSelectionChangedHook(false),
 	fSavePoseLocations(true),
 	fShowHideSelection(true),
 	fOkToMapIcons(false),
@@ -296,6 +295,20 @@ BPoseView::Init(const BMessage &message)
 {
 	RestoreState(message);
 	_InitCommon();
+}
+
+
+void
+BPoseView::AddListener(PoseViewListener* listener)
+{
+	fListeners.push_back(listener);
+}
+
+
+void
+BPoseView::RemoveListener(PoseViewListener* listener)
+{
+	// TODO
 }
 
 
@@ -3679,8 +3692,7 @@ BPoseView::AddPoseToSelection(BPose *pose, int32 index, bool scrollIntoView)
 		if (scrollIntoView)
 			ScrollIntoView(poseRect);
 
-		if (fSelectionChangedHook)
-			ContainerWindow()->SelectionChanged();
+		_NotifySelectionChanged();
 	}
 }
 
@@ -3714,8 +3726,7 @@ BPoseView::RemovePoseFromSelection(BPose *pose)
 	} else
 		Invalidate(pose->CalcRect(this));
 
-	if (fSelectionChangedHook)
-		ContainerWindow()->SelectionChanged();
+	_NotifySelectionChanged();
 }
 
 
@@ -5774,8 +5785,7 @@ BPoseView::SelectAll()
 		loc.y += fListElemHeight;
 	}
 
-	if (fSelectionChangedHook)
-		ContainerWindow()->SelectionChanged();
+	_NotifySelectionChanged();
 }
 
 
@@ -5824,8 +5834,7 @@ BPoseView::InvertSelection()
 		loc.y += fListElemHeight;
 	}
 
-	if (fSelectionChangedHook)
-		ContainerWindow()->SelectionChanged();
+	_NotifySelectionChanged();
 }
 
 
@@ -6409,8 +6418,7 @@ BPoseView::ShowContextMenu(BPoint where)
 	window->ShowContextMenu(where, pose ? pose->TargetModel()->EntryRef() : 0,
 		this);
 
-	if (fSelectionChangedHook)
-		window->SelectionChanged();
+	_NotifySelectionChanged();
 }
 
 
@@ -6516,8 +6524,7 @@ BPoseView::MouseDown(BPoint where)
 		DragSelectionRect(where, extendSelection);
 	}
 
-	if (fSelectionChangedHook)
-		window->SelectionChanged();
+	_NotifySelectionChanged();
 }
 
 
@@ -7298,8 +7305,8 @@ BPoseView::DeletePose(const node_ref *itemNode, BPose *pose, int32 index)
 		if (fRealPivotPose == pose)
 			fRealPivotPose = NULL;
 
-		if (pose->IsSelected() && fSelectionChangedHook)
-			ContainerWindow()->SelectionChanged();
+		if (pose->IsSelected())
+			_NotifySelectionChanged();
 
 		fPoseList->RemoveItemAt(index);
 
@@ -7577,8 +7584,7 @@ BPoseView::ClearPoses()
 	ResetPosePlacementHint();
 	ClearExtent();
 
-	if (fSelectionChangedHook)
-		ContainerWindow()->SelectionChanged();
+	_NotifySelectionChanged();
 }
 
 
@@ -7619,9 +7625,6 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 		RestoreState(node);
 		viewStateRestored = (fViewState != previousState);
 	}
-
-	// Make sure fTitleView is rebuilt, as fColumnList might have changed
-	Controller()->TitleView()->Reset();
 
 	if (viewStateRestored) {
 		if (ViewMode() == kListMode && oldMode != kListMode) {
@@ -7669,6 +7672,36 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 	Invalidate();
 
 	fLastKeyTime = 0;
+	
+	_NotifyTargetModelChanged();
+
+	// Make sure fTitleView is rebuilt, as fColumnList might have changed
+	Controller()->TitleView()->Reset();
+		// TODO use PoseViewListener
+}
+
+
+void
+BPoseView::_NotifyTargetModelChanged()
+{
+	ListenerList::iterator it = fListeners.begin();
+	for (; it != fListeners.end(); it++) {
+		if (*it != NULL)
+			(*it)->TargetModelChanged();
+	}
+}
+
+
+void
+BPoseView::_NotifySelectionChanged()
+{
+	ContainerWindow()->SelectionChanged();
+
+	ListenerList::iterator it = fListeners.begin();
+	for (; it != fListeners.end(); it++) {
+		if (*it != NULL)
+			(*it)->SelectionChanged();
+	}
 }
 
 
@@ -9372,8 +9405,7 @@ BPoseView::EnsurePoseUnselected(BPose *pose)
 
 	if (pose->IsSelected()) {
 		pose->Select(false);
-		if (fSelectionChangedHook)
-			ContainerWindow()->SelectionChanged();
+		_NotifySelectionChanged();
 	}
 }
 

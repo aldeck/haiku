@@ -889,8 +889,6 @@ TTracker::OpenContainerWindow(Model *model, BMessage *originalRefsList,
 			refList = new BMessage(*originalRefsList);
 		}
 		window = new OpenWithContainerWindow(refList, &fWindowList);
-	} else if (model->IsRoot()) {
-		window = new BVolumeWindow(model, &fWindowList, openFlags);
 	} else if (model->IsQuery()) {
 		window = new BQueryContainerWindow(model, &fWindowList, openFlags);
 	} else {
