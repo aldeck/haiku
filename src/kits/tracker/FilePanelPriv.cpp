@@ -656,24 +656,30 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 	// layout
 	const float spacing = be_control_look->DefaultItemSpacing();
 	
-	BGroupView* buttonsGroup = new BGroupView(B_HORIZONTAL, spacing);	
+	BGroupView* buttonsGroup = new BGroupView(B_HORIZONTAL, spacing);
 	if (fIsSavePanel)
-		buttonsGroup->AddChild(fTextControl);		
-	else
-		buttonsGroup->GroupLayout()->AddItem(BSpaceLayoutItem::CreateGlue(), 1.0f);
+		buttonsGroup->AddChild(fTextControl);
+	else {
+		buttonsGroup->GroupLayout()->AddItem(
+			BSpaceLayoutItem::CreateGlue(), 1.0f);
+	}
 
 	buttonsGroup->AddChild(cancelButton);
 	buttonsGroup->AddChild(defaultButton);
 	buttonsGroup->GroupLayout()->SetInsets(0, 0, 14, 0);
 	
+	BGroupView* dirMenuGroup = new BGroupView(B_HORIZONTAL);
+	dirMenuGroup->GroupLayout()->View()->SetViewColor(
+		ui_color(B_PANEL_BACKGROUND_COLOR));
+	dirMenuGroup->GroupLayout()->AddView(fDirMenuField, 0.0f);
+		// 0.0 wheigth so that the menu keeps its width minimal
+	dirMenuGroup->GroupLayout()->AddItem(
+		BSpaceLayoutItem::CreateGlue(), 1.0f);
+	
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
 		.Add(Controller()->MenuBar())
 		.AddGroup(B_VERTICAL)
-			.AddGroup(B_HORIZONTAL)
-				.Add(fDirMenuField, 0.0f)
-					// 0.0 wheigth makes menu width to be always minimal
-				.AddGlue()
-			.End()		
+			.Add(dirMenuGroup)
 			.AddGroup(B_VERTICAL, 0.0f)
 				.Add(Controller()->TitleView())		
 				.AddGroup(B_HORIZONTAL, 0.0f)
@@ -687,7 +693,7 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 						// avoid the window's resize handle
 				.End()
 			.End()
-			.Add(buttonsGroup)		
+			.Add(buttonsGroup)
 		.SetInsets(spacing, spacing, spacing, spacing)
 		.End();
 	
