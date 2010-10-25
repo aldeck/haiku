@@ -49,7 +49,6 @@ IconButton::IconButton(const char* name, uint32 id, uint32 size,
 	fTargetCache(target)
 {
 	SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-	//SetViewColor(B_TRANSPARENT_32_BIT);
 }
 
 // destructor
@@ -96,124 +95,36 @@ IconButton::Draw(BRect area)
 
 	BRect r(Bounds());
 
-	if (be_control_look != NULL) {
-		uint32 flags = 0;
-		BBitmap* bitmap = fNormalBitmap;
-		if (!IsEnabled()) {
-			flags |= BControlLook::B_DISABLED;
-			bitmap = fDisabledBitmap;
-		}
-		if (_HasFlags(STATE_PRESSED) || _HasFlags(STATE_FORCE_PRESSED))
-			flags |= BControlLook::B_ACTIVATED;
-
-		if (DrawBorder()) {
-			be_control_look->DrawButtonFrame(this, r, area, background,
-				background, flags);
-			be_control_look->DrawButtonBackground(this, r, area, background,
-				flags);
-		} /*else {
-			SetHighColor(background);
-			FillRect(r);
-		}*/
-
-		if (bitmap && bitmap->IsValid()) {
-			float x = r.left + floorf((r.Width()
-				- bitmap->Bounds().Width()) / 2.0 + 0.5);
-			float y = r.top + floorf((r.Height()
-				- bitmap->Bounds().Height()) / 2.0 + 0.5);
-			BPoint point(x, y);
-			if (_HasFlags(STATE_PRESSED) || _HasFlags(STATE_FORCE_PRESSED))
-				point += BPoint(1.0, 1.0);
-			if (bitmap->ColorSpace() == B_RGBA32
-				|| bitmap->ColorSpace() == B_RGBA32_BIG) {
-				SetDrawingMode(B_OP_ALPHA);
-				SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
-			}
-			DrawBitmap(bitmap, point);
-		}
-		return;
-	}
-
-	rgb_color lightShadow, shadow, darkShadow, light;
+	uint32 flags = 0;
 	BBitmap* bitmap = fNormalBitmap;
-	// adjust colors and bitmap according to flags
-	if (IsEnabled()) {
-		lightShadow = tint_color(background, B_DARKEN_1_TINT);
-		shadow = tint_color(background, B_DARKEN_2_TINT);
-		darkShadow = tint_color(background, B_DARKEN_4_TINT);
-		light = tint_color(background, B_LIGHTEN_MAX_TINT);
-		SetHighColor(0, 0, 0, 255);
-	} else {
-		lightShadow = tint_color(background, 1.11);
-		shadow = tint_color(background, B_DARKEN_1_TINT);
-		darkShadow = tint_color(background, B_DARKEN_2_TINT);
-		light = tint_color(background, B_LIGHTEN_2_TINT);
+	if (!IsEnabled()) {
+		flags |= BControlLook::B_DISABLED;
 		bitmap = fDisabledBitmap;
-		SetHighColor(tint_color(background, B_DISABLED_LABEL_TINT));
 	}
-	if (_HasFlags(STATE_PRESSED) || _HasFlags(STATE_FORCE_PRESSED)) {
-		if (IsEnabled())  {
-//			background = tint_color(background, B_DARKEN_2_TINT);
-//			background = tint_color(background, B_LIGHTEN_1_TINT);
-			background = tint_color(background, B_DARKEN_1_TINT);
-			bitmap = fClickedBitmap;
-		} else {
-//			background = tint_color(background, B_DARKEN_1_TINT);
-//			background = tint_color(background, (B_NO_TINT + B_LIGHTEN_1_TINT) / 2.0);
-			background = tint_color(background, (B_NO_TINT + B_DARKEN_1_TINT) / 2.0);
-			bitmap = fDisabledClickedBitmap;
-		}
-		// background
-		SetLowColor(background);
-		r.InsetBy(2.0, 2.0);
-		StrokeLine(r.LeftBottom(), r.LeftTop(), B_SOLID_LOW);
-		StrokeLine(r.LeftTop(), r.RightTop(), B_SOLID_LOW);
-		r.InsetBy(-2.0, -2.0);
-	}
-	// draw frame only if tracking
+	if (_HasFlags(STATE_PRESSED) || _HasFlags(STATE_FORCE_PRESSED))
+		flags |= BControlLook::B_ACTIVATED;
+
 	if (DrawBorder()) {
-		if (_HasFlags(STATE_PRESSED) || _HasFlags(STATE_FORCE_PRESSED))
-			DrawPressedBorder(r, background, shadow, darkShadow, lightShadow, light);
-		else
-			DrawNormalBorder(r, background, shadow, darkShadow, lightShadow, light);
-		r.InsetBy(2.0, 2.0);
-	} else
-		_DrawFrame(r, background, background, background, background);
-	float width = Bounds().Width();
-	float height = Bounds().Height();
-	// bitmap
-	BRegion originalClippingRegion;
+		be_control_look->DrawButtonFrame(this, r, area, background,
+			background, flags);
+		be_control_look->DrawButtonBackground(this, r, area, background,
+			flags);
+	}
+
 	if (bitmap && bitmap->IsValid()) {
-		float x = floorf((width - bitmap->Bounds().Width()) / 2.0 + 0.5);
-		float y = floorf((height - bitmap->Bounds().Height()) / 2.0 + 0.5);
+		float x = r.left + floorf((r.Width()
+			- bitmap->Bounds().Width()) / 2.0 + 0.5);
+		float y = r.top + floorf((r.Height()
+			- bitmap->Bounds().Height()) / 2.0 + 0.5);
 		BPoint point(x, y);
 		if (_HasFlags(STATE_PRESSED) || _HasFlags(STATE_FORCE_PRESSED))
 			point += BPoint(1.0, 1.0);
-		if (bitmap->ColorSpace() == B_RGBA32 || bitmap->ColorSpace() == B_RGBA32_BIG) {
-			FillRect(r, B_SOLID_LOW);
+		if (bitmap->ColorSpace() == B_RGBA32
+			|| bitmap->ColorSpace() == B_RGBA32_BIG) {
 			SetDrawingMode(B_OP_ALPHA);
 			SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
 		}
 		DrawBitmap(bitmap, point);
-		// constrain clipping region
-		BRegion region= originalClippingRegion;
-		GetClippingRegion(&region);
-		region.Exclude(bitmap->Bounds().OffsetByCopy(point));
-		ConstrainClippingRegion(&region);
-	}
-	// background
-	SetDrawingMode(B_OP_COPY);
-	FillRect(r, B_SOLID_LOW);
-	ConstrainClippingRegion(NULL);
-	// label
-	if (fLabel.CountChars() > 0) {
-		SetDrawingMode(B_OP_COPY);
-		font_height fh;
-		GetFontHeight(&fh);
-		float y = Bounds().bottom - 4.0;
-		y -= fh.descent;
-		float x = (width - StringWidth(fLabel.String())) / 2.0;
-		DrawString(fLabel.String(), BPoint(x, y));
 	}
 }
 

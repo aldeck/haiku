@@ -41,8 +41,8 @@ All rights reserved.
 #include "Tracker.h"
 
 #include <ControlLook.h>
-#include <GroupLayout.h>
 #include <GroupLayoutBuilder.h>
+#include <Region.h>
 #include <Window.h>
 #include <Picture.h>
 #include <TextControl.h>
@@ -115,18 +115,26 @@ BNavigator::AttachedToWindow()
 }
 
 void 
-BNavigator::Draw(BRect)
+BNavigator::Draw(BRect updateRect)
 {
-	BRect bounds(Bounds());			
-	if (be_control_look != NULL) {
-		rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
-		SetHighColor(tint_color(base, B_DARKEN_2_TINT));
-		StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
-		bounds.bottom--;
+	BRegion clipper(updateRect);
+	clipper.Exclude(fLocation->Frame());
+	ConstrainClippingRegion(&clipper);
+		// workaround, since we use B_DRAW_ON_CHILDREN to draw the gradient
+		// also on the background of the buttons we need to avoid the fLocation
+		// textfield as it doesn't blank some parts of itself properly.
+		// TODO: either find a way to avoid using draw on children and achieve
+		// the same effect and also look if we could do something in BTextField
 
-		be_control_look->DrawButtonBackground(this, bounds, bounds, base, 0,
-			BControlLook::B_TOP_BORDER | BControlLook::B_BOTTOM_BORDER);
-	}
+	BRect bounds(Bounds());			
+
+	rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
+	SetHighColor(tint_color(base, B_DARKEN_2_TINT));
+	StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
+	bounds.bottom--;
+
+	be_control_look->DrawButtonBackground(this, bounds, bounds, base, 0,
+		BControlLook::B_TOP_BORDER | BControlLook::B_BOTTOM_BORDER);
 }
 
 void 
