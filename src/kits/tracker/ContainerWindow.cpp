@@ -815,13 +815,11 @@ BContainerWindow::RepopulateMenus()
 	if (PoseView()->ViewMode() == kListMode)
 		Controller()->ShowAttributeMenu();*/
 
-	//int32 selectCount = PoseView()->SelectionList()->CountItems();
+	SetupOpenWithMenu(Controller()->FileMenu());
 
-	// TODO review that
-	//SetupOpenWithMenu(Controller()->FileMenu());
-	//SetupMoveCopyMenus(selectCount
-	//		? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef() : NULL,
-	//	Controller()->FileMenu());
+	SetupMoveCopyMenus(PoseView()->SelectionList()->CountItems()
+		? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef()
+		: NULL, Controller()->FileMenu());
 }
 
 
@@ -1770,12 +1768,11 @@ BContainerWindow::MenusBeginning()
 		// invoked - this would prevent Cut/Copy/Paste from working
 		fPoseView->CommitActivePose();
 
-	// TODO review that
-	// File menu
-	//int32 selectCount = PoseView()->SelectionList()->CountItems();	
-	//SetupOpenWithMenu(Controller()->FileMenu());
-	//SetupMoveCopyMenus(selectCount
-	//	? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef() : NULL, Controller()->FileMenu());
+	SetupOpenWithMenu(Controller()->FileMenu());
+
+	SetupMoveCopyMenus(PoseView()->SelectionList()->CountItems()
+		? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef()
+		: NULL, Controller()->FileMenu());
 
 	UpdateMenu(Controller()->MenuBar(), kMenuBarContext);
 
@@ -2068,6 +2065,8 @@ BContainerWindow::PopulateMoveCopyNavMenu(BNavMenu *navMenu, uint32 what,
 void
 BContainerWindow::SetupMoveCopyMenus(const entry_ref *item_ref, BMenu *parent)
 {
+	return; // TODO: Port to the new listener mechanism
+	
 	if (PoseView()->TargetModel()->IsTrash()
 		|| PoseView()->TargetModel()->IsInTrash()
 		|| PoseView()->TargetModel()->IsPrintersDir()
@@ -2456,10 +2455,16 @@ BContainerWindow::AddWindowContextMenus(BMenu *menu)
 		new BMessage(kShowSelectionWindow), 'A', B_SHIFT_KEY));
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Select all"),
 		new BMessage(B_SELECT_ALL), 'A'));
-	if (!PoseView()->TargetModel()->IsTrash()) {
+	if (!PoseView()->TargetModel()->IsTrash()
+		&& !PoseView()->TargetModel()->IsRoot()) {
 		menu->AddItem(new BMenuItem(B_TRANSLATE("Open parent"),
 			new BMessage(kOpenParentDir), B_UP_ARROW));
 	}
+
+	if (PoseView()->TargetModel()->IsRoot()) {
+		menu->AddSeparatorItem();
+		menu->AddItem(new MountMenu(B_TRANSLATE("Mount")));
+	} 
 
 	menu->AddSeparatorItem();
 	BMenu* addOnMenuItem = new BMenu(B_TRANSLATE("Add-ons"));

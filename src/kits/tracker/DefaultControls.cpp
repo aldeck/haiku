@@ -114,9 +114,11 @@ DefaultFileMenu::TargetModelChanged()
 	Model* model = fController->PoseView()->TargetModel();
 	printf("DefaultFileMenu::TargetModelChanged() model = '%s'\n", model->Name());
 
-	// empty the menu
+	// this ensures proper locking
 	if (!IsHidden())
 		Hide();
+		
+	// empty the menu
 	RemoveItems(0, CountItems(), true);
 
 	if (model->IsRoot()) {

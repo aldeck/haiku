@@ -92,16 +92,13 @@ protected:
 
 
 class BHScrollBar : public BScrollBar {
-	public:
-		BHScrollBar(const char *name, BView *target, BTitleView *titleView);
+public:
+								BHScrollBar(const char* name, BView* target, BTitleView* titleView);
 
-		// BScrollBar overrides
-		virtual	void ValueChanged(float);
+	virtual	void				ValueChanged(float);		
 
-	private:
-		BTitleView *fTitleView;
-
-		typedef BScrollBar _inherited;
+private:
+			BTitleView*			fTitleView;
 };
 
 

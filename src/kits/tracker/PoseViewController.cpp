@@ -318,8 +318,8 @@ PoseViewController::HideAttributeMenu()
 //	#pragma mark -
 
 
-BHScrollBar::BHScrollBar(const char *name, BView *target,
-	BTitleView *titleView)
+BHScrollBar::BHScrollBar(const char* name, BView* target,
+	BTitleView* titleView)
 	:
 	BScrollBar(name, target, 0, 100, B_HORIZONTAL),
 	fTitleView(titleView)
@@ -335,5 +335,5 @@ BHScrollBar::ValueChanged(float value)
 		fTitleView->ScrollTo(BPoint(value, origin.y));
 	}
 
-	_inherited::ValueChanged(value);
+	BScrollBar::ValueChanged(value);
 }
