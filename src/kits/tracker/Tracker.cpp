@@ -84,7 +84,6 @@ All rights reserved.
 #include "TaskLoop.h"
 #include "Thread.h"
 #include "Utilities.h"
-#include "VolumeWindow.h"
 
 // prototypes for some private kernel calls that will some day be public
 #ifndef _IMPEXP_ROOT
