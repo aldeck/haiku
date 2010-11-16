@@ -4,6 +4,7 @@
  *
  * Authors:
  *		Janito V. Ferreira Filho
+ *		Jérôme Duval
  */
 
 
@@ -15,12 +16,16 @@
 #include "Inode.h"
 
 
+#undef ASSERT
 //#define TRACE_EXT2
 #ifdef TRACE_EXT2
 #	define TRACE(x...) dprintf("\33[34mext2:\33[0m " x)
+#	define ASSERT(x) { if (!(x)) kernel_debugger("ext2: assert failed: " #x "\n"); }
 #else
 #	define TRACE(x...) ;
+#	define ASSERT(x) ;
 #endif
+#define ERROR(x...) dprintf("\33[34mext2:\33[0m " x)
 
 
 class AllocationBlockGroup : public TransactionListener {
@@ -67,7 +72,7 @@ private:
 
 			uint32		fStart;
 			uint32		fNumBits;
-			uint32		fBitmapBlock;
+			off_t		fBitmapBlock;
 
 			uint32		fFreeBits;
 			uint32		fFirstFree;
@@ -122,14 +127,17 @@ AllocationBlockGroup::Initialize(Volume* volume, uint32 blockGroup,
 	if (status != B_OK)
 		return status;
 
-	fBitmapBlock = fGroupDescriptor->BlockBitmap();
+	fBitmapBlock = fGroupDescriptor->BlockBitmap(fVolume->Has64bitFeature());
 
 	status = ScanFreeRanges();
 
-	if (fGroupDescriptor->FreeBlocks() != fFreeBits) {
-		TRACE("AllocationBlockGroup::Initialize(): Mismatch between counted "
-			"free blocks (%lu) and what is set on the group descriptor "
-			"(%lu)\n", fFreeBits, (uint32)fGroupDescriptor->FreeBlocks());
+	if (fGroupDescriptor->FreeBlocks(fVolume->Has64bitFeature())
+		!= fFreeBits) {
+		ERROR("AllocationBlockGroup(%lu,%lld)::Initialize(): Mismatch between "
+			"counted free blocks (%lu/%lu) and what is set on the group "
+			"descriptor (%lu)\n", fBlockGroup, fBitmapBlock, fFreeBits,
+			fNumBits, fGroupDescriptor->FreeBlocks(
+				fVolume->Has64bitFeature()));
 		return B_BAD_DATA;
 	}
 
@@ -156,11 +164,13 @@ AllocationBlockGroup::ScanFreeRanges()
 
 	while (end < fNumBits) {
 		block.FindNextUnmarked(start);
+		ASSERT(block.CheckMarked(end, start - end));
 		end = start;
 
 		if (start != block.NumBits()) {
 			block.FindNextMarked(end);
 			_AddFreeRange(start, end - start);
+			ASSERT(block.CheckUnmarked(fLargestStart, fLargestLength));
 			start = end;
 		}
 	}
@@ -191,15 +201,19 @@ AllocationBlockGroup::Allocate(Transaction& transaction, uint32 start,
 
 	if (!block.SetToWritable(transaction, fBitmapBlock))
 		return B_ERROR;
+
+	TRACE("AllocationBlockGroup::Allocate(): Largest range in %lu-%lu\n",
+		fLargestStart, fLargestStart + fLargestLength);
+	ASSERT(block.CheckUnmarked(fLargestStart, fLargestLength));
 	
 	if (!block.Mark(start, length)) {
-		TRACE("Failed to allocate blocks from %lu to %lu. Some were "
+		ERROR("Failed to allocate blocks from %lu to %lu. Some were "
 			"already allocated.\n", start, start + length);
 		return B_ERROR;
 	}
 
 	fFreeBits -= length;
-	fGroupDescriptor->SetFreeBlocks((uint16)fFreeBits);
+	fGroupDescriptor->SetFreeBlocks(fFreeBits, fVolume->Has64bitFeature());
 	fVolume->WriteBlockGroup(transaction, fBlockGroup);
 
 	if (start == fLargestStart) {
@@ -226,6 +240,10 @@ AllocationBlockGroup::Allocate(Transaction& transaction, uint32 start,
 		// No need to revalidate the largest free range
 		return B_OK;
 	}
+
+	TRACE("AllocationBlockGroup::Allocate(): Largest range in %lu-%lu\n",
+		fLargestStart, fLargestStart + fLargestLength);
+	ASSERT(block.CheckUnmarked(fLargestStart, fLargestLength));
 
 	if (fLargestLength < fNumBits / 2)
 		block.FindLargestUnmarkedRange(fLargestStart, fLargestLength);
@@ -256,8 +274,12 @@ AllocationBlockGroup::Free(Transaction& transaction, uint32 start,
 	if (!block.SetToWritable(transaction, fBitmapBlock))
 		return B_ERROR;
 
+	TRACE("AllocationBlockGroup::Free(): Largest range in %lu-%lu\n",
+		fLargestStart, fLargestStart + fLargestLength);
+	ASSERT(block.CheckUnmarked(fLargestStart, fLargestLength));
+
 	if (!block.Unmark(start, length)) {
-		TRACE("Failed to free blocks from %lu to %lu. Some were "
+		ERROR("Failed to free blocks from %lu to %lu. Some were "
 			"already freed.\n", start, start + length);
 		return B_ERROR;
 	}
@@ -279,6 +301,7 @@ AllocationBlockGroup::Free(Transaction& transaction, uint32 start,
 
 		uint32 newStart = start;
 		block.FindPreviousMarked(newStart);
+		newStart++;
 
 		if (newEnd - newStart > fLargestLength) {
 			fLargestLength = newEnd - newStart;
@@ -286,8 +309,12 @@ AllocationBlockGroup::Free(Transaction& transaction, uint32 start,
 		}
 	}
 
+	TRACE("AllocationBlockGroup::Free(): Largest range in %lu-%lu\n",
+		fLargestStart, fLargestStart + fLargestLength);
+	ASSERT(block.CheckUnmarked(fLargestStart, fLargestLength));
+
 	fFreeBits += length;
-	fGroupDescriptor->SetFreeBlocks((uint16)fFreeBits);
+	fGroupDescriptor->SetFreeBlocks(fFreeBits, fVolume->Has64bitFeature());
 	fVolume->WriteBlockGroup(transaction, fBlockGroup);
 
 	return B_OK;
@@ -459,17 +486,17 @@ BlockAllocator::Initialize()
 
 status_t
 BlockAllocator::AllocateBlocks(Transaction& transaction, uint32 minimum,
-	uint32 maximum, uint32& blockGroup, uint32& start, uint32& length)
+	uint32 maximum, uint32& blockGroup, off_t& start, uint32& length)
 {
 	TRACE("BlockAllocator::AllocateBlocks()\n");
 	MutexLocker lock(fLock);
 	TRACE("BlockAllocator::AllocateBlocks(): Acquired lock\n");
 
 	TRACE("BlockAllocator::AllocateBlocks(): transaction: %ld, min: %lu, "
-		"max: %lu, block group: %lu, start: %lu, num groups: %lu\n",
+		"max: %lu, block group: %lu, start: %llu, num groups: %lu\n",
 		transaction.ID(), minimum, maximum, blockGroup, start, fNumGroups);
 
-	uint32 bestStart = 0;
+	off_t bestStart = 0;
 	uint32 bestLength = 0;
 	uint32 bestGroup = 0;
 
@@ -490,7 +517,7 @@ BlockAllocator::AllocateBlocks(Transaction& transaction, uint32 minimum,
 					bestGroup = groupNum;
 
 					TRACE("BlockAllocator::AllocateBlocks(): Found a better "
-						"range: block group: %lu, %lu-%lu\n", groupNum,
+						"range: block group: %lu, %llu-%llu\n", groupNum,
 						bestStart, bestStart + bestLength);
 
 					if (bestLength >= maximum)
@@ -520,7 +547,7 @@ BlockAllocator::AllocateBlocks(Transaction& transaction, uint32 minimum,
 		bestLength = maximum;
 
 	TRACE("BlockAllocator::AllocateBlocks(): Selected range: block group %lu, "
-		"%lu-%lu\n", bestGroup, bestStart, bestStart + bestLength);
+		"%llu-%llu\n", bestGroup, bestStart, bestStart + bestLength);
 
 	status_t status = fGroups[bestGroup].Allocate(transaction, bestStart,
 		bestLength);
@@ -540,7 +567,7 @@ BlockAllocator::AllocateBlocks(Transaction& transaction, uint32 minimum,
 
 status_t
 BlockAllocator::Allocate(Transaction& transaction, Inode* inode,
-	off_t numBlocks, uint32 minimum, uint32& start, uint32& allocated)
+	off_t numBlocks, uint32 minimum, off_t& start, uint32& allocated)
 {
 	if (numBlocks <= 0)
 		return B_ERROR;
@@ -617,9 +644,9 @@ BlockAllocator::Allocate(Transaction& transaction, Inode* inode,
 
 
 status_t
-BlockAllocator::Free(Transaction& transaction, uint32 start, uint32 length)
+BlockAllocator::Free(Transaction& transaction, off_t start, uint32 length)
 {
-	TRACE("BlockAllocator::Free(%lu, %lu)\n", start, length);
+	TRACE("BlockAllocator::Free(%llu, %lu)\n", start, length);
 	MutexLocker lock(fLock);
 
 	if (start <= fFirstBlock) {
@@ -634,16 +661,18 @@ BlockAllocator::Free(Transaction& transaction, uint32 start, uint32 length)
 		fFirstBlock, fBlocksPerGroup);
 
 	start -= fFirstBlock;
-	uint32 end = start + length - 1;
+	off_t end = start + length - 1;
 
 	uint32 group = start / fBlocksPerGroup;
+	if (group >= fNumGroups)
+		panic("BlockAllocator::Free() group %ld too big (fNumGroups %ld)\n", group, fNumGroups);
 	uint32 lastGroup = end / fBlocksPerGroup;
 	start = start % fBlocksPerGroup;
 
 	if (group == lastGroup)
 		return fGroups[group].Free(transaction, start, length);
 
-	TRACE("BlockAllocator::Free(): Freeing from group %lu: %lu, %lu\n", group,
+	TRACE("BlockAllocator::Free(): Freeing from group %lu: %llu, %llu\n", group,
 		start, fGroups[group].NumBits() - start);
 
 	status_t status = fGroups[group].Free(transaction, start,
@@ -658,7 +687,7 @@ BlockAllocator::Free(Transaction& transaction, uint32 start, uint32 length)
 			return status;
 	}
 
-	TRACE("BlockAllocator::Free(): Freeing from group %lu: 0-%lu \n", group,
+	TRACE("BlockAllocator::Free(): Freeing from group %lu: 0-%llu \n", group,
 		end % fBlocksPerGroup);
 	return fGroups[group].Free(transaction, 0, (end + 1) % fBlocksPerGroup);
 }
@@ -674,8 +703,8 @@ BlockAllocator::_Initialize(BlockAllocator* allocator)
 	AllocationBlockGroup* groups = allocator->fGroups;
 	uint32 numGroups = allocator->fNumGroups - 1;
 
-	uint32 freeBlocks = 0;
-	TRACE("BlockAllocator::_Initialize(): free blocks: %lu\n", freeBlocks);
+	off_t freeBlocks = 0;
+	TRACE("BlockAllocator::_Initialize(): free blocks: %llu\n", freeBlocks);
 
 	for (uint32 i = 0; i < numGroups; ++i) {
 		status_t status = groups[i].Initialize(volume, i, 
@@ -686,7 +715,7 @@ BlockAllocator::_Initialize(BlockAllocator* allocator)
 		}
 
 		freeBlocks += groups[i].FreeBits();
-		TRACE("BlockAllocator::_Initialize(): free blocks: %lu\n", freeBlocks);
+		TRACE("BlockAllocator::_Initialize(): free blocks: %llu\n", freeBlocks);
 	}
 	
 	// Last block group may have less blocks
@@ -700,13 +729,13 @@ BlockAllocator::_Initialize(BlockAllocator* allocator)
 	
 	freeBlocks += groups[numGroups].FreeBits();
 
-	TRACE("BlockAllocator::_Initialize(): free blocks: %lu\n", freeBlocks);
+	TRACE("BlockAllocator::_Initialize(): free blocks: %llu\n", freeBlocks);
 
 	mutex_unlock(&allocator->fLock);
 
 	if (freeBlocks != volume->NumFreeBlocks()) {
-		TRACE("Counted free blocks (%lu) doesn't match value in the "
-			"superblock (%lu).\n", freeBlocks, (uint32)volume->NumFreeBlocks());
+		TRACE("Counted free blocks (%llu) doesn't match value in the "
+			"superblock (%llu).\n", freeBlocks, volume->NumFreeBlocks());
 		return B_BAD_DATA;
 	}
 

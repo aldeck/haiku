@@ -6,9 +6,9 @@
  */
 
 
-#include <drivers/Drivers.h>
-#include <drivers/KernelExport.h>
-#include <drivers/PCI.h>
+#include <Drivers.h>
+#include <KernelExport.h>
+#include <PCI.h>
 #include <hmulti_audio.h>
 #include <string.h>
 #include <unistd.h>
@@ -84,7 +84,7 @@ ali_stream_unprepare(ali_stream *stream)
 
 	stream->channels = 0;
 	stream->format.format = 0;
-	stream->format.rate = 0;	
+	stream->format.rate = 0;
 
 	if (-1 < stream->used_voice) {
 		LOCK(stream->card->lock_voices);
@@ -102,7 +102,7 @@ ali_stream_delete(ali_stream *stream)
 	LOCK(stream->card->lock_sts);
 	LIST_REMOVE(stream, next);
 	UNLOCK(stream->card->lock_sts);
-	
+
 	free(stream);
 }
 
@@ -134,7 +134,7 @@ ali_stream_prepare(ali_stream *stream, uint8 channels, uint32 format,
 		if ((stream->card->used_voices & (uint32) 1 << ALI_RECORD_VOICE) == 0) {
 			stream->used_voice = ALI_RECORD_VOICE;
 			stream->card->used_voices |= (uint32) 1 << ALI_RECORD_VOICE;
-		}		
+		}
 	} else {
 		for (ch = 0; ch < ALI_VOICES; ch++) {
 			if ((stream->card->used_voices & (uint32) 1 << ch) == 0) {
@@ -162,7 +162,7 @@ ali_stream_prepare(ali_stream *stream, uint8 channels, uint32 format,
 		return false;
 	}
 
-	return true;	
+	return true;
 }
 
 
@@ -182,7 +182,7 @@ ali_stream_start(ali_stream *stream)
 	TRACE("stream_start: %s using voice: %d\n",
 		stream->rec?"recording":"playing", stream->used_voice);
 
-	return true;	
+	return true;
 }
 
 
@@ -365,6 +365,7 @@ init_driver(void)
 {
 	pci_info info;
 	int32 i;
+	status_t err;
 
 	if (get_module(B_PCI_MODULE_NAME, (module_info**) &gPCI) != B_OK)
 		return ENODEV;
@@ -382,8 +383,18 @@ init_driver(void)
 
 			memset(&gCards[gCardsCount], 0, sizeof(ali_dev));
 			gCards[gCardsCount].info = info;
-			if (ali_setup(&gCards[gCardsCount]))
+			if ((err = (*gPCI->reserve_device)(info.bus, info.device, info.function,
+				DRIVER_NAME, &gCards[gCardsCount])) < B_OK) {
+				dprintf("%s: failed to reserve_device(%d, %d, %d,): %s\n",
+					DRIVER_NAME, info.bus, info.device, info.function,
+					strerror(err));
+				continue;
+			}
+			if (ali_setup(&gCards[gCardsCount])) {
 				TRACE("init_driver: setup of ali %ld failed\n", gCardsCount + 1);
+				(*gPCI->unreserve_device)(info.bus, info.device, info.function,
+					DRIVER_NAME, &gCards[gCardsCount]);
+			}
 			else
 				gCardsCount++;
 		}
@@ -404,8 +415,11 @@ uninit_driver(void)
 {
 	int32 i = gCardsCount;
 
-	while (i--)
+	while (i--) {
 		ali_terminate(&gCards[i]);
+		(*gPCI->unreserve_device)(gCards[i].info.bus, gCards[i].info.device,
+			gCards[i].info.function, DRIVER_NAME, &gCards[i]);
+	}
 	memset(&gCards, 0, sizeof(gCards));
 
 	put_module(B_PCI_MODULE_NAME);
@@ -519,7 +533,7 @@ ali_audio_free(void *cookie)
 	ali_dev *card = (ali_dev *) cookie;
 
 	while (!LIST_EMPTY(&card->streams))
-		ali_stream_delete(LIST_FIRST(&card->streams));	
+		ali_stream_delete(LIST_FIRST(&card->streams));
 
 	card->playback_stream = NULL;
 	card->record_stream = NULL;

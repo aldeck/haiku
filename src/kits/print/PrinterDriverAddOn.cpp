@@ -1,49 +1,194 @@
 /*
+ * Copyright 2001-2010, Haiku, Inc. All rights reserved.
+ * Distributed under the terms of the MIT License.
+ *
+ * Authors:
+ *		Ithamar R. Adema
+ *		Michael Pfeiffer
+ */
+#include "PrinterDriverAddOn.h"
 
-PrinterDriverAddOn
+#include <File.h>
 
-Copyright (c) 2003 OpenBeOS. 
+#include "BeUtils.h"
+#include "pr_server.h"
 
-Author:
-	Michael Pfeiffer
-	
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+typedef BMessage* (*config_func_t)(BNode*, const BMessage*);
+typedef BMessage* (*take_job_func_t)(BFile*, BNode*, const BMessage*);
+typedef char* (*add_printer_func_t)(const char* printer_name);
+typedef BMessage* (*default_settings_t)(BNode*);
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
+static const char* kPrinterDriverFolderName = "Print";
 
-*/
 
-extern "C" _EXPORT char * add_printer(char * printer_name) {
-	return printer_name;
+PrinterDriverAddOn::PrinterDriverAddOn(const char* driver)
+	:
+	fAddOnID(-1)
+{
+	BPath path;
+	status_t result;
+	result = FindPathToDriver(driver, &path);
+	if (result != B_OK)
+		return;
+
+	fAddOnID = ::load_add_on(path.Path());
 }
 
-extern "C" _EXPORT BMessage * config_page(BNode * spool_dir, BMessage * msg) {
-	return NULL;
+
+PrinterDriverAddOn::~PrinterDriverAddOn()
+{
+	if (IsLoaded()) {
+		unload_add_on(fAddOnID);
+		fAddOnID = -1;
+	}
 }
 
-extern "C" _EXPORT BMessage * config_job(BNode * spool_dir, BMessage * msg) {
-	return NULL;
+
+status_t
+PrinterDriverAddOn::AddPrinter(const char* spoolFolderName)
+{
+	if (!IsLoaded())
+		return B_ERROR;
+
+	add_printer_func_t func;
+	status_t result = get_image_symbol(fAddOnID, "add_printer",
+		B_SYMBOL_TYPE_TEXT, (void**)&func);
+	if (result != B_OK)
+		return result;
+
+	if ((*func)(spoolFolderName) == NULL)
+		return B_ERROR;
+	return B_OK;
 }
 
-extern "C" _EXPORT BMessage * default_settings(BNode * printer) {
-	return NULL;
+
+status_t
+PrinterDriverAddOn::ConfigPage(BDirectory* spoolFolder, BMessage* settings)
+{
+	if (!IsLoaded())
+		return B_ERROR;
+
+	config_func_t func;
+	status_t result = get_image_symbol(fAddOnID, "config_page",
+		B_SYMBOL_TYPE_TEXT, (void**)&func);
+	if (result != B_OK)
+		return result;
+
+	BMessage* newSettings = (*func)(spoolFolder, settings);
+	result = CopyValidSettings(settings, newSettings);
+	delete newSettings;
+
+	return result;
 }
 
-extern "C" _EXPORT BMessage * take_job(BFile * spool_file, BNode * spool_dir, BMessage * msg) {
-	return NULL;
+
+status_t
+PrinterDriverAddOn::ConfigJob(BDirectory* spoolFolder, BMessage* settings)
+{
+	if (!IsLoaded())
+		return B_ERROR;
+
+	config_func_t func;
+	status_t result = get_image_symbol(fAddOnID, "config_job",
+		B_SYMBOL_TYPE_TEXT, (void**)&func);
+	if (result != B_OK)
+		return result;
+
+	BMessage* newSettings = (*func)(spoolFolder, settings);
+	result = CopyValidSettings(settings, newSettings);
+	delete newSettings;
+
+	return result;
 }
 
+
+status_t
+PrinterDriverAddOn::DefaultSettings(BDirectory* spoolFolder, BMessage* settings)
+{
+	if (!IsLoaded())
+		return B_ERROR;
+
+	default_settings_t func;
+	status_t result = get_image_symbol(fAddOnID, "default_settings",
+		B_SYMBOL_TYPE_TEXT, (void**)&func);
+	if (result != B_OK)
+		return result;
+
+	BMessage* newSettings = (*func)(spoolFolder);
+	if (newSettings != NULL) {
+		*settings = *newSettings;
+		settings->what = 'okok';
+	} else
+		result = B_ERROR;
+	delete newSettings;
+
+	return result;
+}
+
+
+status_t
+PrinterDriverAddOn::TakeJob(const char* spoolFile, BDirectory* spoolFolder)
+{
+	if (!IsLoaded())
+		return B_ERROR;
+
+	BFile file(spoolFile, B_READ_WRITE);
+	take_job_func_t func;
+	status_t result = get_image_symbol(fAddOnID, "take_job", B_SYMBOL_TYPE_TEXT,
+		(void**)&func);
+	if (result != B_OK)
+		return result;
+
+	// This seems to be required for legacy?
+	// HP PCL3 add-on crashes without it!
+	BMessage parameters(B_REFS_RECEIVED);
+	parameters.AddInt32("file", (int32)&file);
+	parameters.AddInt32("printer", (int32)spoolFolder);
+
+	BMessage* message = (*func)(&file, spoolFolder, &parameters);
+	if (message == NULL || message->what != 'okok')
+		result = B_ERROR;
+	delete message;
+
+	return result;
+}
+
+
+status_t
+PrinterDriverAddOn::FindPathToDriver(const char* driver, BPath* path)
+{
+	status_t result;
+	result = ::TestForAddonExistence(driver, B_USER_ADDONS_DIRECTORY,
+		kPrinterDriverFolderName, *path);
+	if (result == B_OK)
+		return B_OK;
+
+	result = ::TestForAddonExistence(driver, B_COMMON_ADDONS_DIRECTORY,
+		kPrinterDriverFolderName, *path);
+	if (result == B_OK)
+		return B_OK;
+
+	result = ::TestForAddonExistence(driver, B_BEOS_ADDONS_DIRECTORY,
+		kPrinterDriverFolderName, *path);
+	return result;
+}
+
+
+bool
+PrinterDriverAddOn::IsLoaded() const
+{
+	return fAddOnID > 0;
+}
+
+
+status_t
+PrinterDriverAddOn::CopyValidSettings(BMessage* settings, BMessage* newSettings)
+{
+	if (newSettings != NULL && newSettings->what != 'baad') {
+		*settings = *newSettings;
+		settings->what = 'okok';
+		return B_OK;
+	}
+	return B_ERROR;
+}

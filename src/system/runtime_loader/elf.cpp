@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2008-2010, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2003-2008, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  *
@@ -612,7 +612,18 @@ unload_library(void* handle, image_id imageID, bool addOn)
 
 	if (status == B_OK) {
 		while ((image = get_disposable_images().head) != NULL) {
-			// call image fini here...
+			// Call the exit hooks that live in this image.
+			// Note: With the Itanium ABI this shouldn't really be done this
+			// way anymore, since global destructors are registered via
+			// __cxa_atexit() (the ones that are registered dynamically) and the
+			// termination routine should call __cxa_finalize() for the image.
+			// The reason why we still do it is that hooks registered with
+			// atexit() aren't associated with the image. We could find out
+			// there which image the hooks lives in and register it
+			// respectively, but since that would be done always, that's
+			// probably more expensive than calling
+			// call_atexit_hooks_for_range() only here, which happens only when
+			// libraries are unloaded dynamically.
 			if (gRuntimeLoader.call_atexit_hooks_for_range) {
 				gRuntimeLoader.call_atexit_hooks_for_range(
 					image->regions[0].vmstart, image->regions[0].vmsize);
@@ -899,7 +910,7 @@ terminate_program(void)
 	image_t **termList;
 	ssize_t count, i;
 
-	count = get_sorted_image_list(gProgramImage, &termList, RFLAG_TERMINATED);
+	count = get_sorted_image_list(NULL, &termList, RFLAG_TERMINATED);
 	if (count < B_OK)
 		return;
 

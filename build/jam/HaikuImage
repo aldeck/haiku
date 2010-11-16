@@ -100,7 +100,7 @@ PRIVATE_SYSTEM_LIBS =
 ;
 SYSTEM_SERVERS = app_server cddb_daemon debug_server input_server mail_daemon
 	media_addon_server media_server midi_server mount_server net_server
-	notification_server print_server registrar syslog_daemon
+	notification_server print_server print_addon_server registrar syslog_daemon
 ;
 
 SYSTEM_NETWORK_DEVICES = ethernet loopback ;
@@ -142,6 +142,7 @@ SYSTEM_ADD_ONS_MEDIA_PLUGINS = $(X86_ONLY)ffmpeg raw_decoder ;
 SYSTEM_ADD_ONS_PRINT = 
 	Canon\ LIPS3\ Compatible 
 	Canon\ LIPS4\ Compatible
+	Gutenprint
 	PCL5\ Compatible
 	PCL6\ Compatible
 	PDF\ Writer
@@ -174,7 +175,7 @@ SYSTEM_ADD_ONS_DRIVERS_NET = $(X86_ONLY)3com $(X86_ONLY)atheros813x
 	$(X86_ONLY)aironetwifi $(X86_ONLY)atheroswifi $(X86_ONLY)broadcom43xx
 	$(X86_ONLY)ipw2100 $(X86_ONLY)iprowifi2200 $(X86_ONLY)iprowifi3945
 	$(X86_ONLY)iprowifi4965 $(X86_ONLY)marvell88w8363 $(X86_ONLY)marvell88w8335
-	$(X86_ONLY)ralinkwifi $(X86_ONLY)wavelanwifi
+	$(X86_ONLY)ralink2860 $(X86_ONLY)ralinkwifi $(X86_ONLY)wavelanwifi
 ;
 #SYSTEM_ADD_ONS_DRIVERS_POWER = $(X86_ONLY)acpi_button ;
 SYSTEM_ADD_ONS_BUS_MANAGERS =  $(ATA_ONLY)ata pci $(X86_ONLY)ps2 $(X86_ONLY)isa
@@ -324,7 +325,7 @@ AddFilesToHaikuImage system bin			: install-wifi-firmwares.sh ;
 # Add the files to be used by installoptionalpackage.
 AddDirectoryToHaikuImage common data optional-packages ;
 local optional-pkg-files = OptionalBuildFeatures OptionalPackageDependencies
-	OptionalPackages ;
+	OptionalPackages OptionalLibPackages ;
 for name in $(optional-pkg-files) {
 	local file = [ FDirName $(HAIKU_TOP) build jam $(name) ] ;
 	AddFilesToHaikuImage common data optional-packages : $(file) ;
@@ -604,6 +605,11 @@ CopyDirectoryToHaikuImage system data
 	: [ FDirName $(HAIKU_TOP) src add-ons print drivers pdf encoding ]
 	: "PDF Writer" : -x .svn -x Jamfile ;
 
+# Gutenprint data files
+CopyDirectoryToHaikuImage common data
+	: [ FDirName $(HAIKU_TOP) src libs print libgutenprint src xml ]
+	: gutenprint : -x .svn -x *.c -x Makefile.am -x Makefile.in ;
+
 # licenses
 CopyDirectoryToHaikuImage system data
 	: [ FDirName $(HAIKU_TOP) data system data licenses ]
@@ -631,6 +637,7 @@ HAIKU_IMAGE_OPTIONAL_PACKAGE_DESCRIPTIONS = ;
 
 include [ FDirName $(HAIKU_BUILD_RULES_DIR) OptionalPackages ] ;
 include [ FDirName $(HAIKU_BUILD_RULES_DIR) OptionalTestPackages ] ;
+include [ FDirName $(HAIKU_BUILD_RULES_DIR) OptionalLibPackages ] ;
 
 local optionalPackageDescriptions ;
 if $(HAIKU_IMAGE_OPTIONAL_PACKAGE_DESCRIPTIONS) {

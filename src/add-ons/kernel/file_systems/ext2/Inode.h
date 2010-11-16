@@ -37,6 +37,8 @@ public:
 			status_t	UpdateNodeFromDisk();
 			status_t	WriteBack(Transaction& transaction);
 
+			recursive_lock&	SmallDataLock() { return fSmallDataLock; }
+
 			bool		IsDirectory() const
 							{ return S_ISDIR(Mode()); }
 			bool		IsFile() const
@@ -77,16 +79,14 @@ public:
 			//::Volume* _Volume() const { return fVolume; }
 			Volume*		GetVolume() const { return fVolume; }
 
-			status_t	FindBlock(off_t offset, uint32& block);
+			status_t	FindBlock(off_t offset, off_t& block,
+							uint32 *_count = NULL);
 			status_t	ReadAt(off_t pos, uint8 *buffer, size_t *length);
 			status_t	WriteAt(Transaction& transaction, off_t pos,
 							const uint8* buffer, size_t* length);
 			status_t	FillGapWithZeros(off_t start, off_t end);
 
 			status_t	Resize(Transaction& transaction, off_t size);
-
-			status_t	AttributeBlockReadAt(off_t pos, uint8 *buffer,
-							size_t *length);
 
 			ext2_inode&	Node() { return fNode; }
 
@@ -146,8 +146,9 @@ private:
 			uint32		fNodeSize;
 				// Inodes have a variable size, but the important
 				// information is always the same size (except in ext4)
-			ext2_xattr_header* fAttributesBlock;
 			status_t	fInitStatus;
+
+			mutable recursive_lock fSmallDataLock;
 };
 
 

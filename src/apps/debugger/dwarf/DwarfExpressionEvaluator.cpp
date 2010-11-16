@@ -36,10 +36,12 @@ static const uint32 kMaxOperationCount			= 10000;
 
 
 DwarfExpressionEvaluationContext::DwarfExpressionEvaluationContext(
-	const DwarfTargetInterface* targetInterface, uint8 addressSize)
+	const DwarfTargetInterface* targetInterface, uint8 addressSize,
+	target_addr_t relocationDelta)
 	:
 	fTargetInterface(targetInterface),
-	fAddressSize(addressSize)
+	fAddressSize(addressSize),
+	fRelocationDelta(relocationDelta)
 {
 }
 
@@ -282,7 +284,7 @@ DwarfExpressionEvaluator::_Evaluate(ValuePieceLocation* _piece)
 		switch (opcode) {
 			case DW_OP_addr:
 				TRACE_EXPR("  DW_OP_addr\n");
-				_Push(fDataReader.ReadAddress(0));
+				_Push(fDataReader.ReadAddress(0) + fContext->RelocationDelta());
 				break;
 			case DW_OP_const1u:
 				TRACE_EXPR("  DW_OP_const1u\n");

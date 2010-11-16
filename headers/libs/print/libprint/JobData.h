@@ -10,11 +10,50 @@
 #include <GraphicsDefs.h>
 #include <Rect.h>
 
+#include <map>
+#include <string>
+
 #include "Halftone.h"
 #include "MarginView.h" // for MarginUnit
 
 class BMessage;
 class PrinterCap;
+
+
+using namespace std;
+
+class DriverSpecificSettings
+{
+public:
+	DriverSpecificSettings();
+	DriverSpecificSettings(const DriverSpecificSettings& settings);
+
+	DriverSpecificSettings &operator=(const DriverSpecificSettings &settings);
+
+	void MakeEmpty();
+
+	bool HasString(const char* key) const;
+	const char* GetString(const char* key) const;
+	void SetString(const char* key, const char* value);
+
+	bool HasBoolean(const char* ekey) const;
+	bool GetBoolean(const char* key) const;
+	void SetBoolean(const char* key, bool value);
+
+	bool HasInt(const char* ekey) const;
+	int32 GetInt(const char* key) const;
+	void SetInt(const char* key, int32 value);
+
+	bool HasDouble(const char* ekey) const;
+	double GetDouble(const char* key) const;
+	void SetDouble(const char* key, double value);
+
+	BMessage& Message();
+
+private:
+	BMessage fSettings;
+};
+
 
 class JobData {
 public:
@@ -212,7 +251,7 @@ public:
 		kColorCompressionDisabled
 	};
 
-	enum Settings {
+	enum SettingType {
 		kPageSettings,
 		kJobSettings
 	};
@@ -226,6 +265,7 @@ public:
 private:
 	bool        fShowPreview;
 	Paper       fPaper;
+	int32       fResolutionID;
 	int32       fXRes;
 	int32       fYRes;
 	Orientation fOrientation;
@@ -248,21 +288,22 @@ private:
 	PrintStyle  fPrintStyle;
 	BindingLocation fBindingLocation;
 	PageOrder   fPageOrder;
-	Settings    fSettings;
+	SettingType fSettingType;
 	BMessage    *fMsg;
 	Color       fColor;
 	Halftone::DitherType fDitherType;
 	PageSelection        fPageSelection;
 	MarginUnit  fMarginUnit;
+	DriverSpecificSettings fDriverSpecificSettings;
 
 public:
-	JobData(BMessage *msg, const PrinterCap *cap, Settings settings);
+	JobData(BMessage *msg, const PrinterCap *cap, SettingType type);
 	~JobData();
 
 	JobData(const JobData &job_data);
 	JobData &operator = (const JobData &job_data);
 
-	void load(BMessage *msg, const PrinterCap *cap, Settings settings);
+	void load(BMessage *msg, const PrinterCap *cap, SettingType type);
 	void save(BMessage *msg = NULL);
 
 	bool getShowPreview() const { return fShowPreview; }
@@ -270,6 +311,9 @@ public:
 
 	Paper getPaper() const { return fPaper; }
 	void  setPaper(Paper paper) { fPaper = paper; }
+
+	int32 getResolutionID() const { return fResolutionID; }
+	void setResolutionID(int32 resolution) { fResolutionID = resolution; }
 
 	int32 getXres() const { return fXRes; } 
 	void  setXres(int32 xres) { fXRes = xres; }
@@ -351,6 +395,10 @@ public:
 	
 	MarginUnit getMarginUnit() const { return fMarginUnit; }
 	void setMarginUnit(MarginUnit marginUnit) { fMarginUnit = marginUnit; }
+
+	DriverSpecificSettings& Settings();
+	const DriverSpecificSettings& Settings() const;
+
 };
 
 #endif	/* __JOBDATA_H */

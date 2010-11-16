@@ -1,4 +1,5 @@
 /*
+ * Copyright 2010, Jérôme Duval, korli@users.berlios.de.
  * Copyright 2008, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
@@ -15,7 +16,7 @@
 #include <NodeMonitor.h>
 #include <util/AutoLock.h>
 
-#include "AttributeIterator.h"
+#include "Attribute.h"
 #include "CachedBlock.h"
 #include "DirectoryIterator.h"
 #include "ext2.h"
@@ -90,8 +91,10 @@ ext2_scan_partition(int fd, partition_data *partition, void *_cookie)
 
 	partition->status = B_PARTITION_VALID;
 	partition->flags |= B_PARTITION_FILE_SYSTEM;
-	partition->content_size = cookie->super_block.NumBlocks()
-		<< cookie->super_block.BlockShift();
+	partition->content_size = cookie->super_block.NumBlocks(
+		(cookie->super_block.CompatibleFeatures()
+			& EXT2_INCOMPATIBLE_FEATURE_64BIT) != 0)
+			<< cookie->super_block.BlockShift();
 	partition->block_size = 1UL << cookie->super_block.BlockShift();
 	partition->content_name = strdup(cookie->super_block.name);
 	if (partition->content_name == NULL)
@@ -173,6 +176,14 @@ ext2_read_fs_info(fs_volume* _volume, struct fs_info* info)
 }
 
 
+static status_t
+ext2_sync(fs_volume* _volume)
+{
+	Volume* volume = (Volume*)_volume->private_volume;
+	return volume->Sync();
+}
+
+
 //	#pragma mark -
 
 
@@ -183,8 +194,8 @@ ext2_get_vnode(fs_volume* _volume, ino_t id, fs_vnode* _node, int* _type,
 	Volume* volume = (Volume*)_volume->private_volume;
 
 	if (id < 2 || id > volume->NumInodes()) {
-		dprintf("ext2: inode at %Ld requested!\n", id);
-		return B_ERROR;
+		dprintf("ext2: invalid inode id %lld requested!\n", id);
+		return B_BAD_VALUE;
 	}
 
 	Inode* inode = new Inode(volume, id);
@@ -246,7 +257,7 @@ ext2_remove_vnode(fs_volume* _volume, fs_vnode* _node, bool reenter)
 	status = inode->WriteBack(transaction);
 	if (status != B_OK)
 		return status;
-	
+
 	TRACE("ext2_remove_vnode(): Freeing inode\n");
 	status = volume->FreeInode(transaction, inode->ID(), inode->IsDirectory());
 
@@ -394,15 +405,17 @@ ext2_get_file_map(fs_volume* _volume, fs_vnode* _node, off_t offset,
 	size_t index = 0, max = *_count;
 
 	while (true) {
-		uint32 block;
-		status_t status = inode->FindBlock(offset, block);
+		off_t block;
+		uint32 count = 1;
+		status_t status = inode->FindBlock(offset, block, &count);
 		if (status != B_OK)
 			return status;
 
-		off_t blockOffset = (off_t)block << volume->BlockShift();
-		uint32 blockLength = volume->BlockSize();
+		off_t blockOffset = block << volume->BlockShift();
+		uint32 blockLength = volume->BlockSize() * count;
 
-		if (index > 0 && (vecs[index - 1].offset == blockOffset - blockLength
+		if (index > 0 && (vecs[index - 1].offset
+				== blockOffset - vecs[index - 1].length
 				|| (vecs[index - 1].offset == -1 && block == 0))) {
 			vecs[index - 1].length += blockLength;
 		} else {
@@ -423,11 +436,12 @@ ext2_get_file_map(fs_volume* _volume, fs_vnode* _node, off_t offset,
 		}
 
 		offset += blockLength;
+		size -= blockLength;
 
 		if (size <= vecs[index - 1].length || offset >= inode->Size()) {
 			// We're done!
 			*_count = index;
-			TRACE("ext2_get_file_map for inode %ld\n", (long)inode->ID());
+			TRACE("ext2_get_file_map for inode %lld\n", inode->ID());
 			return B_OK;
 		}
 	}
@@ -456,17 +470,17 @@ ext2_lookup(fs_volume* _volume, fs_vnode* _directory, const char* name,
 
 	HTree htree(volume, directory);
 	DirectoryIterator* iterator;
-	
+
 	status = htree.Lookup(name, &iterator);
 	if (status != B_OK)
 		return status;
-	
+
 	ObjectDeleter<DirectoryIterator> iteratorDeleter(iterator);
 
 	status = iterator->FindEntry(name, _vnodeID);
 	if (status != B_OK)
 		return status;
-	
+
 	return get_vnode(volume->FSVolume(), *_vnodeID, NULL);
 }
 
@@ -490,19 +504,19 @@ ext2_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 			uint32 blocksPerGroup = volume->BlocksPerGroup();
 			uint32 blockSize  = volume->BlockSize();
 			uint32 firstBlock = volume->FirstDataBlock();
-			uint32 start = 0;
+			off_t start = 0;
 			uint32 group = 0;
 			uint32 length;
 
 			TRACE("ioctl: blocks per group: %lu, block size: %lu, "
-				"first block: %lu, start: %lu, group: %lu\n", blocksPerGroup,
+				"first block: %lu, start: %llu, group: %lu\n", blocksPerGroup,
 				blockSize, firstBlock, start, group);
 
 			while (volume->AllocateBlocks(transaction, 1, 2048, group, start,
 					length) == B_OK) {
-				TRACE("ioctl: Allocated blocks in group %lu: %lu-%lu\n", group,
+				TRACE("ioctl: Allocated blocks in group %lu: %llu-%llu\n", group,
 					start, start + length);
-				uint32 blockNum = start + group * blocksPerGroup - firstBlock;
+				off_t blockNum = start + group * blocksPerGroup - firstBlock;
 
 				for (uint32 i = 0; i < length; ++i) {
 					uint8* block = cached.SetToWritable(transaction, blockNum);
@@ -511,7 +525,7 @@ ext2_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 				}
 
 				TRACE("ioctl: Blocks cleared\n");
-				
+
 				transaction.Done();
 				transaction.Start(volume->GetJournal());
 			}
@@ -554,7 +568,7 @@ ext2_read_stat(fs_volume* _volume, fs_vnode* _node, struct stat* stat)
 	inode->GetModificationTime(&stat->st_mtim);
 	inode->GetChangeTime(&stat->st_ctim);
 	inode->GetCreationTime(&stat->st_crtim);
-	
+
 	stat->st_size = inode->Size();
 	stat->st_blocks = (inode->Size() + 511) / 512;
 
@@ -574,59 +588,72 @@ ext2_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 
 	Inode* inode = (Inode*)_node->private_node;
 
-	status_t status = inode->CheckPermissions(W_OK);
-	if (status < B_OK)
-		return status;
+	ext2_inode& node = inode->Node();
+	bool updateTime = false;
+	uid_t uid = geteuid();
+
+	bool isOwnerOrRoot = uid == 0 || uid == (uid_t)node.UserID();
+	bool hasWriteAccess = inode->CheckPermissions(W_OK) == B_OK;
 
 	TRACE("ext2_write_stat: Starting transaction\n");
 	Transaction transaction(volume->GetJournal());
 	inode->WriteLockInTransaction(transaction);
 
-	bool updateTime = false;
-
-	if ((mask & B_STAT_SIZE) != 0) {
+	if ((mask & B_STAT_SIZE) != 0 && inode->Size() != stat->st_size) {
 		if (inode->IsDirectory())
 			return B_IS_A_DIRECTORY;
 		if (!inode->IsFile())
 			return B_BAD_VALUE;
+		if (!hasWriteAccess)
+			return B_NOT_ALLOWED;
 
 		TRACE("ext2_write_stat: Old size: %ld, new size: %ld\n",
 			(long)inode->Size(), (long)stat->st_size);
-		if (inode->Size() != stat->st_size) {
-			off_t oldSize = inode->Size();
 
-			status = inode->Resize(transaction, stat->st_size);
-			if(status != B_OK)
-				return status;
+		off_t oldSize = inode->Size();
 
-			if ((mask & B_STAT_SIZE_INSECURE) == 0) {
-				rw_lock_write_unlock(inode->Lock());
-				inode->FillGapWithZeros(oldSize, inode->Size());
-				rw_lock_write_lock(inode->Lock());
-			}
+		status_t status = inode->Resize(transaction, stat->st_size);
+		if(status != B_OK)
+			return status;
 
-			updateTime = true;
+		if ((mask & B_STAT_SIZE_INSECURE) == 0) {
+			rw_lock_write_unlock(inode->Lock());
+			inode->FillGapWithZeros(oldSize, inode->Size());
+			rw_lock_write_lock(inode->Lock());
 		}
+
+		updateTime = true;
 	}
 
-	ext2_inode& node = inode->Node();
-
 	if ((mask & B_STAT_MODE) != 0) {
+		// only the user or root can do that
+		if (!isOwnerOrRoot)
+			return B_NOT_ALLOWED;
 		node.UpdateMode(stat->st_mode, S_IUMSK);
 		updateTime = true;
 	}
 
 	if ((mask & B_STAT_UID) != 0) {
+		// only root should be allowed
+		if (uid != 0)
+			return B_NOT_ALLOWED;
 		node.SetUserID(stat->st_uid);
 		updateTime = true;
 	}
+
 	if ((mask & B_STAT_GID) != 0) {
+		// only the user or root can do that
+		if (!isOwnerOrRoot)
+			return B_NOT_ALLOWED;
 		node.SetGroupID(stat->st_gid);
 		updateTime = true;
 	}
 
 	if ((mask & B_STAT_MODIFICATION_TIME) != 0 || updateTime
 		|| (mask & B_STAT_CHANGE_TIME) != 0) {
+		// the user or root can do that or any user with write access
+		if (!isOwnerOrRoot && !hasWriteAccess)
+			return B_NOT_ALLOWED;
 		struct timespec newTimespec = { 0, 0};
 
 		if ((mask & B_STAT_MODIFICATION_TIME) != 0)
@@ -641,10 +668,14 @@ ext2_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat* stat,
 
 		inode->SetModificationTime(&newTimespec);
 	}
-	if ((mask & B_STAT_CREATION_TIME) != 0)
+	if ((mask & B_STAT_CREATION_TIME) != 0) {
+		// the user or root can do that or any user with write access
+		if (!isOwnerOrRoot && !hasWriteAccess)
+			return B_NOT_ALLOWED;
 		inode->SetCreationTime(&stat->st_crtim);
+	}
 
-	status = inode->WriteBack(transaction);
+	status_t status = inode->WriteBack(transaction);
 	if (status == B_OK)
 		status = transaction.Done();
 	if (status == B_OK)
@@ -747,7 +778,7 @@ ext2_create_symlink(fs_volume* _volume, fs_vnode* _directory, const char* name,
 	ino_t id;
 	status = Inode::Create(transaction, directory, name, S_SYMLINK | 0777,
 		0, (uint8)EXT2_TYPE_SYMLINK, NULL, &id, &link);
-	if (status < B_OK)
+	if (status != B_OK)
 		return status;
 
 	// TODO: We have to prepare the link before publishing?
@@ -803,7 +834,7 @@ static status_t
 ext2_link(fs_volume* volume, fs_vnode* dir, const char* name, fs_vnode* node)
 {
 	// TODO
-	
+
 	return B_NOT_SUPPORTED;
 }
 
@@ -922,14 +953,14 @@ ext2_rename(fs_volume* _volume, fs_vnode* _oldDir, const char* oldName,
 			if (status != B_OK)
 				return B_IO_ERROR;
 
-			uint32 blockNum;
+			off_t blockNum;
 			status = parent->FindBlock(0, blockNum);
 			if (status != B_OK)
 				return status;
 
 			const HTreeRoot* data = (const HTreeRoot*)cached.SetTo(blockNum);
 			parentID = data->dotdot.InodeID();
-		} while (parentID != oldID && parentID != oldDirID 
+		} while (parentID != oldID && parentID != oldDirID
 			&& parentID != EXT2_ROOT_NODE);
 
 		if (parentID == oldID)
@@ -999,7 +1030,7 @@ ext2_rename(fs_volume* _volume, fs_vnode* _oldDir, const char* oldName,
 			return status;
 	} else
 		return status;
-	
+
 	// Remove entry from source folder
 	status = oldIterator->RemoveEntry(transaction);
 	if (status != B_OK)
@@ -1033,7 +1064,7 @@ ext2_rename(fs_volume* _volume, fs_vnode* _oldDir, const char* oldName,
 	if (status != B_OK) {
 		entry_cache_remove(volume->ID(), oldDirectory->ID(), newName);
 		entry_cache_add(volume->ID(), newDirectory->ID(), oldName, oldID);
-	
+
 		return status;
 	}
 
@@ -1223,7 +1254,7 @@ ext2_read_link(fs_volume *_volume, fs_vnode *_node, char *buffer,
 static status_t
 ext2_create_dir(fs_volume* _volume, fs_vnode* _directory, const char* name,
 	int mode)
-{ 
+{
 	TRACE("ext2_create_dir()\n");
 	Volume* volume = (Volume*)_volume->private_volume;
 	Inode* directory = (Inode*)_directory->private_node;
@@ -1357,7 +1388,7 @@ ext2_read_dir(fs_volume *_volume, fs_vnode *_node, void *_cookie,
 
 	size_t length = bufferSize;
 	ino_t id;
-	status_t status = iterator->Get(dirent->d_name, &length, &id);
+	status_t status = iterator->GetNext(dirent->d_name, &length, &id);
 	if (status == B_ENTRY_NOT_FOUND) {
 		*_num = 0;
 		return B_OK;
@@ -1402,7 +1433,7 @@ ext2_free_dir_cookie(fs_volume *_volume, fs_vnode *_node, void *_cookie)
 }
 
 
-static status_t 
+static status_t
 ext2_open_attr_dir(fs_volume *_volume, fs_vnode *_node, void **_cookie)
 {
 	Inode* inode = (Inode*)_node->private_node;
@@ -1416,11 +1447,11 @@ ext2_open_attr_dir(fs_volume *_volume, fs_vnode *_node, void **_cookie)
 	if (!inode->IsFile())
 		return EINVAL;
 
-	AttributeIterator* iterator = new(std::nothrow) AttributeIterator(inode);
-	if (iterator == NULL)
+	int32 *index = new(std::nothrow) int32;
+	if (index == NULL)
 		return B_NO_MEMORY;
-
-	*_cookie = iterator;
+	*index = 0;
+	*(int32**)_cookie = index;
 	return B_OK;
 }
 
@@ -1436,7 +1467,7 @@ static status_t
 ext2_free_attr_dir_cookie(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 {
 	TRACE("%s()\n", __FUNCTION__);
-	delete (AttributeIterator *)_cookie;
+	delete (int32 *)_cookie;
 	return B_OK;
 }
 
@@ -1447,16 +1478,21 @@ ext2_read_attr_dir(fs_volume* _volume, fs_vnode* _node,
 				uint32* _num)
 {
 	Inode* inode = (Inode*)_node->private_node;
-	AttributeIterator *iterator = (AttributeIterator *)_cookie;
+	int32 index = *(int32 *)_cookie;
+	Attribute attribute(inode);
 	TRACE("%s()\n", __FUNCTION__);
 
 	size_t length = bufferSize;
-	status_t status = iterator->GetNext(dirent->d_name, &length);
+	status_t status = attribute.Find(index);
 	if (status == B_ENTRY_NOT_FOUND) {
 		*_num = 0;
 		return B_OK;
 	} else if (status != B_OK)
 		return status;
+
+	status = attribute.GetName(dirent->d_name, &length);
+	if (status != B_OK)
+		return B_OK;
 
 	Volume* volume = (Volume*)_volume->private_volume;
 
@@ -1465,6 +1501,7 @@ ext2_read_attr_dir(fs_volume* _volume, fs_vnode* _node,
 	dirent->d_reclen = sizeof(struct dirent) + length;
 
 	*_num = 1;
+	*(int32*)_cookie = index + 1;
 	return B_OK;
 }
 
@@ -1472,9 +1509,9 @@ ext2_read_attr_dir(fs_volume* _volume, fs_vnode* _node,
 static status_t
 ext2_rewind_attr_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 {
-	AttributeIterator *iterator = (AttributeIterator *)_cookie;
+	*(int32*)_cookie = 0;
 	TRACE("%s()\n", __FUNCTION__);
-	return iterator->Rewind();
+	return B_OK;
 }
 
 
@@ -1492,31 +1529,15 @@ ext2_open_attr(fs_volume* _volume, fs_vnode* _node, const char* name,
 	int openMode, void** _cookie)
 {
 	TRACE("%s()\n", __FUNCTION__);
-	if ((openMode & O_RWMASK) != O_RDONLY)
-		return EROFS;
 
-	Inode* inode = (Inode*)_node->private_node;
 	Volume* volume = (Volume*)_volume->private_volume;
+	Inode* inode = (Inode*)_node->private_node;
+	Attribute attribute(inode);
 
 	if (!(volume->SuperBlock().CompatibleFeatures() & EXT2_FEATURE_EXT_ATTR))
 		return ENOSYS;
 
-	// on directories too ?
-	if (!inode->IsFile())
-		return EINVAL;
-
-	ext2_xattr_entry *entry = new ext2_xattr_entry;
-
-	AttributeIterator i(inode);
-	status_t status = i.Find(name, entry);
-	if (status == B_OK) {
-		//entry->Dump();
-		*_cookie = entry;
-		return B_OK;
-	}
-	
-	delete entry;
-	return status;
+	return attribute.Open(name, openMode, (attr_cookie**)_cookie);
 }
 
 
@@ -1532,31 +1553,23 @@ static status_t
 ext2_free_attr_cookie(fs_volume* _volume, fs_vnode* _node,
 	void* cookie)
 {
-	ext2_xattr_entry *entry = (ext2_xattr_entry *)cookie;
-
-	delete entry;
+	delete (attr_cookie*)cookie;
 	return B_OK;
 }
 
 
 static status_t
-ext2_read_attr(fs_volume* _volume, fs_vnode* _node, void* cookie,
-	off_t pos, void* buffer, size_t* length)
+ext2_read_attr(fs_volume* _volume, fs_vnode* _node, void* _cookie,
+	off_t pos, void* buffer, size_t* _length)
 {
 	TRACE("%s()\n", __FUNCTION__);
 
+	attr_cookie* cookie = (attr_cookie*)_cookie;
 	Inode* inode = (Inode*)_node->private_node;
-	//Volume* volume = (Volume*)_volume->private_volume;
-	ext2_xattr_entry *entry = (ext2_xattr_entry *)cookie;
 
-	if (!entry->IsValid())
-		return EINVAL;
+	Attribute attribute(inode, cookie);
 
-	if (pos < 0 || (pos + *length) > entry->ValueSize())
-		return ERANGE;
-
-	return inode->AttributeBlockReadAt(entry->ValueOffset() + pos,
-		(uint8 *)buffer, length);
+	return attribute.Read(cookie, pos, (uint8*)buffer, _length);
 }
 
 
@@ -1571,15 +1584,14 @@ ext2_write_attr(fs_volume* _volume, fs_vnode* _node, void* cookie,
 
 static status_t
 ext2_read_attr_stat(fs_volume* _volume, fs_vnode* _node,
-	void* cookie, struct stat* stat)
+	void* _cookie, struct stat* stat)
 {
-	ext2_xattr_entry *entry = (ext2_xattr_entry *)cookie;
+	attr_cookie* cookie = (attr_cookie*)_cookie;
+	Inode* inode = (Inode*)_node->private_node;
 
-	stat->st_type = B_RAW_TYPE;
-	stat->st_size = entry->ValueSize();
-	TRACE("%s: st_size %d\n", __FUNCTION__, stat->st_size);
+	Attribute attribute(inode, cookie);
 
-	return B_OK;
+	return attribute.Stat(*stat);
 }
 
 
@@ -1611,9 +1623,10 @@ fs_volume_ops gExt2VolumeOps = {
 	&ext2_unmount,
 	&ext2_read_fs_info,
 	NULL,	// write_fs_info()
-	NULL,	// sync()
+	&ext2_sync,
 	&ext2_get_vnode,
 };
+
 
 fs_vnode_ops gExt2VnodeOps = {
 	/* vnode operations */
@@ -1685,8 +1698,8 @@ fs_vnode_ops gExt2VnodeOps = {
 	NULL, //&ext2_write_attr_stat,
 	NULL, //&ext2_rename_attr,
 	NULL, //&ext2_remove_attr,
-	
 };
+
 
 static file_system_module_info sExt2FileSystem = {
 	{
@@ -1697,7 +1710,7 @@ static file_system_module_info sExt2FileSystem = {
 
 	"ext2",						// short_name
 	"Ext2 File System",			// pretty_name
-	0,							// DDM flags
+	B_DISK_SYSTEM_SUPPORTS_WRITING,						// DDM flags
 
 	// scanning
 	ext2_identify_partition,
@@ -1709,6 +1722,7 @@ static file_system_module_info sExt2FileSystem = {
 
 	NULL,
 };
+
 
 module_info *modules[] = {
 	(module_info *)&sExt2FileSystem,

@@ -1,70 +1,136 @@
+#include <getopt.h>
 #include <stdio.h>
 
 #include <Application.h>
-#include <Directory.h>
-#include <FindDirectory.h>
-#include <Path.h>
-#include <File.h>
-#include <image.h>
 #include <DataIO.h>
+#include <Directory.h>
+#include <File.h>
+#include <FindDirectory.h>
+#include <image.h>
 #include <Message.h>
+#include <Path.h>
+#include <PrintTransportAddOn.h>
+
+static struct option longopts[] = {
+    { "help",		no_argument,		NULL, 'h' },
+    { "verbose",	no_argument,		NULL, 'v' },
+    { "list-ports",	no_argument,		NULL, 'p' },
+    { NULL,		0,			NULL, 0   }
+};
+
+static int verbose = 0;
+
+
+static void
+usage(int argc, char** argv)
+{
+    fprintf(stderr,
+		"Usage: %s [OPTIONS...] transport-addon-name [file to send]\n"
+		"\n"
+		"  -p, --list-ports   print ports detected by the transport add-on\n"
+		"  -v, --verbose      tell me more. Use multiple times for more details\n"
+		"  -h, --help         display this help and exit\n"
+		"\n", argv[0]
+);
+}
+
 
 int main (int argc, char *argv[])
 {
-	image_id addon;
-	char *transport;
-	
-	if (argc < 2) {
-		printf("Usage: %s <transport add-on name> [<file to print>]\n", argv[0]);
-		return B_ERROR;
+	int c;
+	bool list_ports = false;
+
+	while ((c = getopt_long(argc, argv, "hvp", longopts, 0)) > 0) {
+		switch (c) {
+		case 'p':
+	    	list_ports = true;
+		    break;
+		case 'v':
+		    verbose++;
+		    break;
+		default:
+		    usage(argc, argv);
+		    return 0;
+		}
 	}
+    argc -= optind;
+    argv += optind;
 
-	new BApplication("application/x-vnd-OBOS-print_transport_tester");
+    if (argc < 1) {
+		usage(argc, argv);
+		return -1;
+    }
 
-	transport = argv[1];
+	new BApplication("application/x-vnd-Haiku-print_transport_tester");
 
-	printf("Looking for %s transport addon:", transport);
+	image_id addon = -1;
+	char *transport = argv[0];
 
-	// try first in user add-ons directory
-	printf("In user add-ons directory...\n");
+	printf("Looking for %s transport addon:\n", transport);
 
+	directory_which which[] = {
+		B_USER_ADDONS_DIRECTORY,
+		B_COMMON_ADDONS_DIRECTORY,
+		B_SYSTEM_ADDONS_DIRECTORY
+	};
 	BPath path;
-	find_directory(B_USER_ADDONS_DIRECTORY, &path);
-	path.Append("Print/transport");
-	path.Append(transport);
-	
-	addon = load_add_on(path.Path());
-	if (addon < 0) {
-		// on failure try in system add-ons directory
+	for (uint32 i = 0; i <sizeof(which) / sizeof(which[0]); i++) {
+		if (find_directory(which[i], &path, false) != B_OK)
+			continue;
 
-		printf("In system add-ons directory...\n");
-		find_directory(B_BEOS_ADDONS_DIRECTORY, &path);
 		path.Append("Print/transport");
 		path.Append(transport);
 
+		printf("\t%s ?\n", path.Path());
 		addon = load_add_on(path.Path());
+		if (addon >= B_OK)
+			break;
 	}
 
-	if (addon < 0) {
+	if (addon == B_ERROR) {
 		// failed to load transport add-on
-		printf("Failed to load %s print transport add-on!\n", transport);
-		return B_ERROR;
+		printf("Failed to load \"%s\" print transport add-on!\n", transport);
+		return -1;
 	}
-	
-	printf("Loaded from %s\n", path.Path());
+
+	printf("Add-on %d = \"%s\" loaded from %s.\n", (int) addon,
+		transport, path.Path());
 
 	// get init & exit proc
-	BDataIO* (*init_proc)(BMessage*);
-	void (*exit_proc)(void);
-	
-	get_image_symbol(addon, "init_transport", B_SYMBOL_TYPE_TEXT, (void **) &init_proc);
-	get_image_symbol(addon, "exit_transport", B_SYMBOL_TYPE_TEXT, (void **) &exit_proc);
+	BDataIO* (*transport_init_proc)(BMessage*) = NULL;
+	void (*transport_exit_proc)(void) = NULL;
+	status_t (*list_transport_ports)(BMessage*) = NULL;
+	int* transport_features_ptr = NULL;
 
-	if (init_proc == NULL || exit_proc == NULL) {
+	get_image_symbol(addon, "init_transport", B_SYMBOL_TYPE_TEXT, (void **) &transport_init_proc);
+	get_image_symbol(addon, "exit_transport", B_SYMBOL_TYPE_TEXT, (void **) &transport_exit_proc);
+
+	get_image_symbol(addon, B_TRANSPORT_LIST_PORTS_SYMBOL, B_SYMBOL_TYPE_TEXT,
+		(void **) &list_transport_ports);
+	get_image_symbol(addon, B_TRANSPORT_FEATURES_SYMBOL, B_SYMBOL_TYPE_DATA,
+		(void **) &transport_features_ptr);
+
+	if (transport_init_proc == NULL || transport_exit_proc == NULL) {
 		// transport add-on has not the proper interface
 		printf("Invalid print transport add-on API!\n");
 		unload_add_on(addon);
 		return B_ERROR;
+	}
+
+	if (list_ports) {
+		printf("Ports list:\n");
+
+		if (list_transport_ports == NULL)
+			printf("Transport \"%s\" don't support this feature!\n", transport);
+		else {
+			BMessage ports;
+			snooze(1000000);	// give some time for ports discovery
+			status_t status = (*list_transport_ports)(&ports);
+			if (status == B_OK)
+				ports.PrintToStream();
+			else
+				printf("failed!\n");
+		}
 	}
 
 	printf("Initing %s: ", transport);
@@ -74,8 +140,8 @@ int main (int argc, char *argv[])
 	BMessage msg('TRIN');
 	// TODO: create on the fly a temporary printer folder for testing purpose only
 	msg.AddString("printer_file", "/boot/home/config/settings/printers/test");
-	BDataIO *io = (*init_proc)(&msg);
-	
+	BDataIO *io = (*transport_init_proc)(&msg);
+
 	if (io) {
 		printf("done.\nTransport parameters msg =>\n");
 		msg.PrintToStream();
@@ -83,13 +149,13 @@ int main (int argc, char *argv[])
 		printf("failed!\n");
 
 
-	if (argc > 2) {
-		BFile data(argv[2], B_READ_ONLY);
+	if (argc > 1) {
+		BFile data(argv[1], B_READ_ONLY);
 		if (data.InitCheck() == B_OK) {
 			uint8 buffer[B_PAGE_SIZE];
 			ssize_t total = 0;
 			ssize_t sz;
-			
+
 			printf("Sending data read from %s file...\n", argv[2]);
 			while((sz = data.Read(buffer, sizeof(buffer))) > 0) {
 				if (io->Write(buffer, sz) < 0) {
@@ -101,14 +167,15 @@ int main (int argc, char *argv[])
 			printf("%ld data bytes sent.\n", total);
 		}	// data valid file
 	}	// optional data file
-	
-	if (exit_proc) {
+
+	if (transport_exit_proc) {
 		printf("Exiting %s...\n", transport);
-		(*exit_proc)();
+		(*transport_exit_proc)();
 	}
-	
+
 	unload_add_on(addon);
 	printf("%s unloaded.\n", transport);
 
 	return B_OK;
 }
+

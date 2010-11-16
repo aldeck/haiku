@@ -15,10 +15,6 @@
 #define SHOW_IMAGE_VIEW_H
 
 
-#include "Filter.h"
-#include "SelectionBox.h"
-#include "ShowImageUndo.h"
-
 #include <Bitmap.h>
 #include <Entry.h>
 #include <NodeInfo.h>
@@ -26,19 +22,13 @@
 #include <TranslatorRoster.h>
 #include <View.h>
 
+#include "Filter.h"
+#include "SelectionBox.h"
+#include "ShowImageUndo.h"
 
-// Delay scaling operation, so that a sequence of zoom in/out operations works
-// smoother
-#define DELAYED_SCALING 1
-// the delay time in 1/10 seconds
-#define SCALING_DELAY_TIME 3
-// width of the black border stroked arround the bitmap
-#define PEN_SIZE 1.0f
 
-// the delay time for hiding the cursor in 1/10 seconds (the pulse rate)
-#define HIDE_CURSOR_DELAY_TIME 20
+class BitmapOwner;
 
-class ProgressWindow;
 
 class ShowImageView : public BView {
 public:
@@ -47,9 +37,8 @@ public:
 	virtual						~ShowImageView();
 
 	virtual	void				AttachedToWindow();
-	virtual	void				DetachedFromWindow();
+	virtual void				FrameResized(float width, float height);
 	virtual	void				Draw(BRect updateRect);
-	virtual	void				FrameResized(float width, float height);
 	virtual	void				MouseDown(BPoint point);
 	virtual	void				MouseMoved(BPoint point, uint32 state,
 									const BMessage* dragMessage);
@@ -62,8 +51,10 @@ public:
 
 			void				SetTrackerMessenger(
 									const BMessenger& trackerMessenger);
-			status_t			SetImage(const entry_ref* ref);
+			status_t			SetImage(const BMessage* message);
+			status_t			SetImage(const entry_ref* ref, BBitmap* bitmap);
 			const entry_ref*	Image() const { return &fCurrentRef; }
+			BBitmap*			Bitmap();
 
 			BPoint				ImageToView(BPoint p) const;
 			BPoint				ViewToImage(BPoint p) const;
@@ -74,48 +65,27 @@ public:
 			void				SaveToFile(BDirectory* dir, const char* name,
 									BBitmap* bitmap,
 									const translation_format* format);
-			void				SetDither(bool dither);
-			bool				GetDither() const { return fDither; }
-			void				SetScaleBilinear(bool b);
-			bool				GetScaleBilinear() { return fScaleBilinear; }
-			void				SetShowCaption(bool show);
-			void				SetShrinkToBounds(bool enable);
-			bool				GetShrinkToBounds() const
-									{ return fShrinkToBounds; }
-			void				SetZoomToBounds(bool enable);
-			bool				GetZoomToBounds() const
-									{ return fZoomToBounds; }
-			void				SetFullScreen(bool fullScreen);
 
-			BBitmap*			GetBitmap();
-			void				GetName(BString* name);
-			void				GetPath(BString* name);
+			void				SetScaleBilinear(bool b);
+			bool				ScaleBilinear() { return fScaleBilinear; }
+			void				SetShowCaption(bool show);
+			void				SetStretchToBounds(bool enable);
+			bool				StretchesToBounds() const
+									{ return fStretchToBounds; }
+			void				SetHideIdlingCursor(bool hide);
 
 			void				FixupScrollBar(enum orientation orientation,
 									float bitmapLength, float viewLength);
 			void				FixupScrollBars();
 
+			void				SetSelectionMode(bool selectionMode);
+			bool				IsSelectionModeEnabled() const
+									{ return fSelectionMode; }
 			void				Undo();
-			void				Cut();
-			void				Paste();
 			void				SelectAll();
 			void				ClearSelection();
 
 			void				CopySelectionToClipboard();
-
-			int32				CurrentPage();
-			int32				PageCount();
-
-			void				FirstPage();
-			void				LastPage();
-			void				NextPage();
-			void				PrevPage();
-			void				GoToPage(int32 page);
-
-			bool				NextFile();
-			bool				PrevFile();
-			bool				HasNextFile();
-			bool				HasPrevFile();
 
 			void				SetSlideShowDelay(float seconds);
 			float				GetSlideShowDelay() const
@@ -123,14 +93,18 @@ public:
 			bool				SlideShowStarted() const { return fSlideShow; }
 			void				StartSlideShow();
 			void				StopSlideShow();
-			void				SetZoom(float zoom);
-			void				ZoomIn();
-			void				ZoomOut();
+
+			void				FitToBounds();
+			void				SetZoom(float zoom,
+									BPoint where = BPoint(-1, -1));
+			float				Zoom() const
+									{ return fZoom; }
+			void				ZoomIn(BPoint where = BPoint(-1, -1));
+			void				ZoomOut(BPoint where = BPoint(-1, -1));
 
 			// Image manipulation
 			void				Rotate(int degree); // 90 and 270 only
 			void				Flip(bool vertical);
-			void				Invert();
 			void				ResizeImage(int width, int height);
 
 			void				SetIcon(bool clear);
@@ -148,15 +122,12 @@ private:
 				kNumberOfOrientations,
 			};
 
-			void				_RemoveSelection(bool bToClipboard,
-									bool neverCutBackground = false);
 			void				_SetHasSelection(bool bHasSelection);
 			void				_AnimateSelection(bool a);
 			void				_SendMessageToWindow(BMessage *message);
 			void				_SendMessageToWindow(uint32 code);
 			void				_Notify();
 			void				_UpdateStatusText();
-			void				_AddWhiteRect(BRect& rect);
 			void				_GetMergeRects(BBitmap* merge,
 									BRect selection, BRect& srcRect,
 									BRect& dstRect);
@@ -164,7 +135,6 @@ private:
 									BRect& dstRect);
 			status_t			_SetSelection(const entry_ref* ref,
 									BPoint point);
-			status_t			_PasteBitmap(BBitmap* bitmap, BPoint point);
 			void				_MergeWithBitmap(BBitmap* merge,
 									BRect selection);
 			void				_MergeSelection();
@@ -172,31 +142,15 @@ private:
 			void				_DeleteBitmap();
 			void				_DeleteSelectionBitmap();
 
-			int32				_BytesPerPixel(color_space cs) const;
-			void				_CopyPixel(uchar* dest, int32 destX,
-									int32 destY, int32 destBPR, uchar* src,
-									int32 x, int32 y, int32 bpr, int32 bpp);
-			void				_InvertPixel(int32 x, int32 y, uchar* dest,
-									int32 destBPR, uchar* src, int32 bpr,
-									int32 bpp);
 			void				_DoImageOperation(
 									enum ImageProcessor::operation op,
 									bool quiet = false);
 			void				_UserDoImageOperation(
 									enum ImageProcessor::operation op,
 									bool quiet = false);
+			bool				_ShouldStretch() const;
+			float				_FitToBoundsZoom() const;
 			BRect				_AlignBitmap();
-			void				_Setup(BRect r);
-			bool				_IsImage(const entry_ref* pref);
-	static	int					_CompareEntries(const void* a, const void* b);
-			void				_FreeEntries(BList* entries);
-			void				_SetTrackerSelectionToCurrent();
-			bool				_FindNextImage(entry_ref* inCurrent,
-									entry_ref* outImage, bool next,
-									bool rewind);
-			bool				_ShowNextImage(bool next, bool rewind);
-			bool				_FirstFile();
-			BBitmap*			_CopyFromRect(BRect srcRect);
 			BBitmap*			_CopySelection(uchar alpha = 255,
 									bool imageSize = true);
 			bool				_AddSupportedTypes(BMessage* message,
@@ -209,16 +163,14 @@ private:
 									const char* type,
 									translation_format* format);
 			void				_HandleDrop(BMessage* message);
-			void				_ScrollBitmap();
-			uint32				_GetMouseButtons();
+			void				_ScrollBitmap(BPoint point);
 			void				_UpdateSelectionRect(BPoint point, bool final);
-			void				_DrawBorder(BRect border);
+			void				_DrawBackground(BRect aroundFrame);
 			void				_LayoutCaption(BFont& font, BPoint& textPos,
 									BRect& background);
 			void				_DrawCaption();
 			void				_UpdateCaption();
 
-			Scaler*				_GetScaler(BRect rect);
 			void				_DrawImage(BRect rect);
 			float				_LimitToRange(float v, orientation o,
 									bool absolute);
@@ -235,39 +187,26 @@ private:
 
 private:
 			ShowImageUndo		fUndo;
-			BMessenger			fTrackerMessenger;
-				// of the window that this was launched from
 			entry_ref			fCurrentRef;
 
-			int32				fDocumentIndex;
-				// of the image in the file
-			int32				fDocumentCount;
-				// number of images in the file
-
+			BitmapOwner*		fBitmapOwner;
 			BBitmap*			fBitmap;
 			BBitmap*			fDisplayBitmap;
 			BBitmap*			fSelectionBitmap;
 
 			float				fZoom;
 
-			bool				fDither;
 			bool				fScaleBilinear;
-			Scaler*				fScaler;
-#if DELAYED_SCALING
-			int					fScalingCountDown;
-#endif
-			bool				fInverted;
 
 			BPoint				fBitmapLocationInView;
 
-			bool				fShrinkToBounds;
-			bool				fZoomToBounds;
-			bool				fShrinkOrZoomToBounds;
-			bool				fFullScreen;
+			bool				fStretchToBounds;
+			bool				fHideCursor;
 			bool				fScrollingBitmap;
 			bool				fCreatingSelection;
 			BPoint				fFirstPoint;
 				// first point in image space of selection
+			bool				fSelectionMode;
 			bool				fAnimateSelection;
 			bool				fHasSelection;
 			SelectionBox		fSelectionBox;
@@ -280,13 +219,12 @@ private:
 				// in pulse rate units
 			int					fSlideShowCountDown;
 				// shows next image if it reaches zero
-	
+
 			bool				fShowCaption;
 			BString				fCaption;
 
-			BString				fImageType;
-				// Type of image, for use in status bar and caption
-			BString				fImageMime;
+			BString				fFormatDescription;
+			BString				fMimeType;
 
 			bool				fShowingPopUpMenu;
 
@@ -294,8 +232,6 @@ private:
 				// Hides the cursor when it reaches zero
 			bool				fIsActiveWin;
 				// Is the parent window the active window?
-
-			ProgressWindow*		fProgressWindow;
 
 			image_orientation	fImageOrientation;
 	static	image_orientation	fTransformation[

@@ -1,13 +1,13 @@
 /*
- * Copyright 2006-2007, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2010, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Axel Dörfler, axeld@pinc-software.de
  */
 
-/*!
-	This class manages a pool of areas for one client. The client is supposed
+
+/*!	This class manages a pool of areas for one client. The client is supposed
 	to clone these areas into its own address space to access the data.
 	This mechanism is only used for bitmaps for far.
 
@@ -208,6 +208,32 @@ void
 ClientMemoryAllocator::Unlock()
 {
 	fLock.ReadUnlock();
+}
+
+
+void
+ClientMemoryAllocator::Dump()
+{
+	AutoReadLocker locker(fLock);
+
+	debug_printf("Application %ld, %s: chunks:\n", fApplication->ClientTeam(),
+		fApplication->Signature());
+
+	chunk_list::Iterator iterator = fChunks.GetIterator();
+	int32 i = 0;
+	while (struct chunk* chunk = iterator.Next()) {
+		debug_printf("  [%4ld] %p, area %ld, base %p, size %lu\n", i++, chunk,
+			chunk->area, chunk->base, chunk->size);
+	}
+
+	debug_printf("free blocks:\n");
+
+	block_list::Iterator blockIterator = fFreeBlocks.GetIterator();
+	i = 0;
+	while (struct block* block = blockIterator.Next()) {
+		debug_printf("  [%6ld] %p, chunk %p, base %p, size %lu\n", i++, block,
+			block->chunk, block->base, block->size);
+	}
 }
 
 

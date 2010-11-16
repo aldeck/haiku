@@ -21,7 +21,9 @@
 
 Media::Media() 
 	:
-	BApplication("application/x-vnd.Haiku-Media")
+	BApplication("application/x-vnd.Haiku-Media"),
+	fIcons(),
+	fWindow(NULL)
 {
 	BRect rect(32, 64, 637, 462);
 
@@ -56,6 +58,7 @@ Media::Media()
 	}
 
 	fWindow = new MediaWindow(rect);
+	MediaListItem::SetIcons(&fIcons);
 
 	be_roster->StartWatching(BMessenger(this));
 }

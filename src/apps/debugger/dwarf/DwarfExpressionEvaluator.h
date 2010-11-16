@@ -19,12 +19,16 @@ class DwarfExpressionEvaluationContext {
 public:
 								DwarfExpressionEvaluationContext(
 									const DwarfTargetInterface* targetInterface,
-									uint8 addressSize);
+									uint8 addressSize,
+									target_addr_t relocationDelta);
 	virtual						~DwarfExpressionEvaluationContext();
 
 			const DwarfTargetInterface* TargetInterface() const
 									{ return fTargetInterface; }
 			uint8				AddressSize() const	{ return fAddressSize; }
+
+			target_addr_t			RelocationDelta() const
+									{ return fRelocationDelta; }
 
 	virtual	bool				GetObjectAddress(target_addr_t& _address) = 0;
 	virtual	bool				GetFrameAddress(target_addr_t& _address) = 0;
@@ -43,6 +47,7 @@ public:
 protected:
 			const DwarfTargetInterface* fTargetInterface;
 			uint8				fAddressSize;
+			target_addr_t		fRelocationDelta;
 };
 
 

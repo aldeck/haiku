@@ -1,5 +1,5 @@
 /*
- * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2009-2010, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Distributed under the terms of the MIT License.
  */
 #ifndef DWARF_FILE_H
@@ -69,6 +69,7 @@ public:
 									target_addr_t instructionPointer,
 									target_addr_t objectPointer,
 									target_addr_t framePointer,
+									target_addr_t relocationDelta,
 									ValueLocation& _result);
 									// The returned location will have DWARF
 									// semantics regarding register numbers and
@@ -91,13 +92,15 @@ public:
 
 private:
 			struct ExpressionEvaluationContext;
+			struct FDEAugmentation;
+			struct CIEAugmentation;
 
 			typedef DoublyLinkedList<AbbreviationTable> AbbreviationTableList;
 			typedef BObjectList<CompilationUnit> CompilationUnitList;
 
 private:
 			status_t			_ParseCompilationUnit(CompilationUnit* unit);
-			status_t			 _ParseDebugInfoEntry(DataReader& dataReader,
+			status_t			_ParseDebugInfoEntry(DataReader& dataReader,
 									AbbreviationTable* abbreviationTable,
 									DebugInfoEntry*& _entry,
 									bool& _endOfEntryList, int level = 0);
@@ -109,7 +112,8 @@ private:
 			status_t			_ParseLineInfo(CompilationUnit* unit);
 
 			status_t			_ParseCIE(CompilationUnit* unit,
-									CfaContext& context, off_t cieOffset);
+									CfaContext& context, off_t cieOffset,
+									CIEAugmentation& cieAugmentation);
 			status_t			_ParseFrameInfoInstructions(
 									CompilationUnit* unit, CfaContext& context,
 									off_t instructionOffset,
@@ -154,6 +158,7 @@ private:
 			CompilationUnitList	fCompilationUnits;
 			CompilationUnit*	fCurrentCompilationUnit;
 			bool				fUsingEHFrameSection;
+			bool				fGCC4EHFrameSection;
 			bool				fFinished;
 			status_t			fFinishError;
 };

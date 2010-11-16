@@ -643,10 +643,8 @@ void
 AboutView::MouseDown(BPoint point)
 {
 	BRect r(92, 26, 105, 31);
-	if (r.Contains(point)) {
-		printf("Easter egg\n");
-		PickRandomHaiku();
-	}
+	if (r.Contains(point))
+		BMessenger(this).SendMessage('eegg');
 
 	if (Bounds().Contains(point)) {
 		fLastActionTime = system_time();
@@ -689,6 +687,12 @@ AboutView::MessageReceived(BMessage* msg)
 				fCreditsView->ScrollBy(0, 1);
 
 			break;
+		}
+
+		case 'eegg':
+		{
+			printf("Easter egg\n");
+			PickRandomHaiku();
 		}
 
 		default:
@@ -789,18 +793,19 @@ AboutView::AddCopyrightEntry(const char* name, const char* text,
 void
 AboutView::PickRandomHaiku()
 {
-	BFile fortunes(
-#ifdef __HAIKU__
-		"/etc/fortunes/Haiku",
-#else
-		"data/etc/fortunes/Haiku",
-#endif
-		B_READ_ONLY);
+	BPath path;
+	if (find_directory(B_SYSTEM_DATA_DIRECTORY, &path) != B_OK)
+		path = "/system/data";
+	path.Append("fortunes");
+	path.Append("Haiku");
+
+	BFile fortunes(path.Path(), B_READ_ONLY);
 	struct stat st;
 	if (fortunes.InitCheck() < B_OK)
 		return;
 	if (fortunes.GetStat(&st) < B_OK)
 		return;
+
 	char* buff = (char*)malloc((size_t)st.st_size + 1);
 	if (!buff)
 		return;
@@ -822,6 +827,7 @@ AboutView::PickRandomHaiku()
 	free(buff);
 	if (haikuList.CountItems() < 1)
 		return;
+
 	BString* s = (BString*)haikuList.ItemAt(rand() % haikuList.CountItems());
 	BFont font(be_bold_font);
 	font.SetSize(be_bold_font->Size());
@@ -979,7 +985,6 @@ AboutView::_CreateCreditsView()
 	fCreditsView->Insert(
 		"Phil Greenway\n"
 		"Gavin James\n"
-		"Jorge G. Mare (aka Koki)\n"
 		"Urias McCullough\n"
 		"Niels Sascha Reedijk\n"
 		"Joachim Seemer (Humdinger)\n"
@@ -1032,6 +1037,7 @@ AboutView::_CreateCreditsView()
 		"Jerome Leveque\n"
 		"Christof Lutteroth\n"
 		"Graham MacDonald\n"
+		"Jorge G. Mare (Koki)\n"
 		"Jan Matějek\n"
 		"Brian Matzon\n"
 		"Christopher ML Zumwalt May\n"
@@ -1534,6 +1540,14 @@ AboutView::_CreateCreditsView()
 		.SetLicense("Ralink (firmware)")
 		.SetURL("http://www.ralinktech.com/"));
 #endif
+
+	// Gutenprint
+	_AddPackageCredit(PackageCredit("Gutenprint")
+		.SetCopyright(COPYRIGHT_STRING
+			"1999 - 2010 by "
+			"the authors of Gutenprint. All rights reserved.")
+		.SetLicense("GNU GPL v2")
+		.SetURL("http://gutenprint.sourceforge.net"));
 
 	_AddCopyrightsFromAttribute();
 	_AddPackageCreditEntries();

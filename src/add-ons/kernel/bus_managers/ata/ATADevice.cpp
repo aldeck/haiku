@@ -179,9 +179,31 @@ ATADevice::ReadCapacity(ATARequest *request)
 	scsi_res_read_capacity data;
 	data.block_size = B_HOST_TO_BENDIAN_INT32(fBlockSize);
 
-	uint32 lastBlock = fTotalSectors - 1;
-	data.lba = B_HOST_TO_BENDIAN_INT32(lastBlock);
+	if (fTotalSectors <= UINT_MAX) {
+		uint32 lastBlock = fTotalSectors - 1;
+		data.lba = B_HOST_TO_BENDIAN_INT32(lastBlock);
+	} else
+		data.lba = UINT_MAX;
 	TRACE("returning last block: %lu\n", B_BENDIAN_TO_HOST_INT32(data.lba));
+	
+	copy_sg_data(ccb, 0, ccb->data_length, &data, sizeof(data), false);
+	ccb->data_resid = MAX(ccb->data_length - sizeof(data), 0);
+	return B_OK;
+}
+
+
+status_t
+ATADevice::ReadCapacity16(ATARequest *request)
+{
+	TRACE_FUNCTION("%p\n", request);
+	
+	scsi_ccb *ccb = request->CCB();
+	scsi_res_read_capacity_long data;
+	data.block_size = B_HOST_TO_BENDIAN_INT32(fBlockSize);
+
+	uint64 lastBlock = fTotalSectors - 1;
+	data.lba = B_HOST_TO_BENDIAN_INT64(lastBlock);
+	TRACE("returning last block: %llu\n", data.lba);
 
 	copy_sg_data(ccb, 0, ccb->data_length, &data, sizeof(data), false);
 	ccb->data_resid = MAX(ccb->data_length - sizeof(data), 0);
@@ -251,6 +273,11 @@ ATADevice::ExecuteIO(ATARequest *request)
 		case SCSI_OP_READ_CAPACITY:
 			return ReadCapacity(request);
 
+		case SCSI_OP_SERVICE_ACTION_IN:
+			if ((ccb->cdb[1] & 0x1f) == SCSI_SAI_READ_CAPACITY_16)
+				return ReadCapacity16(request);
+			break;
+
 		case SCSI_OP_SYNCHRONIZE_CACHE:
 			// we ignore range and immediate bit, we always immediately
 			// flush everything
@@ -278,6 +305,40 @@ ATADevice::ExecuteIO(ATARequest *request)
 			uint32 sectorCount = B_BENDIAN_TO_HOST_INT16(command->length);
 
 			request->SetIsWrite(command->opcode == SCSI_OP_WRITE_10);
+			if (sectorCount > 0)
+				return ExecuteReadWrite(request, address, sectorCount);
+			else {
+				// we cannot transfer zero blocks (apart from LBA48)
+				request->SetStatus(SCSI_REQ_CMP);
+				return B_OK;
+			}
+		}
+
+		case SCSI_OP_READ_12:
+		case SCSI_OP_WRITE_12:
+		{
+			scsi_cmd_rw_12 *command = (scsi_cmd_rw_12 *)ccb->cdb;
+			uint32 address = B_BENDIAN_TO_HOST_INT32(command->lba);
+			uint32 sectorCount = B_BENDIAN_TO_HOST_INT32(command->length);
+
+			request->SetIsWrite(command->opcode == SCSI_OP_WRITE_12);
+			if (sectorCount > 0)
+				return ExecuteReadWrite(request, address, sectorCount);
+			else {
+				// we cannot transfer zero blocks (apart from LBA48)
+				request->SetStatus(SCSI_REQ_CMP);
+				return B_OK;
+			}
+		}
+
+		case SCSI_OP_READ_16:
+		case SCSI_OP_WRITE_16:
+		{
+			scsi_cmd_rw_16 *command = (scsi_cmd_rw_16 *)ccb->cdb;
+			uint64 address = B_BENDIAN_TO_HOST_INT64(command->lba);
+			uint32 sectorCount = B_BENDIAN_TO_HOST_INT32(command->length);
+
+			request->SetIsWrite(command->opcode == SCSI_OP_WRITE_16);
 			if (sectorCount > 0)
 				return ExecuteReadWrite(request, address, sectorCount);
 			else {
@@ -443,7 +504,8 @@ ATADevice::Configure()
 		}
 	}
 
-	if (!fInfoBlock.lba_supported || fInfoBlock.lba_sector_count == 0) {
+	if (!fInfoBlock.lba_supported || (fInfoBlock.lba_sector_count == 0
+		&& fInfoBlock.lba48_sector_count == 0)) {
 		TRACE_ERROR("non-lba devices not supported\n");
 		return B_ERROR;
 	}

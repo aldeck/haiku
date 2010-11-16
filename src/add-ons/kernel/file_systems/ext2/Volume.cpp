@@ -184,7 +184,7 @@ DeviceOpener::GetSize(off_t* _size, uint32* _blockSize)
 	}
 
 	if (_size) {
-		*_size = 1LL * geometry.head_count * geometry.cylinder_count
+		*_size = 1ULL * geometry.head_count * geometry.cylinder_count
 			* geometry.sectors_per_track * geometry.bytes_per_sector;
 	}
 	if (_blockSize)
@@ -214,7 +214,7 @@ ext2_super_block::IsValid()
 Volume::Volume(fs_volume* volume)
 	:
 	fFSVolume(volume),
-	fBlockAllocator(this),
+	fBlockAllocator(NULL),
 	fInodeAllocator(this),
 	fJournalInode(NULL),
 	fFlags(0),
@@ -228,12 +228,12 @@ Volume::Volume(fs_volume* volume)
 Volume::~Volume()
 {
 	TRACE("Volume destructor.\n");
+	delete fBlockAllocator;
 	if (fGroupBlocks != NULL) {
 		uint32 blockCount = (fNumGroups + fGroupsPerBlock - 1)
 			/ fGroupsPerBlock;
-		for (uint32 i = 0; i < blockCount; i++) {
+		for (uint32 i = 0; i < blockCount; i++)
 			free(fGroupBlocks[i]);
-		}
 
 		free(fGroupBlocks);
 	}
@@ -303,16 +303,22 @@ Volume::Mount(const char* deviceName, uint32 flags)
 	fBlockSize = 1UL << fSuperBlock.BlockShift();
 	fFirstDataBlock = fSuperBlock.FirstDataBlock();
 
-	fFreeBlocks = fSuperBlock.FreeBlocks();
+	fFreeBlocks = fSuperBlock.FreeBlocks(Has64bitFeature());
 	fFreeInodes = fSuperBlock.FreeInodes();
 
-	uint32 numBlocks = fSuperBlock.NumBlocks() - fFirstDataBlock;
+	off_t numBlocks = fSuperBlock.NumBlocks(Has64bitFeature()) - fFirstDataBlock;
 	uint32 blocksPerGroup = fSuperBlock.BlocksPerGroup();
 	fNumGroups = numBlocks / blocksPerGroup;
 	if (numBlocks % blocksPerGroup != 0)
 		fNumGroups++;
 
-	fGroupsPerBlock = fBlockSize / sizeof(ext2_block_group);
+	if (Has64bitFeature()) {
+		fGroupDescriptorSize = fSuperBlock.GroupDescriptorSize();
+		if (fGroupDescriptorSize < sizeof(ext2_block_group))
+			return B_ERROR;
+	} else
+		fGroupDescriptorSize = EXT2_BLOCK_GROUP_NORMAL_SIZE;
+	fGroupsPerBlock = fBlockSize / fGroupDescriptorSize;
 	fNumInodes = fSuperBlock.NumInodes();
 
 	TRACE("block size %ld, num groups %ld, groups per block %ld, first %lu\n",
@@ -320,11 +326,11 @@ Volume::Mount(const char* deviceName, uint32 flags)
 	
 	uint32 blockCount = (fNumGroups + fGroupsPerBlock - 1) / fGroupsPerBlock;
 
-	fGroupBlocks = (ext2_block_group**)malloc(blockCount * sizeof(void*));
+	fGroupBlocks = (uint8**)malloc(blockCount * sizeof(uint8*));
 	if (fGroupBlocks == NULL)
 		return B_NO_MEMORY;
 
-	memset(fGroupBlocks, 0, blockCount * sizeof(void*));
+	memset(fGroupBlocks, 0, blockCount * sizeof(uint8*));
 	fInodesPerBlock = fBlockSize / InodeSize();
 
 	// check if the device size is large enough to hold the file system
@@ -391,12 +397,24 @@ Volume::Mount(const char* deviceName, uint32 flags)
 		return status;
 	}
 
-	// Initialize allocators
-	TRACE("Volume::Mount(): Initialize block allocator\n");
-	status = fBlockAllocator.Initialize();
-	if (status != B_OK) {
-		FATAL("could not initialize block allocator!\n");
-		return status;
+	if (!IsReadOnly()) {
+		// Initialize allocators
+		fBlockAllocator = new(std::nothrow) BlockAllocator(this);
+		if (fBlockAllocator != NULL) {
+			TRACE("Volume::Mount(): Initialize block allocator\n");
+			status = fBlockAllocator->Initialize();
+		}
+		if (fBlockAllocator == NULL || status != B_OK) {
+			delete fBlockAllocator;
+			fBlockAllocator = NULL;
+			FATAL("could not initialize block allocator, going read-only!\n");
+			fFlags |= VOLUME_READ_ONLY;
+			fJournal->Uninit();
+			delete fJournal;
+			delete fJournalInode;
+			fJournalInode = NULL;
+			fJournal = new(std::nothrow) NoJournal(this);
+		}
 	}
 
 	// ready
@@ -411,11 +429,15 @@ Volume::Mount(const char* deviceName, uint32 flags)
 
 	if (!fSuperBlock.name[0]) {
 		// generate a more or less descriptive volume name
-		uint32 divisor = 1UL << 30;
-		char unit = 'G';
+		off_t divisor = 1ULL << 40;
+		char unit = 'T';
 		if (diskSize < divisor) {
-			divisor = 1UL << 20;
-			unit = 'M';
+			divisor = 1UL << 30;
+			unit = 'G';
+			if (diskSize < divisor) {
+				divisor = 1UL << 20;
+				unit = 'M';
+			}
 		}
 
 		double size = double((10 * diskSize + divisor - 1) / divisor);
@@ -452,7 +474,7 @@ Volume::Unmount()
 
 
 status_t
-Volume::GetInodeBlock(ino_t id, uint32& block)
+Volume::GetInodeBlock(ino_t id, off_t& block)
 {
 	ext2_block_group* group;
 	status_t status = GetBlockGroup((id - 1) / fSuperBlock.InodesPerGroup(),
@@ -460,7 +482,7 @@ Volume::GetInodeBlock(ino_t id, uint32& block)
 	if (status != B_OK)
 		return status;
 
-	block = group->InodeTable()
+	block = group->InodeTable(Has64bitFeature())
 		+ ((id - 1) % fSuperBlock.InodesPerGroup()) / fInodesPerBlock;
 	return B_OK;
 }
@@ -496,7 +518,9 @@ Volume::_UnsupportedIncompatibleFeatures(ext2_super_block& superBlock)
 Volume::_UnsupportedReadOnlyFeatures(ext2_super_block& superBlock)
 {
 	uint32 supportedReadOnly = EXT2_READ_ONLY_FEATURE_SPARSE_SUPER
-		| EXT2_READ_ONLY_FEATURE_HUGE_FILE;
+		| EXT2_READ_ONLY_FEATURE_LARGE_FILE
+		| EXT2_READ_ONLY_FEATURE_HUGE_FILE
+		| EXT2_READ_ONLY_FEATURE_EXTRA_ISIZE;
 	// TODO actually implement EXT2_READ_ONLY_FEATURE_SPARSE_SUPER when
 	// implementing superblock backup copies
 
@@ -542,19 +566,19 @@ Volume::GetBlockGroup(int32 index, ext2_block_group** _group)
 		if (block == NULL)
 			return B_IO_ERROR;
 
-		ext2_block_group* groupBlock = (ext2_block_group*)malloc(fBlockSize);
-		if (groupBlock == NULL)
+		fGroupBlocks[blockIndex] = (uint8*)malloc(fBlockSize);
+		if (fGroupBlocks[blockIndex] == NULL)
 			return B_NO_MEMORY;
 
-		memcpy((uint8*)groupBlock, block, fBlockSize);
+		memcpy(fGroupBlocks[blockIndex], block, fBlockSize);
 
-		fGroupBlocks[blockIndex] = groupBlock;
-
-		TRACE("group [%ld]: inode table %ld\n", index,
-			(fGroupBlocks[blockIndex] + index % fGroupsPerBlock)->InodeTable());
+		TRACE("group [%ld]: inode table %lld\n", index, ((ext2_block_group*)
+			(fGroupBlocks[blockIndex] + (index % fGroupsPerBlock) 
+			* fGroupDescriptorSize))->InodeTable(Has64bitFeature()));
 	}
 
-	*_group = fGroupBlocks[blockIndex] + index % fGroupsPerBlock;
+	*_group = (ext2_block_group*)(fGroupBlocks[blockIndex]
+		+ (index % fGroupsPerBlock) * fGroupDescriptorSize);
 	return B_OK;
 }
 
@@ -589,6 +613,20 @@ Volume::WriteBlockGroup(Transaction& transaction, int32 index)
 
 
 status_t
+Volume::ActivateLargeFiles(Transaction& transaction)
+{
+	if ((fSuperBlock.ReadOnlyFeatures() 
+		& EXT2_READ_ONLY_FEATURE_LARGE_FILE) != 0)
+		return B_OK;
+	
+	fSuperBlock.SetReadOnlyFeatures(fSuperBlock.ReadOnlyFeatures()
+		| EXT2_READ_ONLY_FEATURE_LARGE_FILE);
+	
+	return WriteSuperBlock(transaction);
+}
+
+
+status_t
 Volume::SaveOrphan(Transaction& transaction, ino_t newID, ino_t& oldID)
 {
 	oldID = fSuperBlock.LastOrphan();
@@ -609,7 +647,7 @@ Volume::RemoveOrphan(Transaction& transaction, ino_t id)
 
 	CachedBlock cached(this);
 
-	uint32 blockNum;
+	off_t blockNum;
 	status_t status = GetInodeBlock(currentID, blockNum);
 	if (status != B_OK)
 		return status;
@@ -634,7 +672,7 @@ Volume::RemoveOrphan(Transaction& transaction, ino_t id)
 		return B_OK;
 
 	do {
-		uint32 lastBlockNum = blockNum;
+		off_t lastBlockNum = blockNum;
 		status = GetInodeBlock(currentID, blockNum);
 		if (status != B_OK)
 			return status;
@@ -704,7 +742,7 @@ Volume::FreeInode(Transaction& transaction, ino_t id, bool isDirectory)
 
 status_t
 Volume::AllocateBlocks(Transaction& transaction, uint32 minimum, uint32 maximum,
-	uint32& blockGroup, uint32& start, uint32& length)
+	uint32& blockGroup, off_t& start, uint32& length)
 {
 	TRACE("Volume::AllocateBlocks()\n");
 	if (IsReadOnly())
@@ -712,7 +750,7 @@ Volume::AllocateBlocks(Transaction& transaction, uint32 minimum, uint32 maximum,
 
 	TRACE("Volume::AllocateBlocks(): Calling the block allocator\n");
 
-	status_t status = fBlockAllocator.AllocateBlocks(transaction, minimum,
+	status_t status = fBlockAllocator->AllocateBlocks(transaction, minimum,
 		maximum, blockGroup, start, length);
 	if (status != B_OK)
 		return status;
@@ -726,20 +764,20 @@ Volume::AllocateBlocks(Transaction& transaction, uint32 minimum, uint32 maximum,
 
 
 status_t
-Volume::FreeBlocks(Transaction& transaction, uint32 start, uint32 length)
+Volume::FreeBlocks(Transaction& transaction, off_t start, uint32 length)
 {
-	TRACE("Volume::FreeBlocks(%lu, %lu)\n", start, length);
+	TRACE("Volume::FreeBlocks(%llu, %lu)\n", start, length);
 	if (IsReadOnly())
 		return B_READ_ONLY_DEVICE;
 
-	status_t status = fBlockAllocator.Free(transaction, start, length);
+	status_t status = fBlockAllocator->Free(transaction, start, length);
 	if (status != B_OK)
 		return status;
 
-	TRACE("Volume::FreeBlocks(): number of free blocks (before): %lu\n",
+	TRACE("Volume::FreeBlocks(): number of free blocks (before): %llu\n",
 		fFreeBlocks);
 	fFreeBlocks += length;
-	TRACE("Volume::FreeBlocks(): number of free blocks (after): %lu\n",
+	TRACE("Volume::FreeBlocks(): number of free blocks (after): %llu\n",
 		fFreeBlocks);
 
 	return WriteSuperBlock(transaction);
@@ -760,7 +798,7 @@ Volume::LoadSuperBlock()
 	else
 		memcpy(&fSuperBlock, block, sizeof(fSuperBlock));
 
-	fFreeBlocks = fSuperBlock.FreeBlocks();
+	fFreeBlocks = fSuperBlock.FreeBlocks(Has64bitFeature());
 	fFreeInodes = fSuperBlock.FreeInodes();
 
 	return B_OK;
@@ -771,12 +809,12 @@ status_t
 Volume::WriteSuperBlock(Transaction& transaction)
 {
 	TRACE("Volume::WriteSuperBlock()\n");
-	fSuperBlock.SetFreeBlocks(fFreeBlocks);
+	fSuperBlock.SetFreeBlocks(fFreeBlocks, Has64bitFeature());
 	fSuperBlock.SetFreeInodes(fFreeInodes);
 	// TODO: Rest of fields that can be modified
 
-	TRACE("Volume::WriteSuperBlock(): free blocks: %lu, free inodes: %lu\n",
-		fSuperBlock.FreeBlocks(), fSuperBlock.FreeInodes());
+	TRACE("Volume::WriteSuperBlock(): free blocks: %llu, free inodes: %lu\n",
+		fSuperBlock.FreeBlocks(Has64bitFeature()), fSuperBlock.FreeInodes());
 
 	CachedBlock cached(this);
 	uint8* block = cached.SetToWritable(transaction, fFirstDataBlock);
@@ -810,7 +848,7 @@ status_t
 Volume::Sync()
 {
 	TRACE("Volume::Sync()\n");
-	return fJournal->FlushLogAndBlocks();
+	return fJournal->Uninit();
 }
 
 

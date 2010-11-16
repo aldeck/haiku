@@ -17,10 +17,10 @@ class ProtocolClassCap;
 
 class ProtocolClassItem : public BStringItem {
 public:
-	ProtocolClassItem(const ProtocolClassCap* cap);
+					ProtocolClassItem(const ProtocolClassCap* cap);
 
-	int getProtocolClass();
-	const char *getDescription();
+		int			getProtocolClass();
+		const char*	getDescription();
 
 private:
 	const ProtocolClassCap *fProtocolClassCap;	
@@ -28,30 +28,32 @@ private:
 
 class AddPrinterView : public BView {
 public:
-	AddPrinterView(BRect frame, PrinterData *printer_data, const PrinterCap *printer_cap);
-	~AddPrinterView();
-	virtual void AttachedToWindow();
-	void FrameResized(float w, float h);
-	void MessageReceived(BMessage *msg);
+					AddPrinterView(PrinterData* printerData,
+						const PrinterCap* printerCap);
+					~AddPrinterView();
+	virtual	void	AttachedToWindow();
+			void	MessageReceived(BMessage* msg);
 
-	void Save();
+			void	Save();
+
 private:
-	ProtocolClassItem *CurrentSelection();
+	ProtocolClassItem*	CurrentSelection();
 
-	PrinterData       *fPrinterData;
-	const PrinterCap  *fPrinterCap;
+	PrinterData*		fPrinterData;
+	const PrinterCap*	fPrinterCap;
 	
-	BListView         *fProtocolClassList;
-	BTextView         *fDescription;
+	BListView*			fProtocolClassList;
+	BTextView*			fDescription;
 };
 
  
 class AddPrinterDlg : public DialogWindow {
 public:
-	AddPrinterDlg(PrinterData *printerData, const PrinterCap *printerCap);
-	void MessageReceived(BMessage *msg);
+					AddPrinterDlg(PrinterData *printerData,
+						const PrinterCap *printerCap);
+			void	MessageReceived(BMessage *msg);
 
 private:
-	AddPrinterView *fAddPrinterView;
+	AddPrinterView*	fAddPrinterView;
 };
 

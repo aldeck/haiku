@@ -20,7 +20,8 @@
 class LanguageListItem : public BStringItem {
 public:
 							LanguageListItem(const char* text,
-								const char* id, const char* code);
+								const char* id, const char* langCode,
+								const char* countryCode = NULL);
 							LanguageListItem(const LanguageListItem& other);
 	virtual					~LanguageListItem();
 
@@ -29,6 +30,8 @@ public:
 
 	virtual	void			DrawItem(BView* owner, BRect frame,
 								bool complete = false);
+
+	virtual void			Update(BView* owner, const BFont* font);
 
 private:
 			BString			fID;

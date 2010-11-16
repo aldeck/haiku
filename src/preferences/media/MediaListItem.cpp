@@ -12,175 +12,384 @@
 //  Created :    June 25, 2003
 // 
 // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
-
-
 #include "MediaListItem.h"
 
 #include <string.h>
 
+#include <MediaAddOn.h>
 #include <View.h>
 
+#include "MediaIcons.h"
+#include "MediaWindow.h"
 
-#define kITEM_MARGIN					  1
+
+#define kITEM_MARGIN	1
+#define GREATER_THAN	-1
+#define LESS_THAN		1
 
 
-MediaListItem::MediaListItem(dormant_node_info* info, uint32 level,
-		bool isVideo, BList* icons, uint32 modifiers) 
-	:
-	BListItem(level),
-	fIsAudioMixer(false),
-	fIsVideo(isVideo),
-	fIsDefaultInput(false),
-	fIsDefaultOutput(false)
-{
-	fIcons = icons;
-	fInfo = info;
-	fLabel = fInfo->name;
+MediaIcons* MediaListItem::sIcons = NULL;
+
+
+struct MediaListItem::Renderer {
+	Renderer()
+		:
+		fTitle(NULL),
+		fPrimaryIcon(NULL),
+		fSecondaryIcon(NULL),
+		fDoubleInsets(true),
+		fSelected(false)
+	{
+	}
+
+	// The first icon added is drawn next to the label,
+	// the second is drawn to the right of the label.
+	void AddIcon(BBitmap* icon)
+	{
+		if (!fPrimaryIcon)
+			fPrimaryIcon = icon;
+		else {
+			fSecondaryIcon = fPrimaryIcon;
+			fPrimaryIcon = icon;
+		}
+	}
+
+	void SetTitle(const char* title)
+	{
+		fTitle = title;
+	}
+
+	void SetSelected(bool selected)
+	{
+		fSelected = selected;
+	}
+
+	// set whether or not to leave enough room for two icons,
+	// defaults to true.
+	void UseDoubleInset(bool doubleInset)
+	{
+		fDoubleInsets = doubleInset;
+	}
 	
-	SetHeight(16 + kITEM_MARGIN);
-}
-
-
-MediaListItem::MediaListItem(const char* label, uint32 level,
-		bool isVideo, BList* icons, uint32 modifiers) 
-	:
-	BListItem(level),
-	fLabel(label),
-	fIsAudioMixer(false),
-	fIsVideo(isVideo),
-	fIsDefaultInput(false),
-	fIsDefaultOutput(false)
-{
-	fIcons = icons;
-	fInfo = NULL;
+	void Render(BView* onto, BRect frame, bool complete = false)
+	{
+		const rgb_color lowColor = onto->LowColor();
+		const rgb_color highColor = onto->HighColor();
+		const rgb_color kBlack = {0, 0, 0, 255};
 	
-	SetHeight(16 + kITEM_MARGIN);
-}
+		if (fSelected || complete) {
+			if (fSelected)
+				onto->SetLowColor(tint_color(lowColor, B_DARKEN_2_TINT));
+			onto->FillRect(frame, B_SOLID_LOW);
+		}
+
+		frame.left += 4;
+		frame.top += kITEM_MARGIN;
+		BRect iconFrame(MediaIcons::IconRectAt(frame.LeftTop() + BPoint(1, 0)));
+	
+		onto->SetDrawingMode(B_OP_OVER);
+		if (fPrimaryIcon && !fDoubleInsets) {
+			onto->DrawBitmap(fPrimaryIcon, iconFrame);
+			frame.left = iconFrame.right + 1;
+		} else if (fSecondaryIcon) {
+			onto->DrawBitmap(fSecondaryIcon, iconFrame);
+		}
+		iconFrame = MediaIcons::IconRectAt(iconFrame.RightTop() + BPoint(1, 0));
+
+		if (fDoubleInsets && fPrimaryIcon) {
+			onto->DrawBitmap(fPrimaryIcon, iconFrame);
+			frame.left = iconFrame.right + 1;
+		}
+
+		onto->SetDrawingMode(B_OP_COPY);
+		onto->SetHighColor(kBlack);
+		
+		BFont font = be_plain_font;
+		font_height	fontInfo;
+		font.GetHeight(&fontInfo);
+		float lineHeight = fontInfo.ascent + fontInfo.descent
+			+ fontInfo.leading;
+		onto->SetFont(&font);
+		onto->MovePenTo(frame.left + 8, frame.top
+			+ ((frame.Height() - (lineHeight)) / 2)
+			+ (fontInfo.ascent + fontInfo.descent) - 1);
+		onto->DrawString(fTitle);
+
+		onto->SetHighColor(highColor);
+		onto->SetLowColor(lowColor);
+	}
+
+private:
+
+	const char*	fTitle;
+	BBitmap*	fPrimaryIcon;
+	BBitmap*	fSecondaryIcon;
+	bool		fDoubleInsets;
+	bool		fSelected;
+};
 
 
-MediaListItem::~MediaListItem()
+MediaListItem::MediaListItem()
+	:
+	BListItem((uint32)0)
 {
 }
 
 
-//MediaListItem - DrawItem
-void 
+void
+MediaListItem::Update(BView* owner, const BFont* font)
+{
+	// we need to override the update method so we can make sure our
+	// list item size doesn't change
+	BListItem::Update(owner, font);
+
+	float iconHeight = MediaIcons::sBounds.Height() + 1;
+	if ((Height() < iconHeight + kITEM_MARGIN * 2)) {
+		SetHeight(iconHeight + kITEM_MARGIN * 2);
+	}
+}
+
+
+void
 MediaListItem::DrawItem(BView* owner, BRect frame, bool complete)
 {
-	rgb_color kHighlight = { 140,140,140,0 };
-	rgb_color kBlack = { 0,0,0,0 };
+	Renderer renderer;
+	renderer.SetSelected(IsSelected());
+	renderer.SetTitle(Label());
+	SetRenderParameters(renderer);
+	renderer.Render(owner, frame, complete);
+}
 
-	BRect r(frame);
 
-	if (IsSelected() || complete) {
-		rgb_color color;
-		if (IsSelected()) {
-			color = kHighlight;
-		} else {
-			color = owner->ViewColor();
-		}
-		owner->SetHighColor(color);
-		owner->SetLowColor(color);
-		owner->FillRect(r);
-		owner->SetHighColor(kBlack);
+int
+MediaListItem::Compare(const void* itemOne, const void* itemTwo)
+{
+	MediaListItem* firstItem = *(MediaListItem**)itemOne;
+	MediaListItem* secondItem = *(MediaListItem**)itemTwo;
+
+	return firstItem->CompareWith(secondItem);
+}
+
+
+// #pragma mark - NodeListItem
+
+
+NodeListItem::NodeListItem(dormant_node_info* node, media_type type)
+	:
+	MediaListItem(),
+	fNodeInfo(node),
+	fIsAudioMixer(false),
+	fMediaType(type),
+	fIsDefaultInput(false),
+	fIsDefaultOutput(false)
+{
+}
+
+
+void
+NodeListItem::SetRenderParameters(MediaListItem::Renderer& renderer)
+{
+
+	if (fIsAudioMixer) {
+		renderer.AddIcon(&Icons()->mixerIcon);
 	} else {
-		owner->SetLowColor(owner->ViewColor());
-	}
-	
-	frame.left += 4;
-	BRect iconFrame(frame);
-	iconFrame.Set(iconFrame.left, iconFrame.top+1,
-		iconFrame.left+15, iconFrame.top+16);
-	uint32 index = 0;
-	if (OutlineLevel()==0 || (fIsDefaultInput && fIsDefaultOutput)) {
-		if (fIsDefaultInput && fIsVideo)
-			index = 4;
-		else if (fIsDefaultInput && !fIsVideo)
-			index = 2;
-		owner->SetDrawingMode(B_OP_OVER);
+		MediaIcons::IconSet* iconSet = &Icons()->videoIcons;
+		if (fMediaType == MediaListItem::AUDIO_TYPE)
+			iconSet = &Icons()->audioIcons;
 
-		BBitmap* icon = static_cast<BBitmap*>(fIcons->ItemAt(index));
-		owner->DrawBitmap(icon, iconFrame);
-		owner->SetDrawingMode(B_OP_COPY);
+		if (fIsDefaultInput)
+			renderer.AddIcon(&iconSet->inputIcon);
+		if (fIsDefaultOutput)
+			renderer.AddIcon(&iconSet->outputIcon);
 	}
-	iconFrame.OffsetBy(16, 0);
-	if (fIsDefaultInput || fIsDefaultOutput || fIsAudioMixer) {
-		if (fIsAudioMixer)
-			index = 1;
-		else if (fIsDefaultOutput) {
-			if (fIsVideo)
-				index = 5;
-			else
-				index = 3;
-		} else {
-			if (fIsVideo)
-				index = 4;
-			else
-				index = 2;
-		}
-		owner->SetDrawingMode(B_OP_OVER);
-		BBitmap* icon = static_cast<BBitmap*>(fIcons->ItemAt(index));
-		owner->DrawBitmap(icon, iconFrame);
-		owner->SetDrawingMode(B_OP_COPY);
-	}
-
-	frame.left += 16 * (OutlineLevel() + 1);
-	owner->SetHighColor(kBlack);
-	
-	BFont font = be_plain_font;
-	font_height	fontInfo;
-	font.GetHeight(&fontInfo);
-	float lineHeight = fontInfo.ascent + fontInfo.descent + fontInfo.leading;
-	owner->SetFont(&font);
-	owner->MovePenTo(frame.left + 8, frame.top
-		+ ((frame.Height() - (lineHeight)) / 2)
-		+ (fontInfo.ascent + fontInfo.descent) - 1);
-	owner->DrawString(fLabel);
 }
 
 
-void 
-MediaListItem::SetDefault(bool isDefault, bool isInput)
+const char*
+NodeListItem::Label()
 {
-	if (isInput)
-		fIsDefaultInput = isDefault;
+	return fNodeInfo->name;
+}
+
+
+void
+NodeListItem::SetMediaType(media_type type)
+{
+	fMediaType = type;
+}
+
+
+void
+NodeListItem::SetDefaultOutput(bool isDefault)
+{
+	fIsDefaultOutput = isDefault;
+}
+
+
+void
+NodeListItem::SetDefaultInput(bool isDefault)
+{
+	fIsDefaultInput = isDefault;
+}
+
+
+void
+NodeListItem::AlterWindow(MediaWindow* window)
+{
+	window->SelectNode(fNodeInfo);
+}
+
+
+int
+NodeListItem::CompareWith(MediaListItem* item)
+{
+	return item->CompareWith(this) * -1;
+}
+
+
+int
+NodeListItem::CompareWith(NodeListItem* item)
+{
+	if (fMediaType != item->fMediaType)
+		return fMediaType == AUDIO_TYPE ? GREATER_THAN : LESS_THAN;
+
+	if (fIsAudioMixer != item->fIsAudioMixer)
+		return fIsAudioMixer ? GREATER_THAN : LESS_THAN;
+
+	return strcmp(Label(), item->Label());
+}
+
+
+int
+NodeListItem::CompareWith(DeviceListItem* deviceItem)
+{
+	if (fMediaType != deviceItem->Type())
+		return fMediaType == AUDIO_TYPE ? GREATER_THAN : LESS_THAN;
 	else
-		fIsDefaultOutput = isDefault;
+		return LESS_THAN;
 }
 
 
-void 
-MediaListItem::SetAudioMixer(bool isAudioMixer)
+int
+NodeListItem::CompareWith(AudioMixerListItem* item)
 {
-	fIsAudioMixer = isAudioMixer;
+	return LESS_THAN;
 }
 
 
-void 
-MediaListItem::Update(BView* owner, const BFont* finfo)
+// #pragma mark - DeviceListItem
+
+
+DeviceListItem::DeviceListItem(const char* title,
+	MediaListItem::media_type type)
+	:
+	MediaListItem(),
+	fTitle(title),
+	fMediaType(type)
 {
-	// we need to override the update method so we can make sure are
-	// list item size doesn't change
-	BListItem::Update(owner, finfo);
-	if ((Height() < 16 + kITEM_MARGIN)) {
-		SetHeight(16 + kITEM_MARGIN);
-	}
 }
 
 
-int 
-MediaListItem::Compare(const void* firstArg, const void* secondArg)
+int
+DeviceListItem::CompareWith(MediaListItem* item)
 {
-	const MediaListItem* item1
-		= *static_cast<const MediaListItem * const *>(firstArg);
-	const MediaListItem* item2
-		= *static_cast<const MediaListItem * const *>(secondArg);
+	return item->CompareWith(this) * -1;
+}
 
-	if (item1->fIsVideo != item2->fIsVideo)
-		return item1->fIsVideo ? 1 : -1;
-	if (item1->OutlineLevel() != item2->OutlineLevel())
-		return item1->OutlineLevel() > item2->OutlineLevel() ? 1 : -1;
-	if (item1->fIsAudioMixer != item2->fIsAudioMixer)
-		return item2->fIsAudioMixer ? 1 : -1;
-	return strcmp(item1->fLabel, item2->fLabel);
+
+int
+DeviceListItem::CompareWith(NodeListItem* item)
+{
+	// let NodeListItem do the work
+	return item->CompareWith(this) * -1;
+}
+
+
+int
+DeviceListItem::CompareWith(DeviceListItem* item)
+{
+	if (fMediaType == MediaListItem::AUDIO_TYPE)
+		return GREATER_THAN;
+	return LESS_THAN;
+}
+
+
+int
+DeviceListItem::CompareWith(AudioMixerListItem* item)
+{
+	// let AudioMixerListItem do the work too!
+	return item->CompareWith(this) * -1;
+}
+
+
+void
+DeviceListItem::SetRenderParameters(Renderer& renderer)
+{
+	renderer.AddIcon(&Icons()->devicesIcon);
+	renderer.UseDoubleInset(false);
+}
+
+
+void
+DeviceListItem::AlterWindow(MediaWindow* window)
+{
+	if (fMediaType == MediaListItem::AUDIO_TYPE)
+		window->SelectAudioSettings(fTitle);
+	else
+		window->SelectVideoSettings(fTitle);
+}
+
+
+// #pragma mark - AudioMixerListItem
+
+
+AudioMixerListItem::AudioMixerListItem(const char* title)
+	:
+	MediaListItem(),
+	fTitle(title)
+{
+}
+
+
+void
+AudioMixerListItem::AlterWindow(MediaWindow* window)
+{
+	window->SelectAudioMixer(fTitle);
+}
+
+
+int
+AudioMixerListItem::CompareWith(MediaListItem* item)
+{
+	return item->CompareWith(this) * -1;
+}
+
+
+int
+AudioMixerListItem::CompareWith(NodeListItem* item)
+{
+	return GREATER_THAN;
+}
+
+
+int
+AudioMixerListItem::CompareWith(DeviceListItem* item)
+{
+	if (item->Type() == AUDIO_TYPE)
+		return LESS_THAN;
+	return GREATER_THAN;
+}
+
+
+int
+AudioMixerListItem::CompareWith(AudioMixerListItem* item)
+{
+	return 0;
+}
+
+
+void
+AudioMixerListItem::SetRenderParameters(Renderer& renderer)
+{
+	renderer.AddIcon(&Icons()->mixerIcon);
 }

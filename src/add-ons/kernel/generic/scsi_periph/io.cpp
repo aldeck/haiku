@@ -119,7 +119,7 @@ read_write(scsi_periph_device_info *device, scsi_ccb *request,
 
 	do {
 		size_t numBytes;
-		bool isReadWrite10;
+		bool isReadWrite10 = false;
 
 		request->flags = isWrite ? SCSI_DIR_OUT : SCSI_DIR_IN;
 
@@ -136,13 +136,13 @@ read_write(scsi_periph_device_info *device, scsi_ccb *request,
 				numBlocks = 0x100;
 
 			// no way to break the 21 bit address limit
-			if (pos > 0x200000)
+			if (offset > 0x200000)
 				return B_BAD_VALUE;
 
 			// don't allow transfer cross the 24 bit address limit
 			// (I'm not sure whether this is allowed, but this way we
 			// are sure to not ask for trouble)
-			if (pos < 0x100000)
+			if (offset < 0x100000)
 				numBlocks = min_c(numBlocks, 0x100000 - pos);
 		}
 
@@ -164,7 +164,7 @@ read_write(scsi_periph_device_info *device, scsi_ccb *request,
 			(request->flags & SCSI_ORDERED_QTAG) != 0 ? "yes" : "no");
 
 		// use shortest commands whenever possible
-		if (pos + numBlocks < 0x200000 && numBlocks <= 0x100) {
+		if (offset + numBlocks < 0x200000LL && numBlocks <= 0x100) {
 			scsi_cmd_rw_6 *cmd = (scsi_cmd_rw_6 *)request->cdb;
 
 			isReadWrite10 = false;
@@ -177,7 +177,7 @@ read_write(scsi_periph_device_info *device, scsi_ccb *request,
 			cmd->length = numBlocks;
 
 			request->cdb_length = sizeof(*cmd);
-		} else {
+		} else if (offset + numBlocks < 0x100000000LL && numBlocks <= 0x10000) {
 			scsi_cmd_rw_10 *cmd = (scsi_cmd_rw_10 *)request->cdb;
 
 			isReadWrite10 = true;
@@ -189,6 +189,30 @@ read_write(scsi_periph_device_info *device, scsi_ccb *request,
 			cmd->disable_page_out = 0;
 			cmd->lba = B_HOST_TO_BENDIAN_INT32(pos);
 			cmd->length = B_HOST_TO_BENDIAN_INT16(numBlocks);
+
+			request->cdb_length = sizeof(*cmd);
+		} else if (offset + numBlocks < 0x100000000LL && numBlocks <= 0x10000000) {
+			scsi_cmd_rw_12 *cmd = (scsi_cmd_rw_12 *)request->cdb;
+
+			memset(cmd, 0, sizeof(*cmd));
+			cmd->opcode = isWrite ? SCSI_OP_WRITE_12 : SCSI_OP_READ_12;
+			cmd->relative_address = 0;
+			cmd->force_unit_access = 0;
+			cmd->disable_page_out = 0;
+			cmd->lba = B_HOST_TO_BENDIAN_INT32(pos);
+			cmd->length = B_HOST_TO_BENDIAN_INT32(numBlocks);
+
+			request->cdb_length = sizeof(*cmd);
+		} else {
+			scsi_cmd_rw_16 *cmd = (scsi_cmd_rw_16 *)request->cdb;
+
+			memset(cmd, 0, sizeof(*cmd));
+			cmd->opcode = isWrite ? SCSI_OP_WRITE_16 : SCSI_OP_READ_16;
+			cmd->force_unit_access_non_volatile = 0;
+			cmd->force_unit_access = 0;
+			cmd->disable_page_out = 0;
+			cmd->lba = B_HOST_TO_BENDIAN_INT64(offset);
+			cmd->length = B_HOST_TO_BENDIAN_INT32(numBlocks);
 
 			request->cdb_length = sizeof(*cmd);
 		}

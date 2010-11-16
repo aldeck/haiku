@@ -246,8 +246,10 @@ TeamsListView::MessageReceived(BMessage* message)
 
 			TeamListItem* item = new(std::nothrow) TeamListItem(team);
 			if (item != NULL) {
-				AddItem(item);
-				SortItems(&TeamListItem::Compare);
+				if (!AddItem(item))
+					delete item;
+				else
+					SortItems(&TeamListItem::Compare);
 			}
 			break;
 		}
@@ -295,7 +297,11 @@ TeamsListView::_InitList()
 	team_info tmi;
 
 	while (get_next_team_info(&tmi_cookie, &tmi) == B_OK) {
-		TeamListItem* item = new TeamListItem(tmi);
+		TeamListItem* item = new(std::nothrow)  TeamListItem(tmi);
+		if (item == NULL) {
+			// Memory issue. Bail out.
+			break;
+		}
 
 		if (tmi.team == B_SYSTEM_TEAM ||
 			tmi.team == fThisTeam) {
@@ -303,7 +309,9 @@ TeamsListView::_InitList()
 			item->SetEnabled(false);
 		}
 
-		AddItem(item);
+		if (!AddItem(item))
+			delete item;
+
 	}
 
 	// SortItems(&TeamListItem::Compare);
@@ -328,14 +336,22 @@ TeamsListView::_UpdateList()
 				item = (TeamListItem*) ItemAt(index);
 		}
 
-		if (!item || tmi.team != item->TeamID()) {
+		if (item == NULL || tmi.team != item->TeamID()) {
 			// Team not found in previously known teams list: insert a new item
 			TeamListItem* newItem = new(std::nothrow) TeamListItem(tmi);
 			if (newItem != NULL) {
-				if (!item) // No item found with bigger team id: append at end
-					AddItem(newItem);
-				else
-					AddItem(newItem, index);
+				bool added;
+
+				if (item == NULL) {
+					// No item found with bigger team id: append at list end
+					added = AddItem(newItem);
+				} else
+					added = AddItem(newItem, index);
+
+				if (!added) {
+					// AddItem() failed! Memory Issue?
+					delete newItem;
+				}
 			}
 		}
 		index++;	// Move list sync head.

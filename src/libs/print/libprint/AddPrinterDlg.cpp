@@ -1,83 +1,9 @@
 #include "AddPrinterDlg.h"
 
+#include <GroupLayoutBuilder.h>
+
 #include "PrinterCap.h"
 #include "PrinterData.h"
-
-#define DIALOG_WIDTH 400
-
-#define BUTTON_WIDTH		70
-#define BUTTON_HEIGHT		20
-#define TEXT_HEIGHT         16
-
-#define BOX_TOP_INSET       18
-#define BOX_BOTTOM_INSET    10
-#define BOX_H_INSET         10
-
-#define PROTOCOL_CLASS_BOX_H      10
-#define PROTOCOL_CLASS_BOX_V      10
-#define PROTOCOL_CLASS_BOX_WIDTH  DIALOG_WIDTH - 20
-#define PROTOCOL_CLASS_BOX_HEIGHT 125
-
-#define PROTOCOL_CLASS_H          BOX_H_INSET
-#define PROTOCOL_CLASS_V          BOX_TOP_INSET
-#define PROTOCOL_CLASS_WIDTH      PROTOCOL_CLASS_BOX_WIDTH - 2 * BOX_H_INSET 
-#define PROTOCOL_CLASS_HEIGHT     PROTOCOL_CLASS_BOX_HEIGHT - BOX_TOP_INSET - BOX_BOTTOM_INSET
-
-#define DESCRIPTION_BOX_H         PROTOCOL_CLASS_BOX_H
-#define DESCRIPTION_BOX_V         PROTOCOL_CLASS_BOX_V + PROTOCOL_CLASS_BOX_HEIGHT + 10
-#define DESCRIPTION_BOX_WIDTH     PROTOCOL_CLASS_BOX_WIDTH
-#define DESCRIPTION_BOX_HEIGHT    125
-
-#define DESCRIPTION_H         BOX_H_INSET
-#define DESCRIPTION_V         BOX_TOP_INSET
-#define DESCRIPTION_WIDTH     DESCRIPTION_BOX_WIDTH - 2 * BOX_H_INSET 
-#define DESCRIPTION_HEIGHT    DESCRIPTION_BOX_HEIGHT - BOX_TOP_INSET - BOX_BOTTOM_INSET
-
-#define DIALOG_HEIGHT         DESCRIPTION_BOX_V + DESCRIPTION_BOX_HEIGHT + BUTTON_HEIGHT + 20
-
-#define OK_H				(DIALOG_WIDTH  - BUTTON_WIDTH  - 11)
-#define OK_V				(DIALOG_HEIGHT - BUTTON_HEIGHT - 11)
-#define OK_TEXT				"OK"
-
-#define CANCEL_H			(OK_H - BUTTON_WIDTH - 12)
-#define CANCEL_V			OK_V
-#define CANCEL_TEXT			"Cancel"
-
-const BRect PROTOCOL_CLASS_BOX_RECT(
-	PROTOCOL_CLASS_BOX_H,
-	PROTOCOL_CLASS_BOX_V,
-	PROTOCOL_CLASS_BOX_H + PROTOCOL_CLASS_BOX_WIDTH ,
-	PROTOCOL_CLASS_BOX_V + PROTOCOL_CLASS_BOX_HEIGHT);
-
-const BRect PROTOCOL_CLASS_RECT(
-	PROTOCOL_CLASS_H,
-	PROTOCOL_CLASS_V,
-	PROTOCOL_CLASS_H + PROTOCOL_CLASS_WIDTH - B_V_SCROLL_BAR_WIDTH,
-	PROTOCOL_CLASS_V + PROTOCOL_CLASS_HEIGHT);
-
-const BRect DESCRIPTION_BOX_RECT(
-	DESCRIPTION_BOX_H,
-	DESCRIPTION_BOX_V,
-	DESCRIPTION_BOX_H + DESCRIPTION_BOX_WIDTH,
-	DESCRIPTION_BOX_V + DESCRIPTION_BOX_HEIGHT);
-	
-const BRect DESCRIPTION_RECT(
-	DESCRIPTION_H,
-	DESCRIPTION_V,
-	DESCRIPTION_H + DESCRIPTION_WIDTH - B_V_SCROLL_BAR_WIDTH,
-	DESCRIPTION_V + DESCRIPTION_HEIGHT);
-
-const BRect OK_RECT(
-	OK_H,
-	OK_V,
-	OK_H + BUTTON_WIDTH,
-	OK_V + BUTTON_HEIGHT);
-
-const BRect CANCEL_RECT(
-	CANCEL_H,
-	CANCEL_V,
-	CANCEL_H + BUTTON_WIDTH,
-	CANCEL_V + BUTTON_HEIGHT);
 
 
 enum MSGS {
@@ -86,115 +12,130 @@ enum MSGS {
 	kMsgProtocolClassChanged,
 };
 
+
 ProtocolClassItem::ProtocolClassItem(const ProtocolClassCap* cap)
-	: BStringItem(cap->label.c_str())
+	: BStringItem(cap->fLabel.c_str())
 	, fProtocolClassCap(cap)
 {
 }
 
+
 int 
 ProtocolClassItem::getProtocolClass()
 {
-	return fProtocolClassCap->protocolClass;
+	return fProtocolClassCap->fProtocolClass;
 }
 
 const char *
 ProtocolClassItem::getDescription()
 {
-	return fProtocolClassCap->description.c_str();
+	return fProtocolClassCap->fDescription.c_str();
 }
 
 
-AddPrinterView::AddPrinterView(BRect frame, PrinterData *printer_data, const PrinterCap *printer_cap)
-	: BView(frame, "", B_FOLLOW_ALL, B_WILL_DRAW | B_FRAME_EVENTS), fPrinterData(printer_data), fPrinterCap(printer_cap)
+AddPrinterView::AddPrinterView(PrinterData* printerData,
+	const PrinterCap* printerCap)
+	:
+	BView("addPrinter", B_WILL_DRAW),
+	fPrinterData(printerData),
+	fPrinterCap(printerCap)
 {
-	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 }
+
 
 AddPrinterView::~AddPrinterView()
 {
 }
 
+
 void
 AddPrinterView::AttachedToWindow()
 {
-	/* protocol class box */
-	BBox *box;
-	box = new BBox(PROTOCOL_CLASS_BOX_RECT, NULL, B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP);
-	box->SetLabel("Protocol Classes:");
-	AddChild(box);
+	// protocol class box
+	BBox* protocolClassBox = new BBox("protocolClass");
+	protocolClassBox->SetLabel("Protocol Classes:");
 	
-	/* protocol class */
-	fProtocolClassList = new BListView(
-		PROTOCOL_CLASS_RECT, 
-		"protocolClassList", 
-		B_SINGLE_SELECTION_LIST, 
-		B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP);
-	box->AddChild(new BScrollView(
+	// protocol class
+	fProtocolClassList = new BListView("protocolClassList");
+	fProtocolClassList->SetExplicitMinSize(BSize(500, 200));
+	BScrollView* protocolClassScroller = new BScrollView(
 		"protocolClassListScroller", 
 		fProtocolClassList, 
-		B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP, 
 		0, 
 		false, 
-		true));
-	fProtocolClassList->SetSelectionMessage(new BMessage(kMsgProtocolClassChanged));
+		true,
+		B_NO_BORDER);
+	fProtocolClassList->SetSelectionMessage(
+		new BMessage(kMsgProtocolClassChanged));
 	fProtocolClassList->SetTarget(this);
 	
+	protocolClassBox->AddChild(protocolClassScroller);
+
 	int count = fPrinterCap->countCap(PrinterCap::kProtocolClass);
-	ProtocolClassCap **protocolClasses = (ProtocolClassCap **)fPrinterCap->enumCap(PrinterCap::kProtocolClass);
+	ProtocolClassCap **protocolClasses =
+		(ProtocolClassCap **)fPrinterCap->enumCap(PrinterCap::kProtocolClass);
 	while (count--) {
 		const ProtocolClassCap *protocolClass = *protocolClasses;
 		
 		BStringItem* item = new ProtocolClassItem(protocolClass);
 		fProtocolClassList->AddItem(item);
-		if (protocolClass->is_default) {
+		if (protocolClass->fIsDefault) {
 			int index = fProtocolClassList->IndexOf(item);
 			fProtocolClassList->Select(index);
 		}
 		protocolClasses ++;
 	}
 	
-	/* description of protocol class box */
-	box = new BBox(DESCRIPTION_BOX_RECT, NULL, B_FOLLOW_ALL_SIDES);
-	box->SetLabel("Description:");
-	AddChild(box);
+	// description of protocol class box
+	BBox* descriptionBox = new BBox("descriptionBox");
+	descriptionBox->SetLabel("Description:");
 
-	/* description of protocol class */
-	BRect textRect(DESCRIPTION_RECT);
-	textRect.OffsetTo(0, 0);
-	fDescription = new BTextView(DESCRIPTION_RECT, "description", textRect, B_FOLLOW_ALL_SIDES, B_WILL_DRAW);
-	fDescription->SetViewColor(box->ViewColor());
-	box->AddChild(new BScrollView("descriptionScroller", fDescription, 
-		B_FOLLOW_ALL_SIDES, 0, false, true, B_NO_BORDER));
+	// description of protocol class
+	fDescription = new BTextView("description");
+	fDescription->SetExplicitMinSize(BSize(200, 200));
+	fDescription->SetViewColor(descriptionBox->ViewColor());
+	BScrollView* descriptionScroller = new BScrollView("descriptionScroller",
+			fDescription,
+			0,
+			false,
+			true,
+			B_NO_BORDER);
 	fDescription->MakeEditable(false);
 
-	/* cancel */
-	BButton *button;
-	button = new BButton(CANCEL_RECT, "", CANCEL_TEXT, new BMessage(kMsgCancel), B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	AddChild(button);
+	descriptionBox->AddChild(descriptionScroller);
 
-	/* ok */
+	// separator line
+	BBox *separator = new BBox("separator");
+	separator->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 1));
 
-	button = new BButton(OK_RECT, "", OK_TEXT, new BMessage(kMsgOK), B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	AddChild(button);
-	button->MakeDefault(true);
+	// buttons
+	BButton* cancel = new BButton("cancel", "Cancel",
+		new BMessage(kMsgCancel));
+	BButton* ok = new BButton("ok", "OK", new BMessage(kMsgOK));
+	ok->MakeDefault(true);
+
+	SetLayout(new BGroupLayout(B_VERTICAL));
+	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0)
+		.Add(protocolClassBox)
+		.Add(descriptionBox)
+		.AddGlue()
+		.Add(separator)
+		.AddGroup(B_HORIZONTAL, 10, 1.0f)
+			.AddGlue()
+			.Add(cancel)
+			.Add(ok)
+		.End()
+		.SetInsets(0, 0, 0, 0)
+	);
+
 	
 	// update description
 	BMessage updateDescription(kMsgProtocolClassChanged);
 	MessageReceived(&updateDescription);
 }
 
-void
-AddPrinterView::FrameResized(float w, float h)
-{
-	BView::FrameResized(w, h);
-	// update text rectangle
-	BRect rect(fDescription->TextRect());
-	rect.right = rect.left + fDescription->Frame().Width();
-	fDescription->SetTextRect(rect);
-}
 
-ProtocolClassItem *
+ProtocolClassItem*
 AddPrinterView::CurrentSelection()
 {
 	int selected = fProtocolClassList->CurrentSelection();
@@ -204,8 +145,9 @@ AddPrinterView::CurrentSelection()
 	return NULL;
 }
 
+
 void
-AddPrinterView::MessageReceived(BMessage *msg)
+AddPrinterView::MessageReceived(BMessage* msg)
 {
 	if (msg->what == kMsgProtocolClassChanged) {
 		ProtocolClassItem *item = CurrentSelection();
@@ -217,50 +159,53 @@ AddPrinterView::MessageReceived(BMessage *msg)
 	}
 }
 
+
 void
 AddPrinterView::Save()
 {
-	ProtocolClassItem *item = CurrentSelection();
+	ProtocolClassItem* item = CurrentSelection();
 	if (item != NULL) {
 		fPrinterData->setProtocolClass(item->getProtocolClass());
 		fPrinterData->save();
 	}
 }
 
-AddPrinterDlg::AddPrinterDlg(PrinterData *printerData, const PrinterCap *printerCap)
-	: DialogWindow(BRect(100, 100, 100 + DIALOG_WIDTH, 100 + DIALOG_HEIGHT),
+
+AddPrinterDlg::AddPrinterDlg(PrinterData* printerData,
+	const PrinterCap *printerCap)
+	:
+	DialogWindow(BRect(100, 100, 120, 120),
 		"Add Printer", B_TITLED_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
-		B_NOT_MINIMIZABLE | B_NOT_ZOOMABLE | B_ASYNCHRONOUS_CONTROLS)
+		B_NOT_MINIMIZABLE | B_NOT_ZOOMABLE | B_ASYNCHRONOUS_CONTROLS
+			| B_AUTO_UPDATE_SIZE_LIMITS)
 {
 	SetResult(B_ERROR);
 
-	// increase min. window size	
-	float minWidth, maxWidth, minHeight, maxHeight;
-	GetSizeLimits(&minWidth, &maxWidth, &minHeight, &maxHeight);
-	minHeight = DIALOG_HEIGHT;
-	minWidth = DIALOG_WIDTH;
-	SetSizeLimits(minWidth, maxWidth, minHeight, maxHeight);
-	
-	fAddPrinterView = new AddPrinterView(Bounds(), printerData, printerCap);
-	AddChild(fAddPrinterView);
+	fAddPrinterView = new AddPrinterView(printerData, printerCap);
+	SetLayout(new BGroupLayout(B_VERTICAL));
+	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0)
+		.Add(fAddPrinterView)
+		.SetInsets(10, 10, 10, 10)
+	);
 }
 
+
 void 
-AddPrinterDlg::MessageReceived(BMessage *msg)
+AddPrinterDlg::MessageReceived(BMessage* msg)
 {
 	switch (msg->what) {
-	case kMsgOK:
-		fAddPrinterView->Save();
-		SetResult(B_NO_ERROR);
-		PostMessage(B_QUIT_REQUESTED);
-		break;
+		case kMsgOK:
+			fAddPrinterView->Save();
+			SetResult(B_NO_ERROR);
+			PostMessage(B_QUIT_REQUESTED);
+			break;
 
-	case kMsgCancel:
-		PostMessage(B_QUIT_REQUESTED);
-		break;
-		
-	default:
-		DialogWindow::MessageReceived(msg);
-		break;
+		case kMsgCancel:
+			PostMessage(B_QUIT_REQUESTED);
+			break;
+
+		default:
+			DialogWindow::MessageReceived(msg);
+			break;
 	}
 }

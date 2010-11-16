@@ -173,7 +173,7 @@ public:
 									bool separateSubTransactions);
 	virtual	status_t			Unlock(Transaction* owner, bool success);
 
-	virtual	status_t			MapBlock(uint32 logical, uint32& physical);
+	virtual	status_t			MapBlock(off_t logical, off_t& physical);
 	inline	uint32				FreeLogBlocks() const;
 			
 			status_t			FlushLogAndBlocks();
@@ -216,6 +216,7 @@ protected:
 			uint32				fLogSize;
 			uint32				fVersion;
 			
+			bool				fIsStarted;
 			uint32				fLogStart;
 			uint32				fLogEnd;
 			uint32				fFreeBlocks;

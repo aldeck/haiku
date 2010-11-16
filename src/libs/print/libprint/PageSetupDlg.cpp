@@ -14,6 +14,7 @@
 #include <Bitmap.h>
 #include <Box.h>
 #include <Button.h>
+#include <Debug.h>
 #include <Font.h>
 #include <GridView.h>
 #include <GroupLayout.h>
@@ -43,11 +44,7 @@
 #include "PrintUtils.h"
 
 
-#if (!__MWERKS__ || defined(MSIPL_USING_NAMESPACE))
 using namespace std;
-#else
-#define std
-#endif
 
 
 enum MSGS {
@@ -119,10 +116,10 @@ PageSetupView::AttachedToWindow()
 	while (count--) {
 		BMessage *msg = new BMessage(kMsgPaperChanged);
 		msg->AddPointer("paperCap", *paper_cap);
-		item = new BMenuItem((*paper_cap)->label.c_str(), msg);
+		item = new BMenuItem((*paper_cap)->fLabel.c_str(), msg);
 		fPaper->AddItem(item);
 		item->SetTarget(this);
-		if ((*paper_cap)->paper == fJobData->getPaper()) {
+		if ((*paper_cap)->fPaper == fJobData->getPaper()) {
 			item->SetMarked(true);
 			marked = true;
 		}
@@ -145,8 +142,8 @@ PageSetupView::AttachedToWindow()
 	} else {
 		OrientationCap **orientation_cap = (OrientationCap **)fPrinterCap->enumCap(PrinterCap::kOrientation);
 		while (count--) {
-			AddOrientationItem((*orientation_cap)->label.c_str(),
-				(*orientation_cap)->orientation);
+			AddOrientationItem((*orientation_cap)->fLabel.c_str(),
+				(*orientation_cap)->fOrientation);
 			orientation_cap++;
 		}
 	}
@@ -158,10 +155,11 @@ PageSetupView::AttachedToWindow()
 	count = fPrinterCap->countCap(PrinterCap::kResolution);
 	ResolutionCap **resolution_cap = (ResolutionCap **)fPrinterCap->enumCap(PrinterCap::kResolution);
 	while (count--) {
-		item = new BMenuItem((*resolution_cap)->label.c_str(), NULL);
+		item = new BMenuItem((*resolution_cap)->fLabel.c_str(), NULL);
 		fResolution->AddItem(item);
 		item->SetTarget(this);
-		if (((*resolution_cap)->xres == fJobData->getXres()) && ((*resolution_cap)->yres == fJobData->getYres())) {
+		if (((*resolution_cap)->fXResolution == fJobData->getXres()) &&
+			((*resolution_cap)->fYResolution == fJobData->getYres())) {
 			item->SetMarked(true);
 			marked = true;
 		}
@@ -265,22 +263,18 @@ PageSetupView::UpdateJobData()
 	fJobData->setOrientation(GetOrientation());
 
 	PaperCap *paperCap = GetPaperCap();
-	BRect paper_rect = paperCap->paper_rect;
-	BRect physical_rect = paperCap->physical_rect;
-	fJobData->setPaper(paperCap->paper);
+	BRect paper_rect = paperCap->fPaperRect;
+	BRect physical_rect = paperCap->fPhysicalRect;
+	fJobData->setPaper(paperCap->fPaper);
 
-	int count;
-
-	count = fPrinterCap->countCap(PrinterCap::kResolution);
-	ResolutionCap **resolution_cap = (ResolutionCap **)fPrinterCap->enumCap(PrinterCap::kResolution);
-	const char *resolution_label = fResolution->FindMarked()->Label();
-	while (count--) {
-		if (!strcmp((*resolution_cap)->label.c_str(), resolution_label)) {
-			fJobData->setXres((*resolution_cap)->xres);
-			fJobData->setYres((*resolution_cap)->yres);
-			break;
-		}
-		resolution_cap++;
+	const char *resolutionLabel = fResolution->FindMarked()->Label();
+	const ResolutionCap* resolution = static_cast<const ResolutionCap*>(
+		fPrinterCap->findCap(PrinterCap::kResolution, resolutionLabel));
+	ASSERT(resolution != NULL);
+	if (resolution != NULL) {
+		fJobData->setXres(resolution->fXResolution);
+		fJobData->setYres(resolution->fYResolution);
+		fJobData->setResolutionID(resolution->ID());
 	}
 
 	// rotate paper and physical rectangle if landscape orientation
@@ -336,8 +330,8 @@ PageSetupView::MessageReceived(BMessage *msg)
 			{
 				JobData::Orientation orientation = GetOrientation();
 				PaperCap *paperCap = GetPaperCap();
-				float width = paperCap->paper_rect.Width();
-				float height = paperCap->paper_rect.Height();
+				float width = paperCap->fPaperRect.Width();
+				float height = paperCap->fPaperRect.Height();
 				if (orientation != JobData::kPortrait) {
 					swap(&width, &height);
 				}

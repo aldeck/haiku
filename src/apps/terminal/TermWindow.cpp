@@ -54,8 +54,10 @@ const static uint32 kIncreaseFontSize = 'InFs';
 const static uint32 kDecreaseFontSize = 'DcFs';
 const static uint32 kSetActiveTab = 'STab';
 
+
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "Terminal TermWindow"
+
 
 class CustomTermView : public TermView {
 public:
@@ -232,18 +234,22 @@ TermWindow::_InitWindow()
 
 
 bool
-TermWindow::QuitRequested()
+TermWindow::_CanClose(int32 index)
 {
 	bool warnOnExit = PrefHandler::Default()->getBool(PREF_WARN_ON_EXIT);
 
 	if (!warnOnExit)
-		return BWindow::QuitRequested();
+		return true;
 
 	bool isBusy = false;
-	for (int32 i = 0; i < fSessions.CountItems(); i++) {
-		if (_TermViewAt(i)->IsShellBusy()) {
-			isBusy = true;
-			break;
+	if (index != -1)
+		isBusy = _TermViewAt(index)->IsShellBusy();
+	else {
+		for (int32 i = 0; i < fSessions.CountItems(); i++) {
+			if (_TermViewAt(i)->IsShellBusy()) {
+				isBusy = true;
+				break;
+			}
 		}
 	}
 
@@ -257,6 +263,16 @@ TermWindow::QuitRequested()
 		if (result == 1)
 			return false;
 	}
+
+	return true;
+}
+
+
+bool
+TermWindow::QuitRequested()
+{
+	if (!_CanClose(-1))
+		return false;
 
 	BMessage position = BMessage(MSG_SAVE_WINDOW_POSITION);
 	position.AddRect("rect", Frame());
@@ -744,9 +760,6 @@ TermWindow::_SetTermColors(TermViewContainerView* containerView)
 
 	termView->SetSelectColor(handler->getRGB(PREF_SELECT_FORE_COLOR),
 		handler->getRGB(PREF_SELECT_BACK_COLOR));
-
-	termView->SetCursorColor(handler->getRGB(PREF_CURSOR_FORE_COLOR),
-		handler->getRGB(PREF_CURSOR_BACK_COLOR));
 }
 
 
@@ -903,6 +916,8 @@ void
 TermWindow::_RemoveTab(int32 index)
 {
 	if (fSessions.CountItems() > 1) {
+		if (!_CanClose(index))
+			return;
 		if (Session* session = (Session*)fSessions.RemoveItem(index)) {
 			if (fSessions.CountItems() == 1) {
 				fTabView->SetScrollView(dynamic_cast<BScrollView*>(

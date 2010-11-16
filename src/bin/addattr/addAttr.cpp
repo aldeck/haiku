@@ -13,10 +13,11 @@
 
 #include <fs_attr.h>
 
+#include <ctype.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <ctype.h>
+#include <unistd.h>
 
 
 template<class Type>
@@ -143,6 +144,8 @@ addAttr(const char *file, type_code type, const char *name,
 
 	fs_remove_attr(fd, name);
 	ssize_t bytes = writeAttr(fd, type, name, value, length);
+
+	close(fd);
 
 	return bytes >= 0 ? B_OK : bytes;
 }

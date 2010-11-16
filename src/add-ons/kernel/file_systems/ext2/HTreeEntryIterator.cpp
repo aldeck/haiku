@@ -41,7 +41,7 @@ HTreeEntryIterator::HTreeEntryIterator(off_t offset, Inode* directory)
 		fCurrentEntry = fFirstEntry;
 	}
 
-	TRACE("HTreeEntryIterator::HTreeEntryIterator(): created %p, block %lu, "
+	TRACE("HTreeEntryIterator::HTreeEntryIterator(): created %p, block %llu, "
 		"entry no. %lu, parent: %p\n", this, fBlockNum, (uint32)fCurrentEntry,
 		fParent);
 }
@@ -100,7 +100,7 @@ HTreeEntryIterator::Init()
 
 	if (fLimit != fBlockSize / sizeof(HTreeEntry) - fFirstEntry) {
 		ERROR("HTreeEntryIterator::Init() bad fLimit %lu should be %lu "
-			"at block %lu\n", (uint32)fLimit, fBlockSize / sizeof(HTreeEntry)
+			"at block %llu\n", (uint32)fLimit, fBlockSize / sizeof(HTreeEntry)
 				- fFirstEntry, fBlockNum);
 		fCount = fLimit = 0;
 		return B_ERROR;
@@ -189,7 +189,7 @@ HTreeEntryIterator::Lookup(uint32 hash, int indirections,
 
 	TRACE("HTreeEntryIterator::Lookup(): Creating a HTree entry iterator "
 		"starting at block: %lu, hash: 0x%lX\n", start->Block(), start->Hash());
-	uint32 blockNum;
+	off_t blockNum;
 	status_t status = fDirectory->FindBlock(start->Block() * fBlockSize,
 		blockNum);
 	if (status != B_OK)
@@ -269,7 +269,7 @@ HTreeEntryIterator::GetNext(uint32& childBlock)
 uint32
 HTreeEntryIterator::BlocksNeededForNewEntry()
 {
-	TRACE("HTreeEntryIterator::BlocksNeededForNewEntry(): block num: %lu, "
+	TRACE("HTreeEntryIterator::BlocksNeededForNewEntry(): block num: %llu, "
 		"volume: %p\n", fBlockNum, fVolume);
 	CachedBlock cached(fVolume);
 
@@ -303,9 +303,9 @@ HTreeEntryIterator::BlocksNeededForNewEntry()
 
 status_t
 HTreeEntryIterator::InsertEntry(Transaction& transaction, uint32 hash,
-	uint32 blockNum, uint32 newBlocksPos, bool hasCollision)
+	off_t blockNum, off_t newBlocksPos, bool hasCollision)
 {
-	TRACE("HTreeEntryIterator::InsertEntry(): block num: %lu\n", fBlockNum);
+	TRACE("HTreeEntryIterator::InsertEntry(): block num: %llu\n", fBlockNum);
 	CachedBlock cached(fVolume);
 
 	uint8* blockData = cached.SetToWritable(transaction, fBlockNum);
@@ -322,7 +322,7 @@ HTreeEntryIterator::InsertEntry(Transaction& transaction, uint32 hash,
 		panic("Splitting a HTree node required, but isn't yet fully "
 			"supported\n");
 
-		uint32 physicalBlock;
+		off_t physicalBlock;
 		status_t status = fDirectory->FindBlock(newBlocksPos, physicalBlock);
 		if (status != B_OK)
 			return status;
@@ -345,10 +345,10 @@ HTreeEntryIterator::InsertEntry(Transaction& transaction, uint32 hash,
 	}
 
 	TRACE("HTreeEntryIterator::InsertEntry(): Inserting node. Count: %u, "
-		"current entry: %lu\n", (uint16)count, (uint32)fCurrentEntry);
+		"current entry: %u\n", count, fCurrentEntry);
 
 	if (count > 0) {
-		TRACE("HTreeEntryIterator::InsertEntry(): memmove(%lu, %lu, %lu)\n",
+		TRACE("HTreeEntryIterator::InsertEntry(): memmove(%u, %u, %u)\n",
 			fCurrentEntry + 2, fCurrentEntry + 1, count + fFirstEntry
 				- fCurrentEntry - 1);
 		memmove(&entries[fCurrentEntry + 2], &entries[fCurrentEntry + 1],

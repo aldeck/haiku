@@ -84,9 +84,48 @@ avmetadata_to_message(AVMetadata* metaData, BMessage* message)
 	AVMetadataTag* tag = NULL;
 	while ((tag = av_metadata_get(metaData, "", tag,
 		AV_METADATA_IGNORE_SUFFIX))) {
-		// TODO: Make sure we eventually follow a defined convention for
-		// the names of meta-data keys.
-		message->AddString(tag->key, tag->value);
+		// convert tag keys into something more meaningful using the names from
+		// id3v2.c
+		if (strcmp(tag->key, "TALB") == 0 || strcmp(tag->key, "TAL") == 0)
+			message->AddString("album", tag->value);
+		else if (strcmp(tag->key, "TCOM") == 0)
+			message->AddString("composer", tag->value);
+		else if (strcmp(tag->key, "TCON") == 0 || strcmp(tag->key, "TCO") == 0)
+			message->AddString("genre", tag->value);
+		else if (strcmp(tag->key, "TCOP") == 0)
+			message->AddString("copyright", tag->value);
+		else if (strcmp(tag->key, "TDRL") == 0 || strcmp(tag->key, "TDRC") == 0)
+			message->AddString("date", tag->value);
+		else if (strcmp(tag->key, "TENC") == 0 || strcmp(tag->key, "TEN") == 0)
+			message->AddString("encoded_by", tag->value);
+		else if (strcmp(tag->key, "TIT2") == 0 || strcmp(tag->key, "TT2") == 0)
+			message->AddString("title", tag->value);
+		else if (strcmp(tag->key, "TLAN") == 0)
+			message->AddString("language", tag->value);
+		else if (strcmp(tag->key, "TPE1") == 0 || strcmp(tag->key, "TP1") == 0)
+			message->AddString("artist", tag->value);
+		else if (strcmp(tag->key, "TPE2") == 0 || strcmp(tag->key, "TP2") == 0)
+			message->AddString("album_artist", tag->value);
+		else if (strcmp(tag->key, "TPE3") == 0 || strcmp(tag->key, "TP3") == 0)
+			message->AddString("performer", tag->value);
+		else if (strcmp(tag->key, "TPOS") == 0)
+			message->AddString("disc", tag->value);
+		else if (strcmp(tag->key, "TPUB") == 0)
+			message->AddString("publisher", tag->value);
+		else if (strcmp(tag->key, "TRCK") == 0 || strcmp(tag->key, "TRK") == 0)
+			message->AddString("track", tag->value);
+		else if (strcmp(tag->key, "TSOA") == 0)
+			message->AddString("album-sort", tag->value);
+		else if (strcmp(tag->key, "TSOP") == 0)
+			message->AddString("artist-sort", tag->value);
+		else if (strcmp(tag->key, "TSOT") == 0)
+			message->AddString("title-sort", tag->value);
+		else if (strcmp(tag->key, "TSSE") == 0)
+			message->AddString("encoder", tag->value);
+		else if (strcmp(tag->key, "TYER") == 0)
+			message->AddString("year", tag->value);
+		else
+			message->AddString(tag->key, tag->value);
 	}
 }
 
@@ -190,6 +229,8 @@ StreamBase::StreamBase(BPositionIO* source, BLocker* sourceLock,
 	fStreamBuildsIndexWhileReading(false)
 {
 	// NOTE: Don't use streamLock here, it may not yet be initialized!
+
+	fIOContext.buffer = NULL;
 	av_new_packet(&fPacket, 0);
 	memset(&fFormat, 0, sizeof(media_format));
 }
@@ -390,7 +431,7 @@ StreamBase::FrameRate() const
 				&& fStream->codec->time_base.num) {
 				frameRate = 1 / av_q2d(fStream->codec->time_base);
 			}
-			
+
 			// TODO: Fix up interlaced video for real
 			if (frameRate == 50.0f)
 				frameRate = 25.0f;
@@ -481,7 +522,7 @@ StreamBase::Seek(uint32 flags, int64* frame, bigtime_t* time)
 				return B_ERROR;
 			}
 			seekAgain = false;
-	
+
 			// Our last packet is toast in any case. Read the next one so we
 			// know where we really seeked.
 			fReusePacket = false;
@@ -570,7 +611,7 @@ StreamBase::Seek(uint32 flags, int64* frame, bigtime_t* time)
 			bigtime_t foundTime = _ConvertFromStreamTimeBase(streamTimeStamp);
 			bigtime_t timeDiff = foundTime > *time
 				? foundTime - *time : *time - foundTime;
-		
+
 			if (timeDiff > 1000000
 				&& (fStreamBuildsIndexWhileReading
 					|| index == fStream->nb_index_entries - 1)) {
@@ -615,11 +656,11 @@ StreamBase::Seek(uint32 flags, int64* frame, bigtime_t* time)
 					*time = 0;
 			}
 		}
-	
+
 		// Our last packet is toast in any case. Read the next one so
 		// we know where we really sought.
 		bigtime_t foundTime = *time;
-	
+
 		fReusePacket = false;
 		if (_NextPacket(true) == B_OK) {
 			if (fPacket.pts != kNoPTSValue)
@@ -628,7 +669,7 @@ StreamBase::Seek(uint32 flags, int64* frame, bigtime_t* time)
 				TRACE_SEEK("  no PTS in packet after seeking\n");
 		} else
 			TRACE_SEEK("  _NextPacket() failed!\n");
-	
+
 		*time = foundTime;
 		TRACE_SEEK("  sought time: %.2fs\n", *time / 1000000.0);
 		if ((flags & B_MEDIA_SEEK_TO_FRAME) != 0) {
@@ -1066,7 +1107,7 @@ AVFormatReader::Stream::Init(int32 virtualIndex)
 			format->u.raw_audio.format
 				= avformat_to_beos_format(codecContext->sample_fmt);
 			format->u.raw_audio.buffer_size = 0;
-			
+
 			// Read one packet and mark it for later re-use. (So our first
 			// GetNextChunk() call does not read another packet.)
 			if (_NextPacket(true) == B_OK) {

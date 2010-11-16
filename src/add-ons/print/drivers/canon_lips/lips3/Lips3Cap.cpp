@@ -71,7 +71,7 @@ const PaperSourceCap manual("Manual", false, JobData::kManual);
 const PaperSourceCap upper("Upper",   false, JobData::kUpper);
 const PaperSourceCap lower("Lower",   false, JobData::kLower);
 
-const ResolutionCap dpi300("300dpi",   true, 300,  300);
+const ResolutionCap dpi300("300dpi",   true, 0, 300,  300);
 
 const PaperCap* papers[] = {
 	&a4,
@@ -155,6 +155,7 @@ Lips3Cap::isSupport(CapID capid) const
 		case kResolution:
 		case kColor:
 		case kCopyCommand:
+		case kHalftone:
 			return true;
 		default:
 			return false;

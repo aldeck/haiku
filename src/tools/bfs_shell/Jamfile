@@ -18,8 +18,8 @@ DEFINES += HAIKU_BUILD_COMPATIBILITY_H ;
 	}
 
 	defines = [ FDefines $(defines) ] ;
-	SubDirCcFlags $(defines) -Wall -Wno-multichar ;
-	SubDirC++Flags $(defines) -Wall -Wno-multichar -fno-rtti ;
+	SubDirCcFlags $(defines) -Wno-multichar ;
+	SubDirC++Flags $(defines) -Wno-multichar -fno-rtti ;
 }
 
 local libHaikuCompat ;
@@ -32,6 +32,8 @@ local fsShellCommandLibs ;
 if ! $(HOST_PLATFORM_BEOS_COMPATIBLE) {
 	fsShellCommandLibs = $(HOST_NETWORK_LIBS) ;
 }
+
+UsePrivateHeaders storage ;
 
 UsePrivateHeaders fs_shell ;
 

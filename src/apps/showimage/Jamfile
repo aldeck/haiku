@@ -3,13 +3,14 @@ SubDir HAIKU_TOP src apps showimage ;
 UsePrivateSystemHeaders ;
 UsePrivateHeaders tracker shared ;
 UsePublicHeaders [ FDirName be_apps Tracker ] ;
+SubDirHdrs $(HAIKU_TOP) src kits tracker ;
 
 Application ShowImage :
-	EntryMenuItem.cpp
 	Filter.cpp
+	ImageCache.cpp
+	ImageFileNavigator.cpp
 	PrintOptionsWindow.cpp
 	ProgressWindow.cpp
-	ResizerWindow.cpp
 	SelectionBox.cpp
 	ShowImageApp.cpp
 	ShowImageSettings.cpp
@@ -17,17 +18,16 @@ Application ShowImage :
 	ShowImageUndo.cpp
 	ShowImageView.cpp
 	ShowImageWindow.cpp
-	: libshared.a
-	be tracker translation $(HAIKU_LOCALE_LIBS) $(TARGET_LIBSUPC++)
+	: libshared.a be tracker translation $(HAIKU_LOCALE_LIBS)
+		$(TARGET_LIBSTDC++) $(TARGET_LIBSUPC++)
 	: ShowImage.rdef
-	;
+;
 
 DoCatalogs ShowImage :
 	x-vnd.Haiku-ShowImage
 	:
 	PrintOptionsWindow.cpp
 	ProgressWindow.cpp
-	ResizerWindow.cpp
 	ShowImageApp.cpp
 	ShowImageView.cpp
 	ShowImageWindow.cpp

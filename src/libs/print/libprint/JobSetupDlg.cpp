@@ -17,6 +17,7 @@
 #include <Box.h>
 #include <Button.h>
 #include <CheckBox.h>
+#include <Debug.h>
 #include <GridView.h>
 #include <GroupLayout.h>
 #include <GroupLayoutBuilder.h>
@@ -45,32 +46,36 @@
 #include "PrinterCap.h"
 #include "DbgMsg.h"
 
-#if (!__MWERKS__ || defined(MSIPL_USING_NAMESPACE))
+
 using namespace std;
-#else
-#define std
-#endif
 
 
-struct SurfaceCap : public BaseCap {
-	color_space surface_type;
-	SurfaceCap(const string &s, bool d, color_space cs) : BaseCap(s, d), surface_type(cs) {}
+struct NupCap : public EnumCap {
+	NupCap(const string &label, bool isDefault, int nup)
+		:
+		EnumCap(label, isDefault),
+		fNup(nup)
+	{}
+
+	int32	ID() const { return fNup; }
+
+	int	fNup;
 };
 
-struct NupCap : public BaseCap {
-	int nup;
-	NupCap(const string &s, bool d, int n) : BaseCap(s, d), nup(n) {}
+
+struct DitherCap : public EnumCap {
+	DitherCap(const string &label, bool isDefault,
+		Halftone::DitherType ditherType)
+		:
+		EnumCap(label, isDefault),
+		fDitherType(ditherType)
+	{}
+
+	int32	ID() const { return fDitherType; }
+
+	Halftone::DitherType fDitherType;
 };
 
-struct DitherCap : public BaseCap {
-	Halftone::DitherType dither_type;
-	DitherCap(const string &s, bool d, Halftone::DitherType type) : BaseCap(s, d), dither_type(type) {}
-};
-
-static const SurfaceCap gRGB32("RGB32", false, B_RGB32);
-static const SurfaceCap gCMAP8("CMAP8", true,  B_CMAP8);
-static const SurfaceCap gGray8("GRAY8", false, B_GRAY8);
-static const SurfaceCap gGray1("GRAY1", false, B_GRAY1);
 
 static const NupCap gNup1("1", true,  1);
 static const NupCap gNup2("2",   false, 2);
@@ -82,19 +87,15 @@ static const NupCap gNup25("25", false, 25);
 static const NupCap gNup32("32", false, 32);
 static const NupCap gNup36("36", false, 36);
 
+
 static const DitherCap gDitherType1("Crosshatch", false, Halftone::kType1);
 static const DitherCap gDitherType2("Grid", false, Halftone::kType2);
 static const DitherCap gDitherType3("Stipple", false, Halftone::kType3);
-static const DitherCap gDitherFloydSteinberg("Floyd-Steinberg", false, Halftone::kTypeFloydSteinberg);
+static const DitherCap gDitherFloydSteinberg("Floyd-Steinberg", false,
+	Halftone::kTypeFloydSteinberg);
 
-const SurfaceCap *gSurfaces[] = {
-	&gRGB32,
-	&gCMAP8,
-	&gGray8,
-	&gGray1
-};
 
-const NupCap *gNups[] = {
+const BaseCap *gNups[] = {
 	&gNup1,
 	&gNup2,
 	&gNup4,
@@ -106,34 +107,68 @@ const NupCap *gNups[] = {
 	&gNup36
 };
 
-const DitherCap *gDitherTypes[] = {
+
+const BaseCap *gDitherTypes[] = {
 	&gDitherType1,
 	&gDitherType2,
 	&gDitherType3,
 	&gDitherFloydSteinberg
 };
 
+
+static const char* kCategoryID = "id";
+
+
 enum {
 	kMsgRangeAll = 'JSdl',
 	kMsgRangeSelection,
-	kMsgPreview,
 	kMsgCancel,
 	kMsgOK,
 	kMsgQuality,
 	kMsgCollateChanged,
 	kMsgReverseChanged,
 	kMsgDuplexChanged,
+	kMsgIntSliderChanged,
+	kMsgDoubleSliderChanged,
+	kMsgNone = 0
 };
 
-JobSetupView::JobSetupView(JobData *job_data, PrinterData *printer_data,
-	const PrinterCap *printer_cap)
-	: BView("jobSetup", B_WILL_DRAW)
-	, fJobData(job_data)
-	, fPrinterData(printer_data)
-	, fPrinterCap(printer_cap)
+
+BString& operator<<(BString& text, double value)
+{
+	text << (float)value;
+	return text;
+}
+
+JobSetupView::JobSetupView(JobData* jobData, PrinterData* printerData,
+	const PrinterCap *printerCap)
+	:
+	BView("jobSetup", B_WILL_DRAW),
+	fCopies(NULL),
+	fFromPage(NULL),
+	fToPage(NULL),
+	fJobData(jobData),
+	fPrinterData(printerData),
+	fPrinterCap(printerCap),
+	fColorType(NULL),
+	fDitherType(NULL),
+	fGamma(NULL),
+	fInkDensity(NULL),
+	fHalftone(NULL),
+	fAll(NULL),
+	fCollate(NULL),
+	fReverse(NULL),
+	fPages(NULL),
+	fPaperFeed(NULL),
+	fDuplex(NULL),
+	fNup(NULL),
+	fAllPages(NULL),
+	fOddNumberedPages(NULL),
+	fEvenNumberedPages(NULL)
 {
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 }
+
 
 BRadioButton* 
 JobSetupView::CreatePageSelectionItem(const char* name, const char* label,
@@ -145,6 +180,7 @@ JobSetupView::CreatePageSelectionItem(const char* name, const char* label,
 	}
 	return button;
 }
+
 
 void
 JobSetupView::AllowOnlyDigits(BTextView* textView, int maxDigits)
@@ -159,6 +195,7 @@ JobSetupView::AllowOnlyDigits(BTextView* textView, int maxDigits)
 	textView->SetMaxBytes(maxDigits);
 }
 
+
 void 
 JobSetupView::AttachedToWindow()
 {
@@ -169,85 +206,13 @@ JobSetupView::AttachedToWindow()
 	// color
 	fColorType = new BPopUpMenu("color");
 	fColorType->SetRadioMode(true);
-
-	int count = fPrinterCap->countCap(PrinterCap::kColor);
-	const ColorCap **color_cap = (const ColorCap **)fPrinterCap->enumCap(
-		PrinterCap::kColor);
-	bool marked = false;
-	BMenuItem* item = NULL;
-	while (count--) {
-		item = new BMenuItem((*color_cap)->label.c_str(),
-			new BMessage(kMsgQuality));
-		fColorType->AddItem(item);
-		if ((*color_cap)->color == fJobData->getColor()) {
-			item->SetMarked(true);
-			marked = true;
-		}
-		color_cap++;
-	}
-	if (!marked && item)
-		item->SetMarked(true);
-
+	FillCapabilityMenu(fColorType, kMsgQuality, PrinterCap::kColor,
+		fJobData->getColor());
 	BMenuField* colorMenuField = new BMenuField("color", "Color:", fColorType);
 	fColorType->SetTargetForItems(this);
 	
-	// dither type
-	fDitherType = new BPopUpMenu("");
-	fDitherType->SetRadioMode(true);
-
-	count = sizeof(gDitherTypes) / sizeof(gDitherTypes[0]);
-	const DitherCap **dither_cap = gDitherTypes;
-	marked = false;
-	item = NULL;
-	while (count--) {
-		item = new BMenuItem((*dither_cap)->label.c_str(),
-			new BMessage(kMsgQuality));
-		fDitherType->AddItem(item);
-		if ((*dither_cap)->dither_type == fJobData->getDitherType()) {
-			item->SetMarked(true);
-			marked = true;
-		}
-		dither_cap++;
-	}
-	if (!marked && item)
-		item->SetMarked(true);
-	BMenuField* ditherMenuField = new BMenuField("dithering", "Dot Pattern:",
-		fDitherType);
-	fDitherType->SetTargetForItems(this);
-	
-	// halftone preview view
-	BBox* halftoneBox = new BBox("halftoneBox");
-	halftoneBox->SetBorder(B_PLAIN_BORDER);
-
-	// TODO make layout compatible
-	BSize size(240, 14 * 4);
-	BRect rect(0, 0, size.width, size.height);
-	fHalftone = new HalftoneView(rect, "halftone",
-		B_FOLLOW_ALL, B_WILL_DRAW);
-	fHalftone->SetExplicitMinSize(size);
-	fHalftone->SetExplicitMaxSize(size);
-	
-	// gamma
-	fGamma = new JSDSlider("gamma", "Gamma", new BMessage(kMsgQuality),
-		-300, 300);
-	
-	fGamma->SetLimitLabels("Lighter", "Darker");
-	fGamma->SetValue((int32)(100 * log(fJobData->getGamma()) / log(2.0)));
-	fGamma->SetHashMarks(B_HASH_MARKS_BOTH);
-	fGamma->SetHashMarkCount(7);
-	fGamma->SetModificationMessage(new BMessage(kMsgQuality));
-	fGamma->SetTarget(this);
-
-	// ink density
-	fInkDensity = new JSDSlider("inkDensity", "Ink Usage",
-		new BMessage(kMsgQuality), 0, 127);
-	
-	fInkDensity->SetLimitLabels("Min", "Max");
-	fInkDensity->SetValue((int32)fJobData->getInkDensity());
-	fInkDensity->SetHashMarks(B_HASH_MARKS_BOTH);
-	fInkDensity->SetHashMarkCount(10);
-	fInkDensity->SetModificationMessage(new BMessage(kMsgQuality));
-	fInkDensity->SetTarget(this);
+	if (IsHalftoneConfigurationNeeded())
+		CreateHalftoneConfigurationUI();
 
 	// page range
 
@@ -294,43 +259,16 @@ JobSetupView::AttachedToWindow()
 	// paper source
 	fPaperFeed = new BPopUpMenu("");
 	fPaperFeed->SetRadioMode(true);
-	count = fPrinterCap->countCap(PrinterCap::kPaperSource);
-	const PaperSourceCap **paper_source_cap =
-		(const PaperSourceCap **)fPrinterCap->enumCap(PrinterCap::kPaperSource);
-	marked = false;
-	item = NULL;
-	while (count--) {
-		item = new BMenuItem((*paper_source_cap)->label.c_str(), NULL);
-		fPaperFeed->AddItem(item);
-		if ((*paper_source_cap)->paper_source == fJobData->getPaperSource()) {
-			item->SetMarked(true);
-			marked = true;
-		}
-		paper_source_cap++;
-	}
-	if (!marked)
-		item->SetMarked(true);
+	FillCapabilityMenu(fPaperFeed, kMsgNone, PrinterCap::kPaperSource,
+		fJobData->getPaperSource());
 	BMenuField* paperSourceMenufield = new BMenuField("paperSource",
 		"Paper Source:", fPaperFeed);
 
 	// Pages per sheet
 	fNup = new BPopUpMenu("");
 	fNup->SetRadioMode(true);
-	count = sizeof(gNups) / sizeof(gNups[0]);
-	const NupCap **nup_cap = gNups;
-	marked = false;
-	item = NULL;
-	while (count--) {
-		item = new BMenuItem((*nup_cap)->label.c_str(), NULL);
-		fNup->AddItem(item);
-		if ((*nup_cap)->nup == fJobData->getNup()) {
-			item->SetMarked(true);
-			marked = true;
-		}
-		nup_cap++;
-	}
-	if (!marked)
-		item->SetMarked(true);
+	FillCapabilityMenu(fNup, kMsgNone, gNups,
+		sizeof(gNups) / sizeof(gNups[0]), (int)fJobData->getNup());
 	BMenuField* pagesPerSheet = new BMenuField("pagesPerSheet",
 		"Pages Per Sheet:", fNup);
 
@@ -390,36 +328,53 @@ JobSetupView::AttachedToWindow()
 	fEvenNumberedPages = CreatePageSelectionItem("evenPages",
 		"Even-Numbered Pages", JobData::kEvenNumberedPages);
 
+	fPreview = new BCheckBox("preview", "Show preview before printing", NULL);
+	if (fJobData->getShowPreview())
+		fPreview->SetValue(B_CONTROL_ON);
+
 	// separator line
 	BBox *separator = new BBox("separator");
 	separator->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 1));
 
 	// buttons
-	BButton* preview = new BButton("preview", "Preview" B_UTF8_ELLIPSIS,
-		new BMessage(kMsgPreview));
 	BButton* cancel = new BButton("cancel", "Cancel",
 		new BMessage(kMsgCancel));
 	BButton* ok = new BButton("ok", "OK", new BMessage(kMsgOK));
 	ok->MakeDefault(true);
 	
-	BGroupView* halftoneGroup = new BGroupView(B_VERTICAL, 0);
-	BGroupLayout* halftoneLayout = halftoneGroup->GroupLayout();
-	halftoneLayout->AddView(fHalftone);
-	halftoneBox->AddChild(halftoneGroup);
+	if (IsHalftoneConfigurationNeeded()) {
+		BGroupView* halftoneGroup = new BGroupView(B_VERTICAL, 0);
+		BGroupLayout* halftoneLayout = halftoneGroup->GroupLayout();
+		halftoneLayout->AddView(fHalftone);
+		fHalftoneBox->AddChild(halftoneGroup);
+	}
 
 	BGridView* qualityGrid = new BGridView();
 	BGridLayout* qualityGridLayout = qualityGrid->GridLayout();
 	qualityGridLayout->AddItem(colorMenuField->CreateLabelLayoutItem(), 0, 0);
 	qualityGridLayout->AddItem(colorMenuField->CreateMenuBarLayoutItem(), 1, 0);
-	qualityGridLayout->AddItem(ditherMenuField->CreateLabelLayoutItem(), 0, 1);
-	qualityGridLayout->AddItem(ditherMenuField->CreateMenuBarLayoutItem(), 1,
-		1);
-	qualityGridLayout->AddView(fGamma, 0, 2, 2);
-	qualityGridLayout->AddView(fInkDensity, 0, 3, 2);
-	qualityGridLayout->AddView(halftoneBox, 0, 4, 2);
+	if (IsHalftoneConfigurationNeeded()) {
+		qualityGridLayout->AddItem(fDitherMenuField->CreateLabelLayoutItem(),
+			0, 1);
+		qualityGridLayout->AddItem(fDitherMenuField->CreateMenuBarLayoutItem(),
+			1, 1);
+		qualityGridLayout->AddView(fGamma, 0, 2, 2);
+		qualityGridLayout->AddView(fInkDensity, 0, 3, 2);
+		qualityGridLayout->AddView(fHalftoneBox, 0, 4, 2);
+	} else {
+		AddDriverSpecificSettings(qualityGridLayout, 1);
+	}
 	qualityGridLayout->SetSpacing(0, 0);
 	qualityGridLayout->SetInsets(5, 5, 5, 5);
 	qualityBox->AddChild(qualityGrid);
+	// TODO put qualityGrid in a scroll view
+	// the layout of the box surrounding the scroll view using the following
+	// code is not correct; the box still has the size of the qualityGird;
+	// and the scroll view is vertically centered inside the box!
+	//BScrollView* qualityScroller = new BScrollView("qualityScroller",
+	//	qualityGrid, 0, false, true);
+	//qualityScroller->SetExplicitMaxSize(BSize(500, 500));
+	//qualityBox->AddChild(qualityScroller);
 
 	BGridView* pageRangeGrid = new BGridView();
 	BGridLayout* pageRangeLayout = pageRangeGrid->GridLayout();
@@ -483,22 +438,355 @@ JobSetupView::AttachedToWindow()
 				.AddGlue()
 			.End()
 		.End()
+		.Add(fPreview)
 		.AddGlue()
 		.Add(separator)
 		.AddGroup(B_HORIZONTAL, 10, 1.0f)
 			.AddGlue()
 			.Add(cancel)
-			.Add(preview)
 			.Add(ok)
 		.End()
 		.SetInsets(0, 0, 0, 0)
 	);
 
-	fHalftone->preview(fJobData->getGamma(), fJobData->getInkDensity(),
-		fJobData->getDitherType(), fJobData->getColor() != JobData::kMonochrome);
+	UpdateHalftonePreview();
 
 	UpdateButtonEnabledState();
 }
+
+
+bool
+JobSetupView::IsHalftoneConfigurationNeeded()
+{
+	return fPrinterCap->isSupport(PrinterCap::kHalftone);
+}
+
+
+void
+JobSetupView::CreateHalftoneConfigurationUI()
+{
+	// dither type
+	fDitherType = new BPopUpMenu("");
+	fDitherType->SetRadioMode(true);
+	FillCapabilityMenu(fDitherType, kMsgQuality, gDitherTypes,
+		sizeof(gDitherTypes) / sizeof(gDitherTypes[0]),
+		(int)fJobData->getDitherType());
+	fDitherMenuField = new BMenuField("dithering", "Dot Pattern:",
+		fDitherType);
+	fDitherType->SetTargetForItems(this);
+
+	// halftone preview view
+	fHalftoneBox = new BBox("halftoneBox");
+	fHalftoneBox->SetBorder(B_PLAIN_BORDER);
+
+	// TODO make layout compatible
+	BSize size(240, 14 * 4);
+	BRect rect(0, 0, size.width, size.height);
+	fHalftone = new HalftoneView(rect, "halftone",
+		B_FOLLOW_ALL, B_WILL_DRAW);
+	fHalftone->SetExplicitMinSize(size);
+	fHalftone->SetExplicitMaxSize(size);
+
+	// gamma
+	fGamma = new JSDSlider("gamma", "Gamma", new BMessage(kMsgQuality),
+		-300, 300);
+
+	fGamma->SetLimitLabels("Lighter", "Darker");
+	fGamma->SetValue((int32)(100 * log(fJobData->getGamma()) / log(2.0)));
+	fGamma->SetHashMarks(B_HASH_MARKS_BOTH);
+	fGamma->SetHashMarkCount(7);
+	fGamma->SetModificationMessage(new BMessage(kMsgQuality));
+	fGamma->SetTarget(this);
+
+	// ink density
+	fInkDensity = new JSDSlider("inkDensity", "Ink Usage",
+		new BMessage(kMsgQuality), 0, 127);
+
+	fInkDensity->SetLimitLabels("Min", "Max");
+	fInkDensity->SetValue((int32)fJobData->getInkDensity());
+	fInkDensity->SetHashMarks(B_HASH_MARKS_BOTH);
+	fInkDensity->SetHashMarkCount(10);
+	fInkDensity->SetModificationMessage(new BMessage(kMsgQuality));
+	fInkDensity->SetTarget(this);
+}
+
+
+void
+JobSetupView::AddDriverSpecificSettings(BGridLayout* gridLayout, int row)
+{
+	if (!fPrinterCap->isSupport(PrinterCap::kDriverSpecificCapabilities))
+		return;
+
+	int count = fPrinterCap->countCap(PrinterCap::kDriverSpecificCapabilities);
+	const BaseCap** capabilities = fPrinterCap->enumCap(
+		PrinterCap::kDriverSpecificCapabilities);
+
+	for (int i = 0; i < count; i ++) {
+		const DriverSpecificCap* capability =
+			static_cast<const DriverSpecificCap*>(capabilities[i]);
+
+		switch (capability->fType) {
+			case DriverSpecificCap::kList:
+				AddPopUpMenu(capability, gridLayout, row);
+				break;
+			case DriverSpecificCap::kBoolean:
+				AddCheckBox(capability, gridLayout, row);
+				break;
+			case DriverSpecificCap::kIntRange:
+			case DriverSpecificCap::kIntDimension:
+				AddIntSlider(capability, gridLayout, row);
+				break;
+			case DriverSpecificCap::kDoubleRange:
+				AddDoubleSlider(capability, gridLayout, row);
+				break;
+
+		}
+	}
+}
+
+
+void
+JobSetupView::AddPopUpMenu(const DriverSpecificCap* capability,
+	BGridLayout* gridLayout, int& row)
+{
+	const char* label = capability->fLabel.c_str();
+	BPopUpMenu* popUpMenu = new BPopUpMenu(label);
+	popUpMenu->SetRadioMode(true);
+
+	PrinterCap::CapID category = static_cast<PrinterCap::CapID>(
+		capability->ID());
+
+	const BaseCap** categoryCapabilities = fPrinterCap->enumCap(category);
+
+	int categoryCount = fPrinterCap->countCap(category);
+
+	string value = GetDriverSpecificValue(category, capability->Key());
+	PrinterCap::KeyPredicate predicate(value.c_str());
+
+	FillCapabilityMenu(popUpMenu, kMsgNone, categoryCapabilities,
+		categoryCount, predicate);
+
+	BString menuLabel = label;
+	menuLabel << ":";
+	BMenuField* menuField = new BMenuField(label, menuLabel.String(),
+		popUpMenu);
+	popUpMenu->SetTargetForItems(this);
+
+	gridLayout->AddItem(menuField->CreateLabelLayoutItem(),
+		0, row);
+	gridLayout->AddItem(menuField->CreateMenuBarLayoutItem(),
+		1, row);
+	row ++;
+
+	fDriverSpecificPopUpMenus[category] = popUpMenu;
+}
+
+
+void
+JobSetupView::AddCheckBox(const DriverSpecificCap* capability,
+	BGridLayout* gridLayout, int& row)
+{
+	PrinterCap::CapID category = static_cast<PrinterCap::CapID>(
+		capability->ID());
+	const BooleanCap* booleanCap = fPrinterCap->findBooleanCap(category);
+	if (booleanCap == NULL) {
+		fprintf(stderr, "Internal error: BooleanCap for '%s' not found!\n",
+			capability->Label());
+		return;
+	}
+
+	const char* key = capability->Key();
+	BString name;
+	name << "pds_" << key;
+	BCheckBox* checkBox = new BCheckBox(name.String(), capability->Label(),
+		NULL);
+
+	bool value = booleanCap->DefaultValue();
+	if (fJobData->Settings().HasBoolean(key))
+		value = fJobData->Settings().GetBoolean(key);
+	if (value)
+		checkBox->SetValue(B_CONTROL_ON);
+
+	gridLayout->AddView(checkBox, 0, row, 2);
+	row ++;
+
+	fDriverSpecificCheckBoxes[capability->Key()] = checkBox;
+}
+
+
+void
+JobSetupView::AddIntSlider(const DriverSpecificCap* capability,
+	BGridLayout* gridLayout, int& row)
+{
+	PrinterCap::CapID category = static_cast<PrinterCap::CapID>(
+		capability->ID());
+	const IntRangeCap* range = fPrinterCap->findIntRangeCap(category);
+	if (range == NULL) {
+		fprintf(stderr, "Internal error: IntRangeCap for '%s' not found!\n",
+			capability->Label());
+		return;
+	}
+
+	const char* label = capability->Label();
+	const char* key = capability->Key();
+	BString name;
+	name << "pds_" << key;
+	BMessage* message = new BMessage(kMsgIntSliderChanged);
+	message->AddInt32(kCategoryID, category);
+	BSlider* slider = new BSlider(name.String(), label,
+		message, 0, 1000, B_HORIZONTAL);
+	slider->SetModificationMessage(new BMessage(*message));
+	slider->SetTarget(this);
+
+	int32 value = range->DefaultValue();
+	if (fJobData->Settings().HasInt(key))
+		value = fJobData->Settings().GetInt(key);
+	float position = (value - range->Lower()) /
+		(range->Upper() - range->Lower());
+	slider->SetPosition(position);
+
+	gridLayout->AddView(slider, 0, row, 2);
+	row ++;
+
+	IntRange intRange(label, key, range, slider);
+	fDriverSpecificIntSliders[category] = intRange;
+	intRange.UpdateLabel();
+}
+
+
+void
+JobSetupView::AddDoubleSlider(const DriverSpecificCap* capability,
+	BGridLayout* gridLayout, int& row)
+{
+	PrinterCap::CapID category = static_cast<PrinterCap::CapID>(
+		capability->ID());
+	const DoubleRangeCap* range = fPrinterCap->findDoubleRangeCap(category);
+	if (range == NULL) {
+		fprintf(stderr, "Internal error: DoubleRangeCap for '%s' not found!\n",
+			capability->Label());
+		return;
+	}
+
+	const char* label = capability->Label();
+	const char* key = capability->Key();
+	BString name;
+	name << "pds_" << key;
+	BMessage* message = new BMessage(kMsgDoubleSliderChanged);
+	message->AddInt32(kCategoryID, category);
+	BSlider* slider = new BSlider(name.String(), label,
+		message, 0, 1000, B_HORIZONTAL);
+	slider->SetModificationMessage(new BMessage(*message));
+	slider->SetTarget(this);
+
+	double value = range->DefaultValue();
+	if (fJobData->Settings().HasDouble(key))
+		value = fJobData->Settings().GetDouble(key);
+	float position = static_cast<float>((value - range->Lower()) /
+		(range->Upper() - range->Lower()));
+	slider->SetPosition(position);
+
+	gridLayout->AddView(slider, 0, row, 2);
+	row ++;
+
+	DoubleRange doubleRange(label, key, range, slider);
+	fDriverSpecificDoubleSliders[category] = doubleRange;
+	doubleRange.UpdateLabel();
+}
+
+
+string
+JobSetupView::GetDriverSpecificValue(PrinterCap::CapID category,
+	const char* key)
+{
+	if (fJobData->Settings().HasString(key))
+		return fJobData->Settings().GetString(key);
+
+	const EnumCap* defaultCapability = fPrinterCap->getDefaultCap(category);
+	return defaultCapability->fKey;
+}
+
+
+template<typename Predicate>
+void
+JobSetupView::FillCapabilityMenu(BPopUpMenu* menu, uint32 message,
+	const BaseCap** capabilities, int count, Predicate& predicate)
+{
+	bool marked = false;
+
+	BMenuItem* firstItem = NULL;
+	BMenuItem* defaultItem = NULL;
+	BMenuItem* item = NULL;
+	while (count--) {
+		const EnumCap* capability = dynamic_cast<const EnumCap*>(*capabilities);
+		if (message != kMsgNone)
+			item = new BMenuItem(capability->fLabel.c_str(),
+				new BMessage(message));
+		else
+			item = new BMenuItem(capability->fLabel.c_str(), NULL);
+
+		menu->AddItem(item);
+
+		if (firstItem == NULL)
+			firstItem = item;
+
+		if (capability->fIsDefault)
+			defaultItem = item;
+
+
+		if (predicate(capability)) {
+			item->SetMarked(true);
+			marked = true;
+		}
+
+		capabilities++;
+	}
+
+	if (marked)
+		return;
+
+	if (defaultItem != NULL)
+		defaultItem->SetMarked(true);
+	else if (firstItem != NULL)
+		firstItem->SetMarked(true);
+}
+
+
+void
+JobSetupView::FillCapabilityMenu(BPopUpMenu* menu, uint32 message,
+	PrinterCap::CapID category, int id)
+{
+	PrinterCap::IDPredicate predicate(id);
+	int count = fPrinterCap->countCap(category);
+	const BaseCap **capabilities = fPrinterCap->enumCap(category);
+	FillCapabilityMenu(menu, message, capabilities, count, predicate);
+}
+
+
+void
+JobSetupView::FillCapabilityMenu(BPopUpMenu* menu, uint32 message,
+	const BaseCap** capabilities, int count, int id)
+{
+	PrinterCap::IDPredicate predicate(id);
+	FillCapabilityMenu(menu, message, capabilities, count, predicate);
+}
+
+
+int
+JobSetupView::GetID(const BaseCap** capabilities, int count, const char* label,
+	int defaultValue)
+{
+	while (count--) {
+		const EnumCap* capability =
+			dynamic_cast<const EnumCap*>(*capabilities);
+		if (capability == NULL)
+			break;
+
+		if (capability->fLabel == label)
+			return capability->ID();
+	}
+	return defaultValue;
+}
+
 
 void
 JobSetupView::UpdateButtonEnabledState()
@@ -514,10 +802,11 @@ JobSetupView::UpdateButtonEnabledState()
 	fEvenNumberedPages->SetEnabled(pageSelectionEnabled);
 }
 
+
 void 
-JobSetupView::MessageReceived(BMessage *msg)
+JobSetupView::MessageReceived(BMessage* message)
 {
-	switch (msg->what) {
+	switch (message->what) {
 	case kMsgRangeAll:
 	case kMsgRangeSelection:
 	case kMsgDuplexChanged:
@@ -525,7 +814,7 @@ JobSetupView::MessageReceived(BMessage *msg)
 		break;
 
 	case kMsgQuality:
-		fHalftone->preview(getGamma(), getInkDensity(), getDitherType(), getColor() != JobData::kMonochrome); 
+		UpdateHalftonePreview();
 		break;
 
 	case kMsgCollateChanged:
@@ -534,76 +823,113 @@ JobSetupView::MessageReceived(BMessage *msg)
 	
 	case kMsgReverseChanged:
 		fPages->setReverse(fReverse->Value() == B_CONTROL_ON);
-		break;	
+		break;
+
+	case kMsgIntSliderChanged:
+		UpdateIntSlider(message);
+		break;
+
+	case kMsgDoubleSliderChanged:
+		UpdateDoubleSlider(message);
+		break;
 	}
 }
+
+
+void
+JobSetupView::UpdateHalftonePreview()
+{
+	if (!IsHalftoneConfigurationNeeded())
+		return;
+
+	fHalftone->preview(Gamma(), InkDensity(), DitherType(),
+		Color() != JobData::kMonochrome);
+}
+
+
+void
+JobSetupView::UpdateIntSlider(BMessage* message)
+{
+	int32 id;
+	if (message->FindInt32(kCategoryID, &id) != B_OK)
+		return;
+	PrinterCap::CapID capID = static_cast<PrinterCap::CapID>(id);
+	fDriverSpecificIntSliders[capID].UpdateLabel();
+}
+
+
+void
+JobSetupView::UpdateDoubleSlider(BMessage* message)
+{
+	int32 id;
+	if (message->FindInt32(kCategoryID, &id) != B_OK)
+		return;
+	PrinterCap::CapID capID = static_cast<PrinterCap::CapID>(id);
+	fDriverSpecificDoubleSliders[capID].UpdateLabel();
+}
+
 
 JobData::Color 
-JobSetupView::getColor()
+JobSetupView::Color()
 {
-	int count = fPrinterCap->countCap(PrinterCap::kColor);
-	const ColorCap **color_cap = (const ColorCap**)fPrinterCap->enumCap(PrinterCap::kColor);
-	const char *color_label = fColorType->FindMarked()->Label();
-	while (count--) {
-		if (!strcmp((*color_cap)->label.c_str(), color_label)) {
-			return (*color_cap)->color;
-		}
-		color_cap++;
-	}
-	return JobData::kMonochrome;
+	const char *label = fColorType->FindMarked()->Label();
+	const BaseCap* capability = fPrinterCap->findCap(PrinterCap::kColor, label);
+	if (capability == NULL)
+		return JobData::kMonochrome;
+
+	const ColorCap* colorCap = static_cast<const ColorCap*>(capability);
+	return colorCap->fColor;
 }
 
+
 Halftone::DitherType 
-JobSetupView::getDitherType()
+JobSetupView::DitherType()
 {
-	int count = sizeof(gDitherTypes) / sizeof(gDitherTypes[0]);
-	const DitherCap **dither_cap = gDitherTypes;
-	const char *dithering_label = fDitherType->FindMarked()->Label();
-	while (count --) {
-		if (strcmp((*dither_cap)->label.c_str(), dithering_label) == 0) {
-			return (*dither_cap)->dither_type;
-		}
-		dither_cap ++;
-	}
-	return Halftone::kTypeFloydSteinberg;
+	const char *label = fDitherType->FindMarked()->Label();
+	int id = GetID(gDitherTypes, sizeof(gDitherTypes) / sizeof(gDitherTypes[0]),
+		label, Halftone::kTypeFloydSteinberg);
+	return static_cast<Halftone::DitherType>(id);
 }
 
 float 
-JobSetupView::getGamma()
+JobSetupView::Gamma()
 {
 	const float value = (float)fGamma->Value();
 	return pow(2.0, value / 100.0);
 }
 
+
 float 
-JobSetupView::getInkDensity()
+JobSetupView::InkDensity()
 {
 	const float value = (float)(127 - fInkDensity->Value());
 	return value;
 }
 
-bool 
-JobSetupView::UpdateJobData(bool showPreview)
-{
-	int count;
 
-/*
-	count = sizeof(gSurfaces) / sizeof(gSurfaces[0]);
-	const SurfaceCap **surface_cap = gSurfaces;
-	const char *surface_label = fSurfaceType->FindMarked()->Label();
-	while (count--) {
-		if (!strcmp((*surface_cap)->label.c_str(), surface_label)) {
-			fJobData->setSurfaceType((*surface_cap)->surface_type);
-			break;
-		}
-		surface_cap++;
+JobData::PaperSource
+JobSetupView::PaperSource()
+{
+	const char *label = fPaperFeed->FindMarked()->Label();
+	const BaseCap* capability = fPrinterCap->findCap(PrinterCap::kPaperSource,
+		label);
+
+	if (capability == NULL)
+		capability = fPrinterCap->getDefaultCap(PrinterCap::kPaperSource);
+	return static_cast<const PaperSourceCap*>(capability)->fPaperSource;
+
+}
+
+bool 
+JobSetupView::UpdateJobData()
+{
+	fJobData->setShowPreview(fPreview->Value() == B_CONTROL_ON);
+	fJobData->setColor(Color());
+	if (IsHalftoneConfigurationNeeded()) {
+		fJobData->setGamma(Gamma());
+		fJobData->setInkDensity(InkDensity());
+		fJobData->setDitherType(DitherType());
 	}
-*/
-	fJobData->setShowPreview(showPreview);
-	fJobData->setColor(getColor());	
-	fJobData->setGamma(getGamma());
-	fJobData->setInkDensity(getInkDensity());
-	fJobData->setDitherType(getDitherType());
 
 	int first_page;
 	int last_page;
@@ -619,36 +945,20 @@ JobSetupView::UpdateJobData(bool showPreview)
 	fJobData->setFirstPage(first_page);
 	fJobData->setLastPage(last_page);
 
-	count = fPrinterCap->countCap(PrinterCap::kPaperSource);
-	const PaperSourceCap **paper_source_cap = (const PaperSourceCap **)fPrinterCap->enumCap(PrinterCap::kPaperSource);
-	const char *paper_source_label = fPaperFeed->FindMarked()->Label();
-	while (count--) {
-		if (!strcmp((*paper_source_cap)->label.c_str(), paper_source_label)) {
-			fJobData->setPaperSource((*paper_source_cap)->paper_source);
-			break;
-		}
-		paper_source_cap++;
-	}
+	fJobData->setPaperSource(PaperSource());
 
-	count = sizeof(gNups) / sizeof(gNups[0]);
-	const NupCap **nup_cap = gNups;
-	const char *nup_label = fNup->FindMarked()->Label();
-	while (count--) {
-		if (!strcmp((*nup_cap)->label.c_str(), nup_label)) {
-			fJobData->setNup((*nup_cap)->nup);
-			break;
-		}
-		nup_cap++;
-	}
+	fJobData->setNup(GetID(gNups, sizeof(gNups) / sizeof(gNups[0]),
+		fNup->FindMarked()->Label(), 1));
 
 	if (fPrinterCap->isSupport(PrinterCap::kPrintStyle)) {
-		fJobData->setPrintStyle((B_CONTROL_ON == fDuplex->Value()) ? JobData::kDuplex : JobData::kSimplex);
+		fJobData->setPrintStyle((B_CONTROL_ON == fDuplex->Value())
+			? JobData::kDuplex : JobData::kSimplex);
 	}
 
 	fJobData->setCopies(atoi(fCopies->Text()));
 
-	fJobData->setCollate((B_CONTROL_ON == fCollate->Value()) ? true : false);
-	fJobData->setReverse((B_CONTROL_ON == fReverse->Value()) ? true : false);
+	fJobData->setCollate(B_CONTROL_ON == fCollate->Value());
+	fJobData->setReverse(B_CONTROL_ON == fReverse->Value());
 
 	JobData::PageSelection pageSelection = JobData::kAllPages;
 	if (fOddNumberedPages->Value() == B_CONTROL_ON)
@@ -657,23 +967,67 @@ JobSetupView::UpdateJobData(bool showPreview)
 		pageSelection = JobData::kEvenNumberedPages;
 	fJobData->setPageSelection(pageSelection);
 	
+	{
+		std::map<PrinterCap::CapID, BPopUpMenu*>::iterator it =
+			fDriverSpecificPopUpMenus.begin();
+		for(; it != fDriverSpecificPopUpMenus.end(); it++) {
+			PrinterCap::CapID category = it->first;
+			BPopUpMenu* popUpMenu = it->second;
+			const char* key = fPrinterCap->findCap(
+				PrinterCap::kDriverSpecificCapabilities, (int)category)->Key();
+			const char* label = popUpMenu->FindMarked()->Label();
+			const char* value = static_cast<const EnumCap*>(fPrinterCap->
+				findCap(category, label))->Key();
+			fJobData->Settings().SetString(key, value);
+		}
+	}
+
+	{
+		std::map<string, BCheckBox*>::iterator it =
+			fDriverSpecificCheckBoxes.begin();
+		for(; it != fDriverSpecificCheckBoxes.end(); it++) {
+			const char* key = it->first.c_str();
+			BCheckBox* checkBox = it->second;
+			bool value = checkBox->Value() == B_CONTROL_ON;
+			fJobData->Settings().SetBoolean(key, value);
+		}
+	}
+
+	{
+		std::map<PrinterCap::CapID, IntRange>::iterator it =
+			fDriverSpecificIntSliders.begin();
+		for(; it != fDriverSpecificIntSliders.end(); it++) {
+			IntRange& range = it->second;
+			fJobData->Settings().SetInt(range.Key(), range.Value());
+		}
+	}
+
+	{
+		std::map<PrinterCap::CapID, DoubleRange>::iterator it =
+			fDriverSpecificDoubleSliders.begin();
+		for(; it != fDriverSpecificDoubleSliders.end(); it++) {
+			DoubleRange& range = it->second;
+			fJobData->Settings().SetDouble(range.Key(), range.Value());
+		}
+	}
+
 	fJobData->save();
 	return true;
 }
 
-//====================================================================
 
-JobSetupDlg::JobSetupDlg(JobData *job_data, PrinterData *printer_data,
-	const PrinterCap *printer_cap)
-	: DialogWindow(BRect(100, 100, 200, 200),
-		"PrintJob Setup", B_TITLED_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
+JobSetupDlg::JobSetupDlg(JobData* jobData, PrinterData* printerData,
+	const PrinterCap* printerCap)
+	:
+	DialogWindow(BRect(100, 100, 200, 200), "PrintJob Setup",
+		B_TITLED_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
 		B_NOT_RESIZABLE | B_NOT_MINIMIZABLE | B_NOT_ZOOMABLE
 			| B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS)
 {
 	SetResult(B_ERROR);
 	AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
 	
-	fJobSetup = new JobSetupView(job_data, printer_data, printer_cap);
+	fJobSetup = new JobSetupView(jobData, printerData, printerCap);
 	SetLayout(new BGroupLayout(B_VERTICAL));
 	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0)
 		.Add(fJobSetup)
@@ -681,13 +1035,13 @@ JobSetupDlg::JobSetupDlg(JobData *job_data, PrinterData *printer_data,
 	);
 }
 
+
 void 
-JobSetupDlg::MessageReceived(BMessage *msg)
+JobSetupDlg::MessageReceived(BMessage* message)
 {
-	switch (msg->what) {
+	switch (message->what) {
 	case kMsgOK:
-	case kMsgPreview:
-		fJobSetup->UpdateJobData(msg->what == kMsgPreview);
+		fJobSetup->UpdateJobData();
 		SetResult(B_NO_ERROR);
 		PostMessage(B_QUIT_REQUESTED);
 		break;
@@ -697,7 +1051,7 @@ JobSetupDlg::MessageReceived(BMessage *msg)
 		break;
 		
 	default:
-		DialogWindow::MessageReceived(msg);
+		DialogWindow::MessageReceived(message);
 		break;
 	}
 }

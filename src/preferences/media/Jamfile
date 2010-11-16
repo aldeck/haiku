@@ -7,14 +7,15 @@ if ! $(TARGET_PLATFORM_HAIKU_COMPATIBLE) {
 }
 
 UseLibraryHeaders icon ;
-UsePrivateHeaders media ;
+UsePrivateHeaders media shared ;
 
 Preference Media :
 	Media.cpp
-	MediaWindow.cpp
-	MediaViews.cpp
-	MediaListItem.cpp
 	MediaAlert.cpp 
+	MediaIcons.cpp
+	MediaListItem.cpp
+	MediaViews.cpp
+	MediaWindow.cpp
 	: media be $(HAIKU_LOCALE_LIBS) $(TARGET_LIBSUPC++)
 	: media.rdef 
 	;

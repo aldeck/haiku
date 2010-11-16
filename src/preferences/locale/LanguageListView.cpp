@@ -18,7 +18,8 @@
 
 #include <Bitmap.h>
 #include <Catalog.h>
-#include <Country.h>
+#include <FormattingConventions.h>
+#include <LocaleRoster.h>
 #include <Window.h>
 
 
@@ -29,18 +30,18 @@
 #define B_TRANSLATE_CONTEXT "LanguageListView"
 
 
+static const float kFlagWidth = 17.0;
+
 LanguageListItem::LanguageListItem(const char* text, const char* id,
-	const char* code)
+	const char* code, const char* countryCode)
 	:
 	BStringItem(text),
 	fID(id),
 	fCode(code)
 {
-	// TODO: should probably keep the BCountry as a member of the class
-	BCountry country(id);
-
 	fIcon = new(std::nothrow) BBitmap(BRect(0, 0, 15, 15), B_RGBA32);
-	if (fIcon != NULL && country.GetIcon(fIcon) != B_OK) {
+	if (fIcon != NULL && be_locale_roster->GetFlagIconForCountry(fIcon,
+			countryCode) != B_OK) {
 		delete fIcon;
 		fIcon = NULL;
 	}
@@ -105,10 +106,10 @@ LanguageListItem::DrawItem(BView* owner, BRect frame, bool complete)
 	owner->DrawString(text.String());
 
 	// Draw the icon
-	frame.left = frame.right - 17;
+	frame.left = frame.right - kFlagWidth;
 	BRect iconFrame(frame);
-	iconFrame.Set(iconFrame.left, iconFrame.top + 1, iconFrame.left + 15,
-		iconFrame.top + 16);
+	iconFrame.Set(iconFrame.left, iconFrame.top + 1, iconFrame.left + kFlagWidth - 2,
+		iconFrame.top + kFlagWidth - 1);
 
 	if (fIcon != NULL && fIcon->IsValid()) {
 		owner->SetDrawingMode(B_OP_OVER);
@@ -116,6 +117,14 @@ LanguageListItem::DrawItem(BView* owner, BRect frame, bool complete)
 		owner->SetDrawingMode(B_OP_COPY);
 	}
 
+}
+
+
+void
+LanguageListItem::Update(BView* owner, const BFont* font)
+{
+	BStringItem::Update(owner, font);
+	SetWidth(Width() + kFlagWidth);
 }
 
 

@@ -130,6 +130,9 @@ StackAndTile::MouseDown(Window* window, BMessage* message, const BPoint& where)
 	if (!satWindow || !satWindow->GetDecorator())
 		return;
 
+	// we are only interested in single clicks
+	if (message->FindInt32("clicks") == 2)
+		return;
 	int32 modifiers = message->FindInt32("modifiers");
 	int32 buttons = message->FindInt32("buttons");
 	click_type clickArea = satWindow->GetDecorator()->MouseAction(message,
@@ -186,13 +189,14 @@ StackAndTile::WindowResized(Window* window)
 	SATWindow* satWindow = GetSATWindow(window);
 	if (!satWindow)
 		return;
+	satWindow->Resized();
 
 	if (SATKeyPressed() && fCurrentSATWindow)
 		satWindow->FindSnappingCandidates();
 	else {
 		satWindow->DoGroupLayout();
 
-		// Do a window layout for all windows. TODO: mybe do it a bit more
+		// Do a window layout for all windows. TODO: maybe do it a bit more
 		// efficient
 		SATGroup* group = satWindow->GetGroup();
 		if (!group)

@@ -188,32 +188,33 @@ auich_stream_set_audioparms(auich_stream *stream, uint8 channels,
 status_t
 auich_stream_commit_parms(auich_stream *stream)
 {
-	uint32      	*page;
-	uint32 			i;
+	uint32 *page;
+	uint32 i;
 	LOG(("auich_stream_commit_parms\n"));
 
 	auich_reg_write_8(&stream->card->config, stream->base + AUICH_REG_X_CR, 0);
 	snooze(10000); // 10 ms
 
-	auich_reg_write_8(&stream->card->config, stream->base + AUICH_REG_X_CR, CR_RR);
-	for (i = 10000; i>=0; i--) {
-		if (0 == auich_reg_read_8(&stream->card->config, stream->base + AUICH_REG_X_CR)) {
+	auich_reg_write_8(&stream->card->config, 
+		stream->base + AUICH_REG_X_CR, CR_RR);
+	for (i = 10000; i > 0; i--) {
+		if (0 == auich_reg_read_8(&stream->card->config, 
+			stream->base + AUICH_REG_X_CR)) {
 			LOG(("channel reset finished, %x, %d\n", stream->base, i));
 			break;
 		}
 		spin(1);
 	}
 
-	if (i < 0) {
-		LOG(("channel reset failed after 10ms\n"));
-	}
+	if (i == 0)
+		PRINT(("channel reset failed after 10ms\n"));
 
 	page = stream->dmaops_log_base;
 
 	for (i = 0; i < AUICH_DMALIST_MAX; i++) {
-		page[2*i] = ((uint32)stream->buffer->phy_base)
+		page[2 * i] = ((uint32)stream->buffer->phy_base)
 			+ (i % stream->bufcount) * stream->blksize;
-		page[2*i + 1] = AUICH_DMAF_IOC | (stream->blksize
+		page[2 * i + 1] = AUICH_DMAF_IOC | (stream->blksize
 			/ (IS_SIS7012(&stream->card->config) ? 1 : 2));
 	}
 
@@ -636,17 +637,30 @@ auich_setup(auich_dev * card)
 	if (card->info.device_id == SIS_SI7012_AC97_DEVICE_ID)
 		card->config.type |= TYPE_SIS7012;
 
-	PRINT(("%s deviceid = %#04x chiprev = %x model = %x enhanced at %lx\n", card->name, card->info.device_id,
-		card->info.revision, card->info.u.h0.subsystem_id, card->config.nabmbar));
+	PRINT(("%s deviceid = %#04x chiprev = %x model = %x enhanced at %lx\n",
+		card->name, card->info.device_id, card->info.revision,
+		card->info.u.h0.subsystem_id, card->config.nabmbar));
 
 	if (IS_ICH4(&card->config)) {
 		// memory mapped access
-		card->config.mmbar = 0xfffffffe & (*pci->read_pci_config)(card->info.bus, card->info.device, card->info.function, 0x18, 4);
-		card->config.mbbar = 0xfffffffe & (*pci->read_pci_config)(card->info.bus, card->info.device, card->info.function, 0x1C, 4);
+		card->config.mmbar = 0xfffffffe & (*pci->read_pci_config)
+			(card->info.bus, card->info.device, card->info.function, 0x18, 4);
+		card->config.mbbar = 0xfffffffe & (*pci->read_pci_config)
+			(card->info.bus, card->info.device, card->info.function, 0x1C, 4);
+		if (card->config.mmbar == 0 || card->config.mbbar == 0) {
+			PRINT(("memory mapped IO not configured\n"));
+			return B_ERROR;
+		}
 	} else {
 		// pio access
-		card->config.nambar = 0xfffffffe & (*pci->read_pci_config)(card->info.bus, card->info.device, card->info.function, 0x10, 4);
-		card->config.nabmbar = 0xfffffffe & (*pci->read_pci_config)(card->info.bus, card->info.device, card->info.function, 0x14, 4);
+		card->config.nambar = 0xfffffffe & (*pci->read_pci_config)
+			(card->info.bus, card->info.device, card->info.function, 0x10, 4);
+		card->config.nabmbar = 0xfffffffe & (*pci->read_pci_config)
+			(card->info.bus, card->info.device, card->info.function, 0x14, 4);
+		if (card->config.nambar == 0 || card->config.nabmbar == 0) {
+			PRINT(("IO space not configured\n"));
+			return B_ERROR;
+		}
 	}
 
 	/* before doing anything else, map the IO memory */
@@ -656,14 +670,18 @@ auich_setup(auich_dev * card)
 		return B_ERROR;
 	}
 
-	cmd = (*pci->read_pci_config)(card->info.bus, card->info.device, card->info.function, PCI_command, 2);
+	cmd = (*pci->read_pci_config)(card->info.bus, card->info.device,
+		card->info.function, PCI_command, 2);
 	PRINT(("PCI command before: %x\n", cmd));
 	if (IS_ICH4(&card->config)) {
-		(*pci->write_pci_config)(card->info.bus, card->info.device, card->info.function, PCI_command, 2, cmd | PCI_command_memory);
+		(*pci->write_pci_config)(card->info.bus, card->info.device,
+			card->info.function, PCI_command, 2, cmd | PCI_command_memory);
 	} else {
-		(*pci->write_pci_config)(card->info.bus, card->info.device, card->info.function, PCI_command, 2, cmd | PCI_command_io);
+		(*pci->write_pci_config)(card->info.bus, card->info.device,
+			card->info.function, PCI_command, 2, cmd | PCI_command_io);
 	}
-	cmd = (*pci->read_pci_config)(card->info.bus, card->info.device, card->info.function, PCI_command, 2);
+	cmd = (*pci->read_pci_config)(card->info.bus, card->info.device,
+		card->info.function, PCI_command, 2);
 	PRINT(("PCI command after: %x\n", cmd));
 
 	/* do a cold reset */
@@ -706,7 +724,8 @@ auich_setup(auich_dev * card)
 		LOG(("6ch PCM output support\n"));
 	}
 
-	if (current_settings.use_thread) {
+	if (current_settings.use_thread || card->config.irq == 0
+		|| card->config.irq == 0xff) {
 		int_thread_id = spawn_kernel_thread(auich_int_thread,
 			"auich interrupt poller", B_REAL_TIME_PRIORITY, card);
 		resume_thread(int_thread_id);
@@ -855,6 +874,11 @@ uninit_driver(void)
 
 	for (ix=0; ix<cnt; ix++) {
 		auich_shutdown(&cards[ix]);
+#ifdef __HAIKU__
+		(*pci->unreserve_device)(cards[ix].info.bus,
+			cards[ix].info.device, cards[ix].info.function,
+			DRIVER_NAME, &cards[ix]);
+#endif
 	}
 	memset(&cards, 0, sizeof(cards));
 	put_module(B_PCI_MODULE_NAME);

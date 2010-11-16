@@ -29,6 +29,7 @@
 #include "Globals.h"
 #include "Messages.h"
 #include "PrinterListView.h"
+#include "TransportMenu.h"
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -364,37 +365,27 @@ AddPrinterDialog::_FillTransportMenu(BMenu* menu)
 
 		// Now get ports...
 		BString portId, portName;
+		int32 error;
 		msg.MakeEmpty();
 		msg.what = B_GET_PROPERTY;
 		msg.AddSpecifier("Ports");
 		if (transport.SendMessage(&msg, &reply) != B_OK ||
-			reply.FindString("port_id", &portId) != B_OK) {
-			// Can't find ports; so just show transport item, no menu
+			reply.FindInt32("error", &error) != B_OK ||
+			error != B_OK) {
+			// Transport does not provide list of ports
 			BMessage* menuMsg = new BMessage(kTransportSelectedMsg);
 			menuMsg->AddString("name", transportName);
 			menu->AddItem(new BMenuItem(transportName.String(), menuMsg));
 			continue;
 		}
 
-		// We have at least one port; so create submenu
-		BMenu* transportMenu = new BMenu(transportName.String());
+		// Create submenu
+		BMenu* transportMenu = new TransportMenu(transportName.String(),
+			kTransportSelectedMsg, transport, transportName);
 		menu->AddItem(transportMenu);
 		transportMenu->SetRadioMode(true);
 		menu->ItemAt(menu->IndexOf(transportMenu))->
 			SetMessage(new BMessage(kTransportSelectedMsg));
-
-		for (int32 i = 0; reply.FindString("port_id", i, &portId) == B_OK;
-			i++) {
-			if (reply.FindString("port_name", i, &portName) != B_OK
-				|| !portName.Length())
-				portName = portId;
-
-			// Create menu item in submenu for port
-			BMessage* portMsg = new BMessage(kTransportSelectedMsg);
-			portMsg->AddString("name", transportName);
-			portMsg->AddString("path", portId);
-			transportMenu->AddItem(new BMenuItem(portName.String(), portMsg));
-		}
 	}
 }
 

@@ -31,6 +31,9 @@ public:
 									type_code valueType, bool shortValueIsFine,
 									BVariant& _value);
 
+			status_t			LoadStringValue(BVariant& location,
+									BString& _value);
+
 private:
 			Architecture*		fArchitecture;
 			TeamMemory*			fTeamMemory;

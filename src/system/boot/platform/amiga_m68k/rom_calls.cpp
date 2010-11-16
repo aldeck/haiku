@@ -14,6 +14,10 @@
 #include "rom_calls.h"
 
 
+struct GfxBase *GRAPHICS_BASE_NAME = NULL;
+struct Library *KEYMAP_BASE_NAME = NULL;
+struct Library *LOWLEVEL_BASE_NAME = NULL;
+
 
 /*! Maps Amiga error codes to native errors
  */
@@ -21,6 +25,8 @@ extern "C" status_t
 exec_error(int32 err)
 {
 	switch (err) {
+		case 0:
+			return B_OK;
 		case IOERR_OPENFAIL:
 			return B_DEV_BAD_DRIVE_NUM;
 		case IOERR_ABORTED:

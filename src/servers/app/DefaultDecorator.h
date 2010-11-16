@@ -41,6 +41,9 @@ public:
 									BPoint point, int32 buttons,
 									int32 modifiers);
 
+			float				BorderWidth();
+			float				TabHeight();
+
 protected:
 	virtual void				_DoLayout();
 
@@ -133,6 +136,7 @@ protected:
 			int32				fTruncatedTitleLength;
 
 private:
+			click_type			fLastAction;
 			bool				fWasDoubleClick;
 };
 

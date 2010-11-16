@@ -65,16 +65,16 @@ struct ext2_super_block {
 	uint32	hash_seed[4];
 	uint8	default_hash_version;
 	uint8	_reserved1;
-	uint16	_reserved2;
+	uint16	group_descriptor_size;
 	uint32	default_mount_options;
 	uint32	first_meta_block_group;
 	uint32	fs_creation_time;
 	uint32	journal_inode_backup[17];
 
 	// ext4 support
-	uint32	num_blocks_hi;
-	uint32	reserved_blocks_hi;
-	uint32	free_blocks_hi;
+	uint32	num_blocks_high;
+	uint32	reserved_blocks_high;
+	uint32	free_blocks_high;
 	uint16	min_inode_size;
 	uint16	want_inode_size;
 	uint32	flags;
@@ -92,9 +92,21 @@ struct ext2_super_block {
 	uint32 RevisionLevel() const { return B_LENDIAN_TO_HOST_INT16(revision_level); }
 	uint32 BlockShift() const { return B_LENDIAN_TO_HOST_INT32(block_shift) + 10; }
 	uint32 NumInodes() const { return B_LENDIAN_TO_HOST_INT32(num_inodes); }
-	uint32 NumBlocks() const { return B_LENDIAN_TO_HOST_INT32(num_blocks); }
+	uint64 NumBlocks(bool has64bits) const
+	{
+		uint64 blocks = B_LENDIAN_TO_HOST_INT32(num_blocks);
+		if (has64bits)
+			blocks |= ((uint64)B_LENDIAN_TO_HOST_INT32(num_blocks_high) << 32);
+		return blocks;
+	}
 	uint32 FreeInodes() const { return B_LENDIAN_TO_HOST_INT32(free_inodes); }
-	uint32 FreeBlocks() const { return B_LENDIAN_TO_HOST_INT32(free_blocks); }
+	uint64 FreeBlocks(bool has64bits) const
+	{
+		uint64 blocks = B_LENDIAN_TO_HOST_INT32(free_blocks);
+		if (has64bits)
+			blocks |= ((uint64)B_LENDIAN_TO_HOST_INT32(free_blocks_high) << 32);
+		return blocks;
+	}
 	uint16 InodeSize() const { return B_LENDIAN_TO_HOST_INT16(inode_size); }
 	uint32 FirstDataBlock() const
 		{ return B_LENDIAN_TO_HOST_INT32(first_data_block); }
@@ -116,14 +128,22 @@ struct ext2_super_block {
 		{ return (ino_t)B_LENDIAN_TO_HOST_INT32(last_orphan); }
 	uint32 HashSeed(uint8 i) const
 		{ return B_LENDIAN_TO_HOST_INT32(hash_seed[i]); }
+	uint16 GroupDescriptorSize() const
+		{ return B_LENDIAN_TO_HOST_INT16(group_descriptor_size); }
 
 	void SetFreeInodes(uint32 freeInodes)
 		{ free_inodes = B_HOST_TO_LENDIAN_INT32(freeInodes); }
-	void SetFreeBlocks(uint32 freeBlocks)
-		{ free_blocks = B_HOST_TO_LENDIAN_INT32(freeBlocks); }
+	void SetFreeBlocks(uint64 freeBlocks, bool has64bits)
+	{
+		free_blocks = B_HOST_TO_LENDIAN_INT32(freeBlocks & 0xffffffff);
+		if (has64bits)
+			free_blocks_high = B_HOST_TO_LENDIAN_INT32(freeBlocks >> 32);  
+	}
 	void SetLastOrphan(ino_t id)
 		{ last_orphan = B_HOST_TO_LENDIAN_INT32((uint32)id); }
-
+	void SetReadOnlyFeatures(uint32 readOnlyFeatures) const
+		{ readOnlyFeatures = B_HOST_TO_LENDIAN_INT32(readOnlyFeatures); }
+	
 	bool IsValid();
 		// implemented in Volume.cpp
 } _PACKED;
@@ -147,9 +167,12 @@ struct ext2_super_block {
 
 // read-only compatible features
 #define EXT2_READ_ONLY_FEATURE_SPARSE_SUPER		0x0001
-#define	EXT2_READ_ONLY_FEATURE_LARGE_FILE		0x0002
+#define EXT2_READ_ONLY_FEATURE_LARGE_FILE		0x0002
 #define EXT2_READ_ONLY_FEATURE_BTREE_DIRECTORY	0x0004
 #define EXT2_READ_ONLY_FEATURE_HUGE_FILE		0x0008
+#define EXT2_READ_ONLY_FEATURE_GDT_CSUM			0x0010
+#define EXT2_READ_ONLY_FEATURE_DIR_NLINK		0x0020
+#define EXT2_READ_ONLY_FEATURE_EXTRA_ISIZE		0x0040
 
 // incompatible features
 #define EXT2_INCOMPATIBLE_FEATURE_COMPRESSION	0x0001
@@ -166,6 +189,8 @@ struct ext2_super_block {
 #define EXT2_STATE_VALID						0x01
 #define	EXT2_STATE_INVALID						0x02
 
+#define EXT2_BLOCK_GROUP_NORMAL_SIZE			32
+
 struct ext2_block_group {
 	uint32	block_bitmap;
 	uint32	inode_bitmap;
@@ -173,30 +198,91 @@ struct ext2_block_group {
 	uint16	free_blocks;
 	uint16	free_inodes;
 	uint16	used_directories;
-	uint16	_padding;
-	uint32	_reserved[3];
+	uint16	flags;
+	uint32	_reserved[2];
+	uint16	unused_inodes;
+	uint16	checksum;
+	
+	// ext4
+	uint32	block_bitmap_high;
+	uint32	inode_bitmap_high;
+	uint32	inode_table_high;
+	uint16	free_blocks_high;
+	uint16	free_inodes_high;
+	uint16	used_directories_high;
+	uint16	unused_inodes_high;
+	uint32	_reserved2[3];
 
-	uint32	BlockBitmap() const
-		{ return B_LENDIAN_TO_HOST_INT32(block_bitmap); }
-	uint32	InodeBitmap() const
-		{ return B_LENDIAN_TO_HOST_INT32(inode_bitmap); }
-	uint32	InodeTable() const
-		{ return B_LENDIAN_TO_HOST_INT32(inode_table); }
-	uint16	FreeBlocks() const
-		{ return B_LENDIAN_TO_HOST_INT16(free_blocks); }
-	uint16	FreeInodes() const
-		{ return B_LENDIAN_TO_HOST_INT16(free_inodes); }
-	uint16	UsedDirectories() const
-		{ return B_LENDIAN_TO_HOST_INT16(used_directories); }
+	uint64 BlockBitmap(bool has64bits) const
+	{
+		uint64 block = B_LENDIAN_TO_HOST_INT32(block_bitmap);
+		if (has64bits)
+			block |=
+				((uint64)B_LENDIAN_TO_HOST_INT32(block_bitmap_high) << 32);
+		return block;
+	}
+	uint64 InodeBitmap(bool has64bits) const
+	{
+		uint64 bitmap = B_LENDIAN_TO_HOST_INT32(inode_bitmap);
+		if (has64bits)
+			bitmap |=
+				((uint64)B_LENDIAN_TO_HOST_INT32(inode_bitmap_high) << 32);
+		return bitmap;
+	}
+	uint64 InodeTable(bool has64bits) const
+	{
+		uint64 table = B_LENDIAN_TO_HOST_INT32(inode_table);
+		if (has64bits)
+			table |= ((uint64)B_LENDIAN_TO_HOST_INT32(inode_table_high) << 32);
+		return table;
+	}
+	uint32 FreeBlocks(bool has64bits) const
+	{
+		uint32 blocks = B_LENDIAN_TO_HOST_INT16(free_blocks);
+		if (has64bits)
+			blocks |= 
+				((uint32)B_LENDIAN_TO_HOST_INT16(free_blocks_high) << 16);
+		return blocks;
+	}
+	uint32 FreeInodes(bool has64bits) const
+	{
+		uint32 inodes = B_LENDIAN_TO_HOST_INT16(free_inodes);
+		if (has64bits)
+			inodes |= 
+				((uint32)B_LENDIAN_TO_HOST_INT16(free_inodes_high) << 16);
+		return inodes;
+	}
+	uint32 UsedDirectories(bool has64bits) const
+	{
+		uint32 dirs = B_LENDIAN_TO_HOST_INT16(used_directories);
+		if (has64bits)
+			dirs |= 
+				((uint32)B_LENDIAN_TO_HOST_INT16(used_directories_high) << 16);
+		return dirs;
+	}
 
-	void	SetFreeBlocks(uint16 freeBlocks)
-		{ free_blocks = B_HOST_TO_LENDIAN_INT16(freeBlocks); }
 
-	void	SetFreeInodes(uint16 freeInodes)
-		{ free_inodes = B_HOST_TO_LENDIAN_INT16(freeInodes); }
+	void SetFreeBlocks(uint32 freeBlocks, bool has64bits)
+	{
+		free_blocks = B_HOST_TO_LENDIAN_INT16(freeBlocks) & 0xffff;
+		if (has64bits)
+			free_blocks_high = B_HOST_TO_LENDIAN_INT16(freeBlocks >> 16);
+	}
 
-	void	SetUsedDirectories(uint16 usedDirectories)
-		{ used_directories = B_HOST_TO_LENDIAN_INT16(usedDirectories); }
+	void SetFreeInodes(uint32 freeInodes, bool has64bits)
+	{
+		free_inodes = B_HOST_TO_LENDIAN_INT16(freeInodes) & 0xffff;
+		if (has64bits)
+			free_inodes_high = B_HOST_TO_LENDIAN_INT16(freeInodes >> 16);
+	}
+
+	void SetUsedDirectories(uint16 usedDirectories, bool has64bits)
+	{
+		used_directories = B_HOST_TO_LENDIAN_INT16(usedDirectories& 0xffff);
+		if (has64bits)
+			used_directories_high =
+				B_HOST_TO_LENDIAN_INT16(usedDirectories >> 16);
+	}
 } _PACKED;
 
 #define EXT2_DIRECT_BLOCKS			12
@@ -349,6 +435,9 @@ struct ext2_inode {
 		return B_LENDIAN_TO_HOST_INT32(size);
 	}
 
+	uint32 ExtendedAttributesBlock() const
+	{	return B_LENDIAN_TO_HOST_INT32(file_access_control);}
+
 	uint16 ExtraInodeSize() const
 		{ return B_LENDIAN_TO_HOST_INT16(extra_inode_size); }
 
@@ -458,6 +547,7 @@ struct ext2_inode {
 #define EXT2_INODE_BTREE				0x00001000
 #define EXT2_INODE_INDEXED				0x00001000
 #define EXT2_INODE_HUGE_FILE			0x00040000
+#define EXT2_INODE_EXTENTS				0x00080000
 
 #define EXT2_NAME_LENGTH	255
 
@@ -503,7 +593,7 @@ struct ext2_dir_entry {
 } _PACKED;
 
 // file types
-#define EXT2_TYPE_UNKOWN		0
+#define EXT2_TYPE_UNKNOWN		0
 #define EXT2_TYPE_FILE			1
 #define EXT2_TYPE_DIRECTORY		2
 #define EXT2_TYPE_CHAR_DEVICE	3

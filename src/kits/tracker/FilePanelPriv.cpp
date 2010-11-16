@@ -624,7 +624,7 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 	}	
 	
 	// add directory menu and menufield
-	fDirMenu = new BDirMenu(0, kSwitchDirectory, "refs");
+	fDirMenu = new BDirMenu(0, this, kSwitchDirectory, "refs");
 	fDirMenuField = new BMenuField("DirMenuField", "", fDirMenu);
 	fDirMenuField->MenuBar()->SetFont(be_plain_font);
 	fDirMenuField->SetDivider(0);

@@ -1,8 +1,5 @@
 SubDir HAIKU_TOP ;
 
-NotFile alltests ;
-Depends alltests : r5tests obostests ;
-
 NotFile doc_files ;
 Depends files : doc_files ;
 
@@ -30,6 +27,7 @@ Depends MailKit :
 ;
 
 # Pseudo-target to build the media stuffs only
+# TODO: don't know how to make avcodec mp3_decoder mp3_reader ogg speex vorbis
 NotFile MediaKit ;
 Depends MediaKit :
 	libmedia.so
@@ -98,7 +96,7 @@ NotFile OpenGLKit ;
 Depends OpenGLKit :
 	libGL.so
 	GLTeapot
-	GLInfo
+#	GLInfo
 ;
 
 # Pseudo-target to build the screensaver kit only
@@ -112,6 +110,7 @@ Depends ScreenSaverKit :
 ;
 
 # Pseudo-target to build the locale kit only
+# TODO: src/add-ons/locale/collators/GermanDIN-2.cpp does not compile
 NotFile LocaleKit ;
 Depends LocaleKit :
 	liblocale.so
@@ -149,8 +148,8 @@ if $(HAIKU_OPENSSL_ENABLED) {
 
 AddOptionalHaikuImagePackages ICU ;
 
-# Evaluate optional package dependencies 
-include [ FDirName $(HAIKU_BUILD_RULES_DIR) OptionalPackageDependencies ] ; 
+# Evaluate optional package dependencies
+include [ FDirName $(HAIKU_BUILD_RULES_DIR) OptionalPackageDependencies ] ;
 
 # Optionally we allow not to include the "src" subdirectory.
 if $(HAIKU_DONT_INCLUDE_SRC) {
@@ -196,3 +195,13 @@ for package in $(HAIKU_ADDED_OPTIONAL_PACKAGES) {
 if $(packageError) {
 	Exit ;
 }
+
+# Pseudo-target to build all targets that are localized.
+NotFile LocalizedTargets ;
+Depends LocalizedTargets : $(HAIKU_LOCALIZED_TARGETS) ;
+
+NotFile catalogs ;
+Depends catalogs : $(HAIKU_LOCALE_CATALOGS) ;
+
+NotFile catkeys ;
+Depends catkeys : $(HAIKU_LOCALE_OUTPUT_CATKEYS) ;
