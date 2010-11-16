@@ -135,7 +135,7 @@ BDeskWindow::BDeskWindow(Model* model, LockingList<BWindow> *windowList)
 	message = new BMessage(kIconMode);
 	message->AddInt32("scale", 0);
 	AddShortcut('-', B_COMMAND_KEY, message, PoseView());
-	
+
 	_Init();
 }
 
@@ -204,20 +204,20 @@ void
 BDeskWindow::_Init(const BMessage *message)
 {
 	printf("(%p) BDesktopWindow::_Init\n", this);
-	
+
 	AutoLock<BWindow> lock(this);
 	if (!lock)
 		return;
-		
+
 	// create controls
 	fPoseView = new DesktopPoseView(fCreationModel, kIconMode);
 	fController = new PoseViewController();
-	
+
 	Controller()->SetPoseView(fPoseView);
 	Controller()->CreateControls(fCreationModel);
 	// TODO: disable scrollbars
-	
-	// layout controls	
+
+	// layout controls
 	BLayoutBuilder::Group<>(this, B_HORIZONTAL, 0.0f)
 		.Add(Controller()->PoseView());
 
@@ -239,18 +239,11 @@ BDeskWindow::_Init(const BMessage *message)
 	fPoseView->SetEnsurePosesVisible(true);
 	fPoseView->SetAutoScroll(false);
 
-	PoseView()->StartSettingsWatch();	
-	
+	PoseView()->StartSettingsWatch();
+
 	// deal with new unconfigured folders
 	if (NeedsDefaultStateSetup())
 		SetUpDefaultState();
-		
-	fMoveToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Move to"),
-		kMoveSelectionTo, this));
-	fCopyToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Copy to"),
-		kCopySelectionTo, this));
-	fCreateLinkItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Create link"),
-		kCreateLink, this), new BMessage(kCreateLink));
 
 	if (message)
 		RestoreState(*message);
@@ -258,11 +251,11 @@ BDeskWindow::_Init(const BMessage *message)
 		RestoreState();
 
 	// setup controls
-	Controller()->CreateMenus(); // TODO: shouldn't be needed, old code needs it
-	AddContextMenus();	
-	AddCommonShortcuts();	
+	Controller()->CreateMoveCopyMenus();
+	AddContextMenus();
+	AddCommonShortcuts();
 	CheckScreenIntersect();
-	
+
 	//
 	//	Set the size of the screen before calling the container window's
 	//	Init() because it will add volume poses to this window and
@@ -442,7 +435,7 @@ BDeskWindow::Show()
 {
 	if (fBackgroundImage)
 		fBackgroundImage->Show(PoseView(), current_workspace());
-	
+
 	_inherited::Show();
 }
 

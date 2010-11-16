@@ -43,6 +43,9 @@ PoseViewController::PoseViewController()
 	fAttributesMenu(NULL),
 	fWindowMenu(NULL),
 	fFileMenu(NULL),
+	fMoveToMenu(NULL),
+	fCopyToMenu(NULL),
+	fCreateLinkMenu(NULL),
 	fNavigator(NULL),
 	fTitleView(NULL),
 	fPoseView(NULL),
@@ -53,8 +56,8 @@ PoseViewController::PoseViewController()
 }
 
 
-PoseViewController::~PoseViewController()	
-{	
+PoseViewController::~PoseViewController()
+{
 	// TODO
 	if (fTitleView && !fTitleView->Window())
 		delete fTitleView;
@@ -67,7 +70,7 @@ PoseViewController::SetPoseView(BPoseView* poseView)
 	if (fPoseView != NULL)
 		printf("Error! PoseViewController::SetPoseView poseview "
 			"already set!\n");
-	
+
 	if (fPoseView == NULL) {
 		fPoseView = poseView;
 		fPoseView->SetController(this);
@@ -99,12 +102,85 @@ PoseViewController::CreateControls(Model *model)
 void
 PoseViewController::CreateMenus()
 {
-	fFileMenu = new DefaultFileMenu(this);
+	DefaultFileMenu* fileMenu = new DefaultFileMenu(this);
+	fPoseView->AddListener(fileMenu);
+	fFileMenu = fileMenu;
+
 	fWindowMenu = new DefaultWindowMenu(this);
-	fAttributesMenu = new DefaultAttributeMenu(this);
+
+	DefaultAttributeMenu* attributesMenu = new DefaultAttributeMenu(this);
+	fPoseView->AddListener(attributesMenu);
+	fAttributesMenu = attributesMenu;
 
 	fMenuBar->AddItem(fFileMenu);
 	fMenuBar->AddItem(fWindowMenu);
+}
+
+
+
+void
+PoseViewController::CreateMoveCopyMenus()
+{
+	DefaultMoveMenu* menu
+		= new DefaultMoveMenu(B_TRANSLATE("Move to"), kMoveSelectionTo, this);
+	fPoseView->AddListener(menu);
+	fMoveToMenu = menu;
+
+	menu = new DefaultMoveMenu(B_TRANSLATE("Copy to"), kCopySelectionTo, this);
+	fPoseView->AddListener(menu);
+	fCopyToMenu = menu;
+
+	menu = new DefaultMoveMenu(B_TRANSLATE("Create link"), kCreateLink, this);
+	fPoseView->AddListener(menu);
+	fCreateLinkMenu = menu;
+}
+
+
+bool
+ReparentMenu(BMenu* menu, BMenu* newParent, uint32 newIndex)
+{
+	if (menu != NULL) {
+		BMenu* parent = menu->Supermenu();
+		if (newParent != parent) {
+			// remove itself from current parent
+			if (parent != NULL
+				&& !parent->RemoveItem(menu)) {
+				return false;
+			}
+			// add itself to new parent
+			if (newParent != NULL)
+				return newParent->AddItem(menu, newIndex);
+
+			return true;
+		}
+	}
+	return true;
+}
+
+
+void
+PoseViewController::ReparentMoveCopyMenus(BMenu* newParent)
+{
+	int32 index = 0;
+ 	if (newParent != NULL) {
+	 	BMenuItem* trash = newParent->FindItem(kMoveToTrash);
+	 	if (trash)
+	 		index = newParent->IndexOf(trash) + 2;
+ 	}
+
+	if (!ReparentMenu(fMoveToMenu, newParent, index++)
+		|| !ReparentMenu(fCopyToMenu, newParent, index++)
+		|| !ReparentMenu(fCreateLinkMenu, newParent, index)) {
+		printf("PoseViewController::ReparentMoveCopyMenus Error reparenting movecopy menus!\n");
+	}
+
+	// This is need if we want to FindItem by command later
+	if (fMoveToMenu != NULL && fMoveToMenu->Superitem() != NULL)
+		fMoveToMenu->Superitem()->SetMessage(new BMessage(kMoveSelectionTo));
+	if (fCopyToMenu != NULL && fCopyToMenu->Superitem() != NULL)
+		fCopyToMenu->Superitem()->SetMessage(new BMessage(kCopySelectionTo));
+	if (fCreateLinkMenu != NULL && fCreateLinkMenu->Superitem() != NULL)
+		fCreateLinkMenu->Superitem()->SetMessage(new BMessage(kCreateLink));
 }
 
 
@@ -114,11 +190,11 @@ LayoutItemForView(BView* view)
 	if (view != NULL) {
 		BLayout* layout = NULL;
 
-		if (view->Parent() != NULL)			
+		if (view->Parent() != NULL)
 			layout = view->Parent()->GetLayout();
 		else if (view->Window() != NULL)
 			layout = view->Window()->GetLayout();
-		else			
+		else
 			return NULL;
 
 		if (layout != NULL)
@@ -170,16 +246,13 @@ PoseViewController::SlowOperationEnded()
 void
 PoseViewController::AddPosesCompleted()
 {
-	if (fAttributesMenu != NULL) {
-		fAttributesMenu->MimeTypesChanged();
-	}
 }
 
 
 // old tracker code imported review usefulness
 void
 PoseViewController::SetScrollBarsEnabled(bool enabled)
-{	
+{
 	if (enabled) {
 		printf("enabled\n");
 		/*if (fHorizontalScrollBar)
@@ -236,7 +309,7 @@ PoseViewController::UpdateScrollRange()
 	BRect bounds(fPoseView->Bounds());
 	BPoint origin(fPoseView->LeftTop());
 	BRect extent(fPoseView->Extent());
-	
+
 	lock.Unlock();
 
 	BPoint minVal(std::min(extent.left, origin.x),
@@ -271,7 +344,7 @@ PoseViewController::UpdateScrollRange()
 
 	// set proportions for bars
 	BRect totalExtent(extent | bounds);
-	
+
 	if (fHorizontalScrollBar && totalExtent.Width() != 0.0) {
 		float proportion = bounds.Width() / totalExtent.Width();
 		if (fHorizontalScrollBar->Proportion() != proportion)
@@ -283,14 +356,14 @@ PoseViewController::UpdateScrollRange()
 		if (fVerticalScrollBar->Proportion() != proportion)
 			fVerticalScrollBar->SetProportion(proportion);
 	}
-	
+
 	// TODO: autohiding scrollbars doesn't play well with the window"s
 	//	 sizelimits
 	/*if (fHorizontalScrollBar) {
 		SetControlVisible(fHorizontalScrollBar,
 			fHorizontalScrollBar->Proportion() < 1.0);
 	}
-	
+
 	if (fVerticalScrollBar) {
 		SetControlVisible(fVerticalScrollBar,
 			fVerticalScrollBar->Proportion() < 1.0);

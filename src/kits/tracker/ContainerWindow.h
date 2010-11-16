@@ -195,9 +195,6 @@ class BContainerWindow : public BWindow {
 		virtual	void SetCleanUpItem(BMenu *);
 		virtual void SetCloseItem(BMenu *);
 		virtual	void SetupNavigationMenu(const entry_ref *, BMenu *);
-		virtual	void SetupMoveCopyMenus(const entry_ref *, BMenu *);
-		virtual	void PopulateMoveCopyNavMenu(BNavMenu *, uint32, const entry_ref *, bool);
-
 		virtual	void SetupOpenWithMenu(BMenu *);
 		virtual	void SetUpEditQueryItem(BMenu *);
 		virtual	void SetUpDiskMenu(BMenu *);
@@ -228,9 +225,7 @@ class BContainerWindow : public BWindow {
 		BPopUpMenu *fVolumeContextMenu;
 		BPopUpMenu *fTrashContextMenu;
 		BSlowContextMenu *fDragContextMenu;
-		BMenuItem *fMoveToItem;
-		BMenuItem *fCopyToItem;
-		BMenuItem *fCreateLinkItem;
+
 		BMenuItem *fOpenWithItem;
 		ModelMenuItem *fNavigationItem;
 	

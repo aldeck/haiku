@@ -21,6 +21,8 @@ public:
 
 	virtual void				TargetModelChanged() = 0;
 	virtual void				SelectionChanged() = 0;
+	virtual	void				MimeTypesChanged() = 0;
+	virtual	void				ColumnsChanged() = 0;
 };
 
 

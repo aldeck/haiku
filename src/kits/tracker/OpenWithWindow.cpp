@@ -398,13 +398,6 @@ OpenWithContainerWindow::_Init(const BMessage *message)
 	// deal with new unconfigured folders
 	if (NeedsDefaultStateSetup())
 		SetUpDefaultState();
-		
-	fMoveToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Move to"),
-		kMoveSelectionTo, this));
-	fCopyToItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Copy to"),
-		kCopySelectionTo, this));
-	fCreateLinkItem = new BMenuItem(new BNavMenu(B_TRANSLATE("Create link"),
-		kCreateLink, this), new BMessage(kCreateLink));		
 
 	if (message)
 		RestoreState(*message);

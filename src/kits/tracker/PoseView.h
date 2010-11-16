@@ -107,13 +107,13 @@ class BPoseView : public BView {
 	public:
 		BPoseView(Model *model, uint32 viewMode);
 		virtual ~BPoseView();
-	
+
 		// setup, teardown
 		virtual void Init(AttributeStreamNode *);
 		virtual void Init(const BMessage &);
-	
+
 		virtual	void DetachedFromWindow();
-		
+
 		// listeners
 				void AddListener(PoseViewListener*);
 				void RemoveListener(PoseViewListener*);	// TODO unimplemented
@@ -194,7 +194,7 @@ class BPoseView : public BView {
 
 		void SetController(PoseViewController* controller);
 		PoseViewController* Controller();
-		
+
 		// sorting
 		virtual void SortPoses();
 		void SetPrimarySort(uint32 attrHash);
@@ -397,9 +397,12 @@ class BPoseView : public BView {
 
 	protected:
 		void _InitCommon();
-		
+
+		// PoseViewListener notifiers
 		void _NotifyTargetModelChanged();
 		void _NotifySelectionChanged();
+		void _NotifyColumnsChanged();
+		void _NotifyMimeTypesChanged();
 
 		// view setup
 		virtual void SetUpDefaultColumnsIfNeeded();
@@ -631,7 +634,7 @@ class BPoseView : public BView {
 		void Delete(const entry_ref &ref, bool selectNext, bool askUser);
 		void RestoreItemsFromTrash(BObjectList<entry_ref> *, bool selectNext);
 
-	private:		
+	private:
 		void DrawOpenAnimation(BRect);
 
 		void MoveSelectionOrEntryToTrash(const entry_ref *ref, bool selectNext);

@@ -11,6 +11,8 @@
 
 #include <Application.h>
 #include <Catalog.h>
+#include <Entry.h>
+#include <FindDirectory.h>
 #include <Locale.h>
 #include <MenuItem.h>
 #include <Volume.h>
@@ -19,6 +21,8 @@
 #include "Attributes.h"
 #include "Commands.h"
 #include "IconMenuItem.h"
+#include "FavoritesMenu.h"
+#include "FSUtils.h"
 #include "PoseView.h"
 #include "PoseViewController.h"
 #include "TemplatesMenu.h"
@@ -36,7 +40,7 @@ DefaultFileContextMenu::DefaultFileContextMenu(PoseViewController* controller)
 	BPopUpMenu("FileContext", false, false)
 {
 	SetFont(be_plain_font);	// TODO: that's legacy code, is it still usefull on Haiku?
-	
+
 	AddItem(new BMenuItem(B_TRANSLATE("Open"),
 		new BMessage(kOpenSelection), 'O'));
 	AddItem(new BMenuItem(B_TRANSLATE("Get info"), new BMessage(kGetInfo),
@@ -45,7 +49,7 @@ DefaultFileContextMenu::DefaultFileContextMenu(PoseViewController* controller)
 		new BMessage(kEditItem), 'E'));
 
 	Model* targetModel = controller->PoseView()->TargetModel();
-	
+
 	if (!targetModel->IsTrash()
 		&& !targetModel->IsInTrash()
 		&& !targetModel->IsPrintersDir()) {
@@ -109,16 +113,57 @@ DefaultFileMenu::DefaultFileMenu(PoseViewController* controller)
 
 
 void
+DefaultFileMenu::AttachedToWindow()
+{
+	// This method is called just before showing the menu
+	Model* model = fController->PoseView()->TargetModel();
+	if (!model->IsTrash()
+		&& !model->IsInTrash()
+		&& !model->IsPrintersDir()) {
+
+		fController->ReparentMoveCopyMenus(this);
+			// Steal the shared submenus
+
+		// TODO: review the context menu case
+	}
+
+	// Set the "Identify" item label
+	BMenuItem* item = FindItem(kIdentifyEntry);
+	if (item != NULL) {
+		if (modifiers() & B_SHIFT_KEY)
+			item->SetLabel(B_TRANSLATE("Force identify"));
+		else
+			item->SetLabel(B_TRANSLATE("Identify"));
+	}
+
+	// Set the "Create Link" item label
+	item = FindItem(kCreateLink);
+	if (item == NULL)
+		item = FindItem(kCreateRelativeLink);
+
+	if (item != NULL) {
+		if (modifiers() & B_SHIFT_KEY)
+			item->SetLabel(B_TRANSLATE("Create relative link"));
+		else
+			item->SetLabel(B_TRANSLATE("Create link"));
+	}
+
+	BMenu::AttachedToWindow();
+}
+
+
+void
 DefaultFileMenu::TargetModelChanged()
 {
 	Model* model = fController->PoseView()->TargetModel();
-	printf("DefaultFileMenu::TargetModelChanged() model = '%s'\n", model->Name());
 
-	// this ensures proper locking
+	// this ensures proper locking before emptying the menu
 	if (!IsHidden())
 		Hide();
-		
-	// empty the menu
+
+	fController->ReparentMoveCopyMenus(NULL);
+		// detach shared menus, so they are not deleted with RemoveItems below
+
 	RemoveItems(0, CountItems(), true);
 
 	if (model->IsRoot()) {
@@ -238,8 +283,6 @@ DefaultFileMenu::TargetModelChanged()
 void
 DefaultFileMenu::SelectionChanged()
 {
-	printf("DefaultFileMenu::SelectionChanged()\n");
-	
 	PoseList* selection = fController->PoseView()->SelectionList();
 	Model* model = fController->PoseView()->TargetModel();
 
@@ -274,6 +317,158 @@ DefaultFileMenu::SelectionChanged()
 }
 
 
+//	#pragma mark - DefaultMoveMenu
+
+
+DefaultMoveMenu::DefaultMoveMenu(const char* itemName, uint32 messageWhat,
+	PoseViewController* controller)
+	:
+	BNavMenu(itemName, messageWhat, controller->PoseView()->ContainerWindow()),
+	fController(controller),
+	fMessageWhat(messageWhat)
+{
+	TargetModelChanged();
+	SelectionChanged();
+}
+
+
+void
+DefaultMoveMenu::TargetModelChanged()
+{
+}
+
+
+void
+DefaultMoveMenu::SelectionChanged()
+{
+	const entry_ref* firstRef
+		= fController->PoseView()->SelectionList()->CountItems() > 0
+		? fController->PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef()
+		: NULL;
+
+	_Populate(firstRef, false);
+}
+
+
+void
+DefaultMoveMenu::_Populate(const entry_ref *ref, bool addLocalOnly)
+{
+	if (ref == NULL) {
+		SetEnabled(false);
+		return;
+	}
+
+	BEntry entry;
+	if (entry.SetTo(ref) != B_OK)
+		return;
+
+	// TODO check if the entry has changed since the last _Populate?
+
+	BHandler* target = fController->PoseView()->ContainerWindow();
+
+	BVolume volume;
+	BVolumeRoster volumeRoster;
+	BDirectory directory;
+	BPath path;
+	Model model;
+	dev_t device = ref->device;
+
+	int32 volumeCount = 0;
+
+	// disable while populating
+	SetEnabled(false);
+
+	RemoveItems(0, CountItems(), true);
+
+	// count persistent writable volumes
+	volumeRoster.Rewind();
+	while (volumeRoster.GetNextVolume(&volume) == B_OK)
+		if (!volume.IsReadOnly() && volume.IsPersistent())
+			volumeCount++;
+
+	// add the current folder
+	if (entry.SetTo(ref) == B_OK
+		&& entry.GetParent(&entry) == B_OK
+		&& model.SetTo(&entry) == B_OK) {
+		BNavMenu* menu = new BNavMenu(B_TRANSLATE("Current folder"), fMessageWhat,
+			target);
+
+		menu->SetNavDir(model.EntryRef());
+		menu->SetShowParent(true);
+
+		BMenuItem *item = new SpecialModelMenuItem(&model,menu);
+		item->SetMessage(new BMessage((uint32)fMessageWhat));
+
+		AddItem(item);
+	}
+
+	// add the recent folder menu
+	// the "Tracker" settings directory is only used to get its icon
+	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) == B_OK) {
+		path.Append("Tracker");
+		if (entry.SetTo(path.Path()) == B_OK
+			&& model.SetTo(&entry) == B_OK) {
+			BMenu* menu = new RecentsMenu(B_TRANSLATE("Recent folders"),
+				kRecentFolders, fMessageWhat, target);
+
+			BMenuItem *item = new SpecialModelMenuItem(&model,menu);
+			item->SetMessage(new BMessage(fMessageWhat));
+
+			AddItem(item);
+		}
+	}
+
+	// add Desktop
+	FSGetBootDeskDir(&directory);
+	if (directory.InitCheck() == B_OK
+		&& directory.GetEntry(&entry) == B_OK
+		&& model.SetTo(&entry) == B_OK)
+		AddNavDir(&model, fMessageWhat, target, true);
+			// ask NavMenu to populate submenu for us
+
+	// add the home dir
+	if (find_directory(B_USER_DIRECTORY, &path) == B_OK
+		&& entry.SetTo(path.Path()) == B_OK
+		&& model.SetTo(&entry) == B_OK)
+		AddNavDir(&model, fMessageWhat, target, true);
+
+	AddSeparatorItem();
+
+	// either add all mounted volumes (for copy), or all the top-level
+	// directories from the same device (for move)
+	// ToDo: can be changed if cross-device moves are implemented
+
+	if (addLocalOnly || volumeCount < 2) {
+		// add volume this item lives on
+		if (volume.SetTo(device) == B_OK
+			&& volume.GetRootDirectory(&directory) == B_OK
+			&& directory.GetEntry(&entry) == B_OK
+			&& model.SetTo(&entry) == B_OK) {
+			AddNavDir(&model, fMessageWhat, target, false);
+				// do not have submenu populated
+
+			SetNavDir(model.EntryRef());
+		}
+	} else {
+		// add all persistent writable volumes
+		volumeRoster.Rewind();
+		while (volumeRoster.GetNextVolume(&volume) == B_OK) {
+			if (volume.IsReadOnly() || !volume.IsPersistent())
+				continue;
+
+			// add root dir
+			if (volume.GetRootDirectory(&directory) == B_OK
+				&& directory.GetEntry(&entry) == B_OK
+				&& model.SetTo(&entry) == B_OK)
+				AddNavDir(&model, fMessageWhat, target, true);
+					// ask NavMenu to populate submenu for us
+		}
+	}
+
+	SetEnabled(true);
+}
+
+
 //	#pragma mark - DefaultWindowMenu
 
 
@@ -284,9 +479,9 @@ DefaultWindowMenu::DefaultWindowMenu(PoseViewController* controller)
 	BMenuItem *item;
 
 	BPoseView* poseView = controller->PoseView();
-	
+
 	BMenu* iconSizeMenu = new BMenu(B_TRANSLATE("Icon view"));
-	
+
 	BMessage* message = new BMessage(kIconMode);
 	message->AddInt32("size", 32);
 	item = new BMenuItem(B_TRANSLATE("32 x 32"), message);
@@ -324,7 +519,7 @@ DefaultWindowMenu::DefaultWindowMenu(PoseViewController* controller)
 	item = new BMenuItem(B_TRANSLATE("Increase size"), message, '+');
 	item->SetTarget(poseView);
 	iconSizeMenu->AddItem(item);
-	
+
 	// A sub menu where the super item can be invoked.
 	AddItem(iconSizeMenu);
 	iconSizeMenu->Superitem()->SetShortcut('1', B_COMMAND_KEY);
@@ -402,7 +597,7 @@ DefaultAttributeMenu::DefaultAttributeMenu(PoseViewController* controller)
 	fController(controller)
 {
 	BPoseView* poseView = controller->PoseView();
-	
+
 	BMenuItem *item;
 	AddItem(item = new BMenuItem(B_TRANSLATE("Copy layout"),
 		new BMessage(kCopyAttributes)));

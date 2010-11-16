@@ -78,7 +78,6 @@ All rights reserved.
 #include "ContainerWindow.h"
 #include "CountView.h"
 #include "Cursors.h"
-#include "DefaultControls.h"
 #include "DeskWindow.h"
 #include "DesktopPoseView.h"
 #include "DirMenu.h"
@@ -261,7 +260,7 @@ void BPoseView::SetController(PoseViewController* controller)
 PoseViewController*
 BPoseView::Controller()
 {
-	return fController;	
+	return fController;
 }
 
 
@@ -1539,6 +1538,7 @@ void
 BPoseView::AddPosesCompleted()
 {
 	Controller()->AddPosesCompleted();
+	_NotifyMimeTypesChanged(); // TODO: probably not necessary anymore.
 
 	// if we're not in icon mode then we need to check for poses that
 	// were "auto" placed to see if they overlap with other icons
@@ -1834,7 +1834,7 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 
 				poseBounds = pose->CalcRect(this);
 
-				/* TODO: have a second look, also done in DeskView::AddPosesCompleted				
+				/* TODO: have a second look, also done in DeskView::AddPosesCompleted
 				if (fEnsurePosesVisible && !viewBounds.Intersects(poseBounds)) {
 					viewBounds.InsetBy(20, 20);
 					RemoveFromVSList(pose);
@@ -1855,7 +1855,7 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 					fExtent = poseBounds;
 				else
 					AddToExtent(poseBounds);
-					
+
 				break;
 		}
 		if (model->IsSymLink())
@@ -1928,6 +1928,10 @@ BPoseView::AddMimeType(const char *mimeType)
 	}
 
 	fMimeTypeList->AddItem(new BString(mimeType));
+	_NotifyMimeTypesChanged();
+		// TODO: should we disable this one for
+		// performance reasons and
+		// use only the isDirty mechanism.
 }
 
 
@@ -1945,6 +1949,7 @@ BPoseView::RefreshMimeTypeList()
 		if (pose->TargetModel())
 			AddMimeType(pose->TargetModel()->MimeType());
 	}
+	_NotifyMimeTypesChanged();
 }
 
 
@@ -2461,7 +2466,7 @@ BPoseView::RemoveColumn(BColumn *columnToRemove, bool runAlert)
 	rect.left = offset;
 	Invalidate(rect);
 
-	Controller()->AttributeMenu()->ColumnsChanged();
+	_NotifyColumnsChanged();
 
 	if (IsWatchingDateFormatChange()) {
 		int32 columnCount = CountColumns();
@@ -2540,7 +2545,7 @@ BPoseView::AddColumn(BColumn *newColumn, const BColumn *after)
 
 	rect.left = offset;
 	Invalidate(rect);
-	Controller()->AttributeMenu()->ColumnsChanged();
+	_NotifyColumnsChanged();
 
 	// Check if this is a time attribute and if so,
 	// start watching for changed in time/date format:
@@ -2785,9 +2790,9 @@ BPoseView::SetViewMode(uint32 newMode)
 
 		Controller()->TitleView()->Hide();
 		Controller()->HideAttributeMenu();
-			
+
 	} else if (newMode == kListMode) {
-		
+
 		Controller()->ShowAttributeMenu();
 		Controller()->TitleView()->Show();
 	}
@@ -7630,10 +7635,10 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 		if (ViewMode() == kListMode && oldMode != kListMode) {
 			Controller()->ShowAttributeMenu();
 			Controller()->SetControlVisible(Controller()->TitleView(), true);
-		} else if (ViewMode() != kListMode && oldMode == kListMode) {					
+		} else if (ViewMode() != kListMode && oldMode == kListMode) {
 			Controller()->SetControlVisible(Controller()->TitleView(), false);
 			Controller()->HideAttributeMenu();
-		} else if (ViewMode() == kListMode && oldMode == kListMode)		
+		} else if (ViewMode() == kListMode && oldMode == kListMode)
 			Controller()->TitleView()->Invalidate();
 
 		BPoint origin;
@@ -7647,7 +7652,7 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 		SetIconPoseHeight();
 		GetLayoutInfo(ViewMode(), &fGrid, &fOffset);
 		ResetPosePlacementHint();
-	
+
 		Controller()->SetScrollBarsEnabled(false);
 		ScrollTo(origin);
 		Controller()->UpdateScrollRange();
@@ -7672,7 +7677,7 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 	Invalidate();
 
 	fLastKeyTime = 0;
-	
+
 	_NotifyTargetModelChanged();
 
 	// Make sure fTitleView is rebuilt, as fColumnList might have changed
@@ -7701,6 +7706,28 @@ BPoseView::_NotifySelectionChanged()
 	for (; it != fListeners.end(); it++) {
 		if (*it != NULL)
 			(*it)->SelectionChanged();
+	}
+}
+
+
+void
+BPoseView::_NotifyColumnsChanged()
+{
+	ListenerList::iterator it = fListeners.begin();
+	for (; it != fListeners.end(); it++) {
+		if (*it != NULL)
+			(*it)->ColumnsChanged();
+	}
+}
+
+
+void
+BPoseView::_NotifyMimeTypesChanged()
+{
+	ListenerList::iterator it = fListeners.begin();
+	for (; it != fListeners.end(); it++) {
+		if (*it != NULL)
+			(*it)->MimeTypesChanged();
 	}
 }
 
@@ -8544,7 +8571,7 @@ PoseCompareAddWidgetBinder(const BPose *p1, const BPose *p2, void *castToPoseVie
 }
 
 
-struct PoseComparator : public std::binary_function<const BPose *, 
+struct PoseComparator : public std::binary_function<const BPose *,
 	const BPose *, bool>
 {
 	PoseComparator(BPoseView *poseView): fPoseView(poseView) { }
@@ -8553,7 +8580,7 @@ struct PoseComparator : public std::binary_function<const BPose *,
 		return PoseCompareAddWidget(p1, p2, fPoseView) < 0;
 	}
 
-	BPoseView * fPoseView;	
+	BPoseView * fPoseView;
 };
 
 
@@ -8581,7 +8608,7 @@ BPoseView::SortPoses()
 	std::stable_sort(poses, &poses[fPoseList->CountItems()], PoseComparator(this));
 	if (fFiltering) {
 		poses = reinterpret_cast<BPose **>(fFilteredPoseList->AsBList()->Items());
-		std::stable_sort(poses, &poses[fPoseList->CountItems()], 
+		std::stable_sort(poses, &poses[fPoseList->CountItems()],
 			PoseComparator(this));
 	}
 }

@@ -25,7 +25,6 @@ class BMimeType;
 
 namespace BPrivate {
 
-class DefaultAttributeMenu;	
 class BNavigator;
 class BTitleView;
 class BCountView;
@@ -46,13 +45,15 @@ public:
 									// model is needed for BNavigator.
 									// TODO: Just get the model out of fPoseView
 			void				CreateMenus();	// temporary helper method
+			void				CreateMoveCopyMenus();	// temporary helper method
+			void				ReparentMoveCopyMenus(BMenu* newParent);
 
 	virtual	void				SetControlVisible(BView* control, bool visible);
 			void				ShowAttributeMenu();
 			void				HideAttributeMenu();
 
 			// Scrollbar management
-			// TODO: to be simplified, make it "event" based just like countview and 
+			// TODO: to be simplified, make it "event" based just like countview and
 			// barberpole. Through a ExtentChanged hook.
 
 			void				SetScrollBarsEnabled(bool enable);
@@ -65,7 +66,9 @@ public:
 			void				AddPosesCompleted();
 
 			BMenuBar*	 		MenuBar()		{ return fMenuBar; };
-			DefaultAttributeMenu*	AttributeMenu() { return fAttributesMenu; };
+			// TODO: Not sure we need to expose everything, there's no use for it
+			// anymore with the listener mechanism
+			BMenu*				AttributeMenu() { return fAttributesMenu; };
 			BMenu*	 			WindowMenu()	{ return fWindowMenu; };
 			BMenu*				FileMenu()		{ return fFileMenu; };
 			BNavigator* 		Navigator()		{ return fNavigator; };
@@ -79,9 +82,14 @@ public:
 
 protected:
 			BMenuBar*			fMenuBar;
-			DefaultAttributeMenu*	fAttributesMenu;
+
+			BMenu*				fAttributesMenu;
 			BMenu*				fWindowMenu;
-			BMenu*				fFileMenu;			
+			BMenu*				fFileMenu;
+			BMenu*				fMoveToMenu;
+			BMenu*				fCopyToMenu;
+			BMenu*				fCreateLinkMenu;
+
 			BNavigator* 		fNavigator;
 			BTitleView* 		fTitleView;
 			BPoseView*			fPoseView;
@@ -95,7 +103,7 @@ class BHScrollBar : public BScrollBar {
 public:
 								BHScrollBar(const char* name, BView* target, BTitleView* titleView);
 
-	virtual	void				ValueChanged(float);		
+	virtual	void				ValueChanged(float);
 
 private:
 			BTitleView*			fTitleView;
