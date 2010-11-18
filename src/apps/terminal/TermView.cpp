@@ -5,11 +5,11 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  *
  * Authors:
- *		Stefano Ceccherini <stefano.ceccherini@gmail.com>
+ *		Stefano Ceccherini, stefano.ceccherini@gmail.com
  *		Kian Duffy, myob@users.sourceforge.net
  *		Y.Hayakawa, hida@sawada.riec.tohoku.ac.jp
- *		Ingo Weinhold <ingo_weinhold@gmx.de>
- *		Clemens Zeidler <haiku@Clemens-Zeidler.de>
+ *		Ingo Weinhold, ingo_weinhold@gmx.de
+ *		Clemens Zeidler, haiku@Clemens-Zeidler.de
  */
 
 
@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <new>
 
+#include "ActiveProcessInfo.h"
 #include <Alert.h>
 #include <Application.h>
 #include <Beep.h>
@@ -52,6 +53,7 @@
 #include "Encoding.h"
 #include "InlineInput.h"
 #include "Shell.h"
+#include "ShellParameters.h"
 #include "TermConst.h"
 #include "TerminalBuffer.h"
 #include "TerminalCharClassifier.h"
@@ -390,6 +392,9 @@ restrict_value(const Type& value, const Type& min, const Type& max)
 }
 
 
+// #pragma mark - CharClassifier
+
+
 class TermView::CharClassifier : public TerminalCharClassifier {
 public:
 	CharClassifier(const char* specialWordChars)
@@ -418,12 +423,15 @@ private:
 };
 
 
-//	#pragma mark -
+//	#pragma mark - TermView
 
 
-TermView::TermView(BRect frame, int32 argc, const char** argv, int32 historySize)
-	: BView(frame, "termview", B_FOLLOW_ALL,
+TermView::TermView(BRect frame, const ShellParameters& shellParameters,
+	int32 historySize)
+	:
+	BView(frame, "termview", B_FOLLOW_ALL,
 		B_WILL_DRAW | B_FRAME_EVENTS | B_FULL_UPDATE_ON_RESIZE),
+	fListener(NULL),
 	fColumns(COLUMNS_DEFAULT),
 	fRows(ROWS_DEFAULT),
 	fEncoding(M_UTF8),
@@ -434,17 +442,19 @@ TermView::TermView(BRect frame, int32 argc, const char** argv, int32 historySize
 	fReportButtonMouseEvent(false),
 	fReportAnyMouseEvent(false)
 {
-	status_t status = _InitObject(argc, argv);
+	status_t status = _InitObject(shellParameters);
 	if (status != B_OK)
 		throw status;
 	SetTermSize(frame);
 }
 
 
-TermView::TermView(int rows, int columns, int32 argc, const char** argv,
-		int32 historySize)
-	: BView(BRect(0, 0, 0, 0), "termview", B_FOLLOW_ALL,
+TermView::TermView(int rows, int columns,
+	const ShellParameters& shellParameters, int32 historySize)
+	:
+	BView(BRect(0, 0, 0, 0), "termview", B_FOLLOW_ALL,
 		B_WILL_DRAW | B_FRAME_EVENTS | B_FULL_UPDATE_ON_RESIZE),
+	fListener(NULL),
 	fColumns(columns),
 	fRows(rows),
 	fEncoding(M_UTF8),
@@ -455,7 +465,7 @@ TermView::TermView(int rows, int columns, int32 argc, const char** argv,
 	fReportButtonMouseEvent(false),
 	fReportAnyMouseEvent(false)
 {
-	status_t status = _InitObject(argc, argv);
+	status_t status = _InitObject(shellParameters);
 	if (status != B_OK)
 		throw status;
 
@@ -477,6 +487,7 @@ TermView::TermView(int rows, int columns, int32 argc, const char** argv,
 TermView::TermView(BMessage* archive)
 	:
 	BView(archive),
+	fListener(NULL),
 	fColumns(COLUMNS_DEFAULT),
 	fRows(ROWS_DEFAULT),
 	fEncoding(M_UTF8),
@@ -506,7 +517,7 @@ TermView::TermView(BMessage* archive)
 	}
 
 	// TODO: Retrieve colors, history size, etc. from archive
-	status_t status = _InitObject(argc, argv);
+	status_t status = _InitObject(ShellParameters(argc, argv));
 	if (status != B_OK)
 		throw status;
 
@@ -523,7 +534,7 @@ TermView::TermView(BMessage* archive)
 	already be initialized; they are not touched by this method.
 */
 status_t
-TermView::_InitObject(int32 argc, const char** argv)
+TermView::_InitObject(const ShellParameters& shellParameters)
 {
 	SetFlags(Flags() | B_WILL_DRAW | B_FRAME_EVENTS
 		| B_FULL_UPDATE_ON_RESIZE/* | B_INPUT_METHOD_AWARE*/);
@@ -595,8 +606,11 @@ TermView::_InitObject(int32 argc, const char** argv)
 
 	SetTermFont(be_fixed_font);
 
-	error = fShell->Open(fRows, fColumns,
-		EncodingAsShortString(fEncoding), argc, argv);
+	// set the shell parameters' encoding
+	ShellParameters modifiedShellParameters(shellParameters);
+	modifiedShellParameters.SetEncoding(EncodingAsShortString(fEncoding));
+
+	error = fShell->Open(fRows, fColumns, modifiedShellParameters);
 
 	if (error < B_OK)
 		return error;
@@ -632,6 +646,18 @@ bool
 TermView::IsShellBusy() const
 {
 	return fShell != NULL && fShell->HasActiveProcesses();
+}
+
+
+bool
+TermView::GetActiveProcessInfo(ActiveProcessInfo& _info) const
+{
+	if (fShell == NULL) {
+		_info.Unset();
+		return false;
+	}
+
+	return fShell->GetActiveProcessInfo(_info);
 }
 
 
@@ -857,9 +883,6 @@ TermView::Encoding() const
 void
 TermView::SetEncoding(int encoding)
 {
-	// TODO: Shell::_Spawn() sets the "TTYPE" environment variable using
-	// the string value of encoding. But when this function is called and
-	// the encoding changes, the new value is never passed to Shell.
 	fEncoding = encoding;
 
 	BAutolock _(fTextBuffer);
@@ -931,16 +954,6 @@ TermView::SetScrollBar(BScrollBar *scrollBar)
 	fScrollBar = scrollBar;
 	if (fScrollBar != NULL)
 		fScrollBar->SetSteps(fFontHeight, fFontHeight * fRows);
-}
-
-
-void
-TermView::SetTitle(const char *title)
-{
-	// TODO: Do something different in case we're a replicant,
-	// or in case we are inside a BTabView ?
-	if (Window())
-		Window()->SetTitle(title);
 }
 
 
@@ -1575,28 +1588,32 @@ TermView::KeyDown(const char *bytes, int32 numBytes)
 
 		case B_LEFT_ARROW:
 			if (rawChar == B_LEFT_ARROW) {
-				if (mod & B_SHIFT_KEY) {
-					BMessage message(MSG_PREVIOUS_TAB);
-					message.AddPointer("termView", this);
-					Window()->PostMessage(&message);
+				if ((mod & B_SHIFT_KEY) != 0) {
+					if (fListener != NULL) {
+						fListener->PreviousTermView(this,
+							(mod & B_COMMAND_KEY) != 0);
+					}
 					return;
-				} else if ((mod & B_CONTROL_KEY) || (mod & B_COMMAND_KEY)) {
+				}
+				if ((mod & B_CONTROL_KEY) || (mod & B_COMMAND_KEY))
 					toWrite = CTRL_LEFT_ARROW_KEY_CODE;
-				} else
+				else
 					toWrite = LEFT_ARROW_KEY_CODE;
 			}
 			break;
 
 		case B_RIGHT_ARROW:
 			if (rawChar == B_RIGHT_ARROW) {
-				if (mod & B_SHIFT_KEY) {
-					BMessage message(MSG_NEXT_TAB);
-					message.AddPointer("termView", this);
-					Window()->PostMessage(&message);
+				if ((mod & B_SHIFT_KEY) != 0) {
+					if (fListener != NULL) {
+						fListener->NextTermView(this,
+							(mod & B_COMMAND_KEY) != 0);
+					}
 					return;
-				} else if ((mod & B_CONTROL_KEY) || (mod & B_COMMAND_KEY)) {
+				}
+				if ((mod & B_CONTROL_KEY) || (mod & B_COMMAND_KEY))
 					toWrite = CTRL_RIGHT_ARROW_KEY_CODE;
-				} else
+				else
 					toWrite = RIGHT_ARROW_KEY_CODE;
 			}
 			break;
@@ -1936,8 +1953,10 @@ TermView::MessageReceived(BMessage *msg)
 		case MSG_SET_TERMNAL_TITLE:
 		{
 			const char* title;
-			if (msg->FindString("title", &title) == B_OK)
-				SetTitle(title);
+			if (msg->FindString("title", &title) == B_OK) {
+				if (fListener != NULL)
+					fListener->SetTermViewTitle(this, title);
+			}
 			break;
 		}
 		case MSG_REPORT_MOUSE_EVENT:
@@ -1979,7 +1998,8 @@ TermView::MessageReceived(BMessage *msg)
 			int32 reason;
 			if (msg->FindInt32("reason", &reason) != B_OK)
 				reason = 0;
-			NotifyQuit(reason);
+			if (fListener != NULL)
+				fListener->NotifyTermViewQuit(this, reason);
 			break;
 		}
 		default:
@@ -2986,26 +3006,16 @@ TermView::GetSelection(BString &str)
 }
 
 
-void
-TermView::NotifyQuit(int32 reason)
-{
-	// implemented in subclasses
-}
-
-
-void
-TermView::CheckShellGone()
+bool
+TermView::CheckShellGone() const
 {
 	if (!fShell)
-		return;
+		return false;
 
 	// check, if the shell does still live
 	pid_t pid = fShell->ProcessID();
 	team_info info;
-	if (get_team_info(pid, &info) == B_BAD_TEAM_ID) {
-		// the shell is gone
-		NotifyQuit(0);
-	}
+	return get_team_info(pid, &info) == B_BAD_TEAM_ID;
 }
 
 
@@ -3278,3 +3288,34 @@ TermView::_CancelInputMethod()
 	delete inlineInput;
 }
 
+
+// #pragma mark - Listener
+
+
+TermView::Listener::~Listener()
+{
+}
+
+
+void
+TermView::Listener::NotifyTermViewQuit(TermView* view, int32 reason)
+{
+}
+
+
+void
+TermView::Listener::SetTermViewTitle(TermView* view, const char* title)
+{
+}
+
+
+void
+TermView::Listener::PreviousTermView(TermView* view, bool move)
+{
+}
+
+
+void
+TermView::Listener::NextTermView(TermView* view, bool move)
+{
+}

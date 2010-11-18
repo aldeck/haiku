@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2009, Haiku, Inc. All rights reserved.
+ * Copyright 2007-2010, Haiku, Inc. All rights reserved.
  * Copyright (c) 2004 Daniel Furrer <assimil8or@users.sourceforge.net>
  * Copyright (c) 2003-2004 Kian Duffy <myob@users.sourceforge.net>
  * Copyright (C) 1998,99 Kazuho Okui and Takashi Murai.
@@ -24,6 +24,7 @@
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <Path.h>
+#include <PopUpMenu.h>
 #include <PrintJob.h>
 #include <Roster.h>
 #include <Screen.h>
@@ -31,6 +32,7 @@
 #include <ScrollView.h>
 #include <String.h>
 
+#include "ActiveProcessInfo.h"
 #include "Arguments.h"
 #include "AppearPrefView.h"
 #include "Encoding.h"
@@ -38,10 +40,10 @@
 #include "Globals.h"
 #include "PrefWindow.h"
 #include "PrefHandler.h"
-#include "SmartTabView.h"
+#include "ShellParameters.h"
 #include "TermConst.h"
 #include "TermScrollView.h"
-#include "TermView.h"
+#include "TitlePlaceholderMapper.h"
 
 
 const static int32 kMaxTabs = 6;
@@ -53,18 +55,14 @@ const static uint32 kCloseView = 'ClVw';
 const static uint32 kIncreaseFontSize = 'InFs';
 const static uint32 kDecreaseFontSize = 'DcFs';
 const static uint32 kSetActiveTab = 'STab';
+const static uint32 kUpdateTitles = 'UPti';
 
 
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "Terminal TermWindow"
 
 
-class CustomTermView : public TermView {
-public:
-	CustomTermView(int32 rows, int32 columns, int32 argc, const char **argv, int32 historySize = 1000);
-	virtual void NotifyQuit(int32 reason);
-	virtual void SetTitle(const char *title);
-};
+// #pragma mark - TermViewContainerView
 
 
 class TermViewContainerView : public BView {
@@ -95,54 +93,65 @@ private:
 };
 
 
+// #pragma mark - SessionID
+
+
+TermWindow::SessionID::SessionID(int32 id)
+	:
+	fID(id)
+{
+}
+
+
+TermWindow::SessionID::SessionID(const BMessage& message, const char* field)
+	:
+	fID(-1)
+{
+	message.FindInt32(field, &fID);
+}
+
+
+status_t
+TermWindow::SessionID::AddToMessage(BMessage& message, const char* field) const
+{
+	return message.AddInt32(field, fID);
+}
+
+
+// #pragma mark - Session
+
+
 struct TermWindow::Session {
-	int32					id;
-	BString					name;
-	BString					windowTitle;
+	SessionID				id;
+	int32					index;
+	Title					title;
 	TermViewContainerView*	containerView;
 
-	Session(int32 id, TermViewContainerView* containerView)
+	Session(SessionID id, int32 index, TermViewContainerView* containerView)
 		:
 		id(id),
+		index(index),
 		containerView(containerView)
 	{
-		name = B_TRANSLATE("Shell ");
-		name << id;
+		title.title = B_TRANSLATE("Shell ");
+		title.title << index;
+		title.patternUserDefined = false;
 	}
 };
 
 
-class TermWindow::TabView : public SmartTabView {
-public:
-	TabView(TermWindow* window, BRect frame, const char *name)
-		:
-		SmartTabView(frame, name),
-		fWindow(window)
-	{
-	}
-
-	virtual	void Select(int32 tab)
-	{
-		SmartTabView::Select(tab);
-		fWindow->SessionChanged();
-	}
-
-	virtual	void RemoveAndDeleteTab(int32 index)
-	{
-		fWindow->_RemoveTab(index);
-	}
-
-private:
-	TermWindow*	fWindow;
-};
+// #pragma mark - TermWindow
 
 
-TermWindow::TermWindow(BRect frame, const char* title, uint32 workspaces,
+TermWindow::TermWindow(BRect frame, const BString& title,
+	bool isUserDefinedTitle, int32 windowIndex, uint32 workspaces,
 	Arguments* args)
 	:
 	BWindow(frame, title, B_DOCUMENT_WINDOW,
 		B_CURRENT_WORKSPACE | B_QUIT_ON_WINDOW_CLOSE, workspaces),
-	fInitialTitle(title),
+	fWindowIndex(windowIndex),
+	fTitleUpdateRunner(this, BMessage(kUpdateTitles), 1000000),
+	fNextSessionID(0),
 	fTabView(NULL),
 	fMenubar(NULL),
 	fFilemenu(NULL),
@@ -163,6 +172,12 @@ TermWindow::TermWindow(BRect frame, const char* title, uint32 workspaces,
 	fMatchWord(false),
 	fFullScreen(false)
 {
+	// apply the title settings
+	fTitle.title = title;
+	fTitle.pattern = title;
+	fTitle.patternUserDefined = isUserDefinedTitle;
+	_TitleSettingsChanged();
+
 	_InitWindow();
 	_AddTab(args);
 }
@@ -186,25 +201,9 @@ TermWindow::~TermWindow()
 
 
 void
-TermWindow::SetSessionWindowTitle(TermView* termView, const char* title)
-{
-	int32 index = _IndexOfTermView(termView);
-	if (Session* session = (Session*)fSessions.ItemAt(index)) {
-		session->windowTitle = title;
-		BTab* tab = fTabView->TabAt(index);
-		tab->SetLabel(session->windowTitle.String());
-		if (index == fTabView->Selection())
-			SetTitle(session->windowTitle.String());
-	}
-}
-
-
-void
 TermWindow::SessionChanged()
 {
-	int32 index = fTabView->Selection();
-	if (Session* session = (Session*)fSessions.ItemAt(index))
-		SetTitle(session->windowTitle.String());
+	_UpdateSessionTitle(fTabView->Selection());
 }
 
 
@@ -224,7 +223,8 @@ TermWindow::_InitWindow()
 	BRect textFrame = Bounds();
 	textFrame.top = fMenubar->Bounds().bottom + 1.0;
 
-	fTabView = new TabView(this, textFrame, "tab view");
+	fTabView = new SmartTabView(textFrame, "tab view", B_WIDTH_FROM_WIDEST);
+	fTabView->SetListener(this);
 	AddChild(fTabView);
 
 	// Make the scroll view one pixel wider than the tab view container view, so
@@ -254,10 +254,13 @@ TermWindow::_CanClose(int32 index)
 	}
 
 	if (isBusy) {
-		const char* alertMessage = B_TRANSLATE("A process is still running.\n"
-			"If you close the Terminal the process will be killed.");
-		BAlert* alert = new BAlert(B_TRANSLATE("Really quit?"),
-			alertMessage, B_TRANSLATE("OK"), B_TRANSLATE("Cancel"), NULL,
+		const char* alertMessage = index == -1 || fSessions.CountItems() == 1
+			? B_TRANSLATE("A process is still running.\n"
+				"If you close the Terminal, the process will be killed.")
+			: B_TRANSLATE("A process is still running.\n"
+				"If you close the tab, the process will be killed.");
+		BAlert* alert = new BAlert(B_TRANSLATE("Really close?"),
+			alertMessage, B_TRANSLATE("Close"), B_TRANSLATE("Cancel"), NULL,
 			B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 		int32 result = alert->Go();
 		if (result == 1)
@@ -357,8 +360,10 @@ TermWindow::_SetupMenu()
 		B_TRANSLATE("About Terminal" B_UTF8_ELLIPSIS),
 		new BMessage(B_ABOUT_REQUESTED)));
 	fFilemenu->AddSeparatorItem();
+	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Close window"),
+		new BMessage(B_QUIT_REQUESTED), 'W', B_SHIFT_KEY));
 	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Close active tab"),
-		new BMessage(kCloseView), 'W', B_SHIFT_KEY));
+		new BMessage(kCloseView), 'W'));
 	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	fMenubar->AddItem(fFilemenu);
@@ -471,6 +476,15 @@ TermWindow::MessageReceived(BMessage *message)
 
 		case MENU_NEW_TERM:
 		{
+			// Set our current working directory to that of the active tab, so
+			// that the new terminal and its shell inherit it.
+			// Note: That's a bit lame. We should rather fork() and change the
+			// CWD in the child, but since ATM there aren't any side effects of
+			// changing our CWD, we save ourselves the trouble.
+			ActiveProcessInfo activeProcessInfo;
+			if (_ActiveTermView()->GetActiveProcessInfo(activeProcessInfo))
+				chdir(activeProcessInfo.CurrentDirectory());
+
 			app_info info;
 			be_app->GetAppInfo(&info);
 
@@ -490,6 +504,11 @@ TermWindow::MessageReceived(BMessage *message)
 
 		case MSG_PREF_CLOSED:
 			fPrefWindow = NULL;
+			break;
+
+		case MSG_WINDOW_TITLE_SETTING_CHANGED:
+		case MSG_TAB_TITLE_SETTING_CHANGED:
+			_TitleSettingsChanged();
 			break;
 
 		case MENU_FIND_STRING:
@@ -658,21 +677,6 @@ TermWindow::MessageReceived(BMessage *message)
 			_CheckChildren();
 			break;
 
-		case MSG_PREVIOUS_TAB:
-		case MSG_NEXT_TAB:
-		{
-			TermView* termView;
-			if (message->FindPointer("termView", (void**)&termView) == B_OK) {
-				int32 count = fSessions.CountItems();
-				int32 index = _IndexOfTermView(termView);
-				if (count > 1 && index >= 0) {
-					index += message->what == MSG_PREVIOUS_TAB ? -1 : 1;
-					fTabView->Select((index + count) % count);
-				}
-			}
-			break;
-		}
-
 		case kSetActiveTab:
 		{
 			int32 index;
@@ -684,11 +688,7 @@ TermWindow::MessageReceived(BMessage *message)
 		}
 
 		case kNewTab:
-			if (fTabView->CountTabs() < kMaxTabs) {
-				if (fFullScreen)
-					_ActiveTermView()->ScrollBar()->Show();
-				_AddTab(NULL);
-			}
+			_NewTab();
 			break;
 
 		case kCloseView:
@@ -732,6 +732,10 @@ TermWindow::MessageReceived(BMessage *message)
 			_ResizeView(view);
 			break;
 		}
+
+		case kUpdateTitles:
+			_UpdateTitles();
+			break;
 
 		default:
 			BWindow::MessageReceived(message);
@@ -825,23 +829,37 @@ TermWindow::_DoPrint()
 
 
 void
-TermWindow::_AddTab(Arguments* args)
+TermWindow::_NewTab()
+{
+	if (fTabView->CountTabs() < kMaxTabs) {
+		if (fFullScreen)
+			_ActiveTermView()->ScrollBar()->Show();
+
+		ActiveProcessInfo info;
+		if (_ActiveTermView()->GetActiveProcessInfo(info))
+			_AddTab(NULL, info.CurrentDirectory());
+		else
+			_AddTab(NULL);
+	}
+}
+
+
+void
+TermWindow::_AddTab(Arguments* args, const BString& currentDirectory)
 {
 	int argc = 0;
 	const char* const* argv = NULL;
 	if (args != NULL)
 		args->GetShellArguments(argc, argv);
+	ShellParameters shellParameters(argc, argv, currentDirectory);
 
 	try {
-		// Note: I don't pass the Arguments class directly to the termview,
-		// only to avoid adding it as a dependency: in other words, to keep
-		// the TermView class as agnostic as possible about the surrounding
-		// world.
-		CustomTermView* view = new CustomTermView(
+		TermView* view = new TermView(
 			PrefHandler::Default()->getInt32(PREF_ROWS),
 			PrefHandler::Default()->getInt32(PREF_COLS),
-			argc, (const char**)argv,
+			shellParameters,
 			PrefHandler::Default()->getInt32(PREF_HISTORY_SIZE));
+		view->SetListener(this);
 
 		TermViewContainerView* containerView = new TermViewContainerView(view);
 		BScrollView* scrollView = new TermScrollView("scrollView",
@@ -850,8 +868,8 @@ TermWindow::_AddTab(Arguments* args)
 		if (fSessions.IsEmpty())
 			fTabView->SetScrollView(scrollView);
 
-		Session* session = new Session(_NewSessionID(), containerView);
-		session->windowTitle = fInitialTitle;
+		Session* session = new Session(_NewSessionID(), _NewSessionIndex(),
+			containerView);
 		fSessions.AddItem(session);
 
 		BFont font;
@@ -886,10 +904,6 @@ TermWindow::_AddTab(Arguments* args)
 
 		BTab* tab = new BTab;
 		fTabView->AddTab(scrollView, tab);
-		tab->SetLabel(session->name.String());
-			// TODO: Use a better name. For example, do like MacOS X's Terminal
-			// and update the title using the last executed command ?
-			// Or like Gnome's Terminal and use the current path ?
 		view->SetScrollBar(scrollView->ScrollBar(B_VERTICAL));
 		view->SetMouseClipboard(gMouseClipboard);
 		view->SetEncoding(EncodingID(
@@ -897,8 +911,10 @@ TermWindow::_AddTab(Arguments* args)
 
 		_SetTermColors(containerView);
 
-		// TODO: No fTabView->Select(tab); ?
-		fTabView->Select(fTabView->CountTabs() - 1);
+		int32 tabIndex = fTabView->CountTabs() - 1;
+		fTabView->Select(tabIndex);
+
+		_UpdateSessionTitle(tabIndex);
 	} catch (...) {
 		// most probably out of memory. That's bad.
 		// TODO: Should cleanup, I guess
@@ -931,6 +947,22 @@ TermWindow::_RemoveTab(int32 index)
 		}
 	} else
 		PostMessage(B_QUIT_REQUESTED);
+}
+
+
+void
+TermWindow::_NavigateTab(int32 index, int32 direction, bool move)
+{
+	int32 count = fSessions.CountItems();
+	if (count <= 1 || index < 0 || index >= count)
+		return;
+
+	if (move) {
+		// TODO: Move the tab!
+	} else {
+		index += direction;
+		fTabView->Select((index + count) % count);
+	}
 }
 
 
@@ -988,7 +1020,8 @@ TermWindow::_CheckChildren()
 	int32 count = fSessions.CountItems();
 	for (int32 i = count - 1; i >= 0; i--) {
 		Session* session = (Session*)fSessions.ItemAt(i);
-		session->containerView->GetTermView()->CheckShellGone();
+		if (session->containerView->GetTermView()->CheckShellGone())
+			NotifyTermViewQuit(session->containerView->GetTermView(), 0);
 	}
 }
 
@@ -1009,6 +1042,96 @@ TermWindow::FrameResized(float newWidth, float newHeight)
 	TermView* view = _ActiveTermView();
 	PrefHandler::Default()->setInt32(PREF_COLS, view->Columns());
 	PrefHandler::Default()->setInt32(PREF_ROWS, view->Rows());
+}
+
+
+void
+TermWindow::TabSelected(SmartTabView* tabView, int32 index)
+{
+	SessionChanged();
+}
+
+
+void
+TermWindow::TabDoubleClicked(SmartTabView* tabView, BPoint point, int32 index)
+{
+	if (index >= 0) {
+		// TODO: Open the change title dialog!
+	} else {
+		// not clicked on a tab -- create a new one
+		_NewTab();
+	}
+}
+
+
+void
+TermWindow::TabMiddleClicked(SmartTabView* tabView, BPoint point, int32 index)
+{
+	if (index >= 0)
+		_RemoveTab(index);
+}
+
+
+void
+TermWindow::TabRightClicked(SmartTabView* tabView, BPoint point, int32 index)
+{
+	if (index < 0)
+		return;
+
+	TermView* termView = _TermViewAt(index);
+	if (termView == NULL)
+		return;
+
+	BMessage* message = new BMessage(kCloseView);
+	message->AddPointer("termview", termView);
+
+	BPopUpMenu* popUpMenu = new BPopUpMenu("tab menu");
+	popUpMenu->AddItem(new BMenuItem(B_TRANSLATE("Close tab"), message));
+	popUpMenu->SetAsyncAutoDestruct(true);
+	popUpMenu->SetTargetForItems(BMessenger(this));
+
+	BPoint screenWhere = tabView->ConvertToScreen(point);
+	BRect mouseRect(screenWhere, screenWhere);
+	mouseRect.InsetBy(-4.0, -4.0);
+	popUpMenu->Go(screenWhere, true, true, mouseRect, true);
+}
+
+
+void
+TermWindow::NotifyTermViewQuit(TermView* view, int32 reason)
+{
+	// Since the notification can come from the view, we send a message to
+	// ourselves to avoid deleting the caller synchronously.
+	BMessage message(kCloseView);
+	message.AddPointer("termView", view);
+	message.AddInt32("reason", reason);
+	PostMessage(&message);
+}
+
+
+void
+TermWindow::SetTermViewTitle(TermView* view, const char* title)
+{
+	int32 index = _IndexOfTermView(view);
+	if (Session* session = (Session*)fSessions.ItemAt(index)) {
+		session->title.pattern = title;
+		session->title.patternUserDefined = true;
+		_UpdateSessionTitle(index);
+	}
+}
+
+
+void
+TermWindow::PreviousTermView(TermView* view, bool move)
+{
+	_NavigateTab(_IndexOfTermView(view), -1, move);
+}
+
+
+void
+TermWindow::NextTermView(TermView* view, bool move)
+{
+	_NavigateTab(_IndexOfTermView(view), 1, move);
 }
 
 
@@ -1077,15 +1200,89 @@ TermWindow::_MakeWindowSizeMenu()
 }
 
 
-int32
+void
+TermWindow::_TitleSettingsChanged()
+{
+	if (!fTitle.patternUserDefined)
+		fTitle.pattern = PrefHandler::Default()->getString(PREF_WINDOW_TITLE);
+
+	fSessionTitlePattern = PrefHandler::Default()->getString(PREF_TAB_TITLE);
+
+	_UpdateTitles();
+}
+
+
+void
+TermWindow::_UpdateTitles()
+{
+	int32 sessionCount = fSessions.CountItems();
+	for (int32 i = 0; i < sessionCount; i++)
+		_UpdateSessionTitle(i);
+}
+
+
+void
+TermWindow::_UpdateSessionTitle(int32 index)
+{
+	Session* session = (Session*)fSessions.ItemAt(index);
+	if (session == NULL)
+		return;
+
+	// get the active process info
+	ActiveProcessInfo activeProcessInfo;
+	if (!_TermViewAt(index)->GetActiveProcessInfo(activeProcessInfo))
+		return;
+
+	// evaluate the session title pattern
+	BString sessionTitlePattern = session->title.patternUserDefined
+		? session->title.pattern : fSessionTitlePattern;
+	TabTitlePlaceholderMapper tabMapper(activeProcessInfo, session->index);
+	const BString& sessionTitle = PatternEvaluator::Evaluate(
+		sessionTitlePattern, tabMapper);
+
+	// set the tab title
+	if (sessionTitle != session->title.title) {
+		session->title.title = sessionTitle;
+		fTabView->TabAt(index)->SetLabel(session->title.title);
+		fTabView->Invalidate();
+			// Invalidate the complete tab view, since other tabs might change
+			// their positions.
+	}
+
+	// If this is the active tab, also recompute the window title.
+	if (index != fTabView->Selection())
+		return;
+
+	// evaluate the window title pattern
+	WindowTitlePlaceholderMapper windowMapper(activeProcessInfo, fWindowIndex,
+		sessionTitle);
+	const BString& windowTitle = PatternEvaluator::Evaluate(fTitle.pattern,
+		windowMapper);
+
+	// set the window title
+	if (windowTitle != fTitle.title) {
+		fTitle.title = windowTitle;
+		SetTitle(fTitle.title);
+	}
+}
+
+
+TermWindow::SessionID
 TermWindow::_NewSessionID()
+{
+	return fNextSessionID++;
+}
+
+
+int32
+TermWindow::_NewSessionIndex()
 {
 	for (int32 id = 1; ; id++) {
 		bool used = false;
 
 		for (int32 i = 0;
 			 Session* session = (Session*)fSessions.ItemAt(i); i++) {
-			if (id == session->id) {
+			if (id == session->index) {
 				used = true;
 				break;
 			}
@@ -1095,43 +1292,3 @@ TermWindow::_NewSessionID()
 			return id;
 	}
 }
-
-
-// #pragma mark -
-
-
-// CustomTermView
-CustomTermView::CustomTermView(int32 rows, int32 columns, int32 argc, const char **argv, int32 historySize)
-	:
-	TermView(rows, columns, argc, argv, historySize)
-{
-}
-
-
-void
-CustomTermView::NotifyQuit(int32 reason)
-{
-	BWindow* window = Window();
-	// TODO: If we got this from a view in a tab not currently selected,
-	// Window() will be NULL, as the view is detached.
-	// So we send the message to the first application window
-	// This isn't so cool, but should be safe, since a Terminal
-	// application has only one window, at least for now.
-	if (window == NULL)
-		window = be_app->WindowAt(0);
-
-	if (window != NULL) {
-		BMessage message(kCloseView);
-		message.AddPointer("termView", this);
-		message.AddInt32("reason", reason);
-		window->PostMessage(&message);
-	}
-}
-
-
-void
-CustomTermView::SetTitle(const char* title)
-{
-	dynamic_cast<TermWindow*>(Window())->SetSessionWindowTitle(this, title);
-}
-

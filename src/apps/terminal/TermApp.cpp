@@ -59,6 +59,7 @@ main()
 TermApp::TermApp()
 	: BApplication(TERM_SIGNATURE),
 	fStartFullscreen(false),
+	fWindowTitleUserDefined(false),
 	fWindowNumber(-1),
 	fTermWindow(NULL),
 	fArgs(NULL)
@@ -138,6 +139,25 @@ TermApp::ReadyToRun()
 }
 
 
+bool
+TermApp::QuitRequested()
+{
+	// check whether the system is shutting down
+	BMessage* message = CurrentMessage();
+	bool shutdown;
+	if (message != NULL && message->FindBool("_shutdown_", &shutdown) == B_OK
+		&& shutdown) {
+		// The system is shutting down. Quit the window synchronously. This
+		// skips the checks for running processes and the "Are you sure..."
+		// alert.
+		if (fTermWindow->Lock())
+			fTermWindow->Quit();
+	}
+
+	return BApplication::QuitRequested();
+}
+
+
 void
 TermApp::Quit()
 {
@@ -203,8 +223,10 @@ TermApp::ArgvReceived(int32 argc, char **argv)
 		return;
 	}
 
-	if (fArgs->Title() != NULL)
+	if (fArgs->Title() != NULL) {
 		fWindowTitle = fArgs->Title();
+		fWindowTitleUserDefined = true;
+	}
 
 	fStartFullscreen = fArgs->FullScreen();
 }
@@ -342,8 +364,8 @@ status_t
 TermApp::_MakeTermWindow(BRect &frame, uint32 workspaces)
 {
 	try {
-		fTermWindow = new TermWindow(frame, fWindowTitle.String(), workspaces,
-			fArgs);
+		fTermWindow = new TermWindow(frame, fWindowTitle,
+			fWindowTitleUserDefined, fWindowNumber, workspaces, fArgs);
 	} catch (int error) {
 		return (status_t)error;
 	} catch (...) {

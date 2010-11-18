@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2007, Haiku.
+ * Copyright 2001-2010, Haiku.
  * Copyright (c) 2003-4 Kian Duffy <myob@users.sourceforge.net>
  * Parts Copyright (C) 1998,99 Kazuho Okui and Takashi Murai.
  *
@@ -28,12 +28,17 @@
  * THE SOFTWARE.
  *
  */
-#ifndef __TERMWINDOW_H
-#define __TERMWINDOW_H
+#ifndef TERM_WINDOW_H
+#define TERM_WINDOW_H
 
 
+#include <MessageRunner.h>
 #include <String.h>
 #include <Window.h>
+
+#include "SmartTabView.h"
+#include "TermView.h"
+
 
 class Arguments;
 class BFont;
@@ -41,89 +46,140 @@ class BMenu;
 class BMenuBar;
 class FindWindow;
 class PrefWindow;
-class SmartTabView;
-class TermView;
 class TermViewContainerView;
 
 
-class TermWindow : public BWindow {
+class TermWindow : public BWindow, private SmartTabView::Listener,
+	private TermView::Listener {
 public:
-	TermWindow(BRect frame, const char* title, uint32 workspaces,
-		Arguments *args);
-	virtual ~TermWindow();
+								TermWindow(BRect frame, const BString& title,
+									bool isUserDefinedTitle, int32 windowIndex,
+									uint32 workspaces, Arguments* args);
+	virtual						~TermWindow();
 
-			void	SetSessionWindowTitle(TermView* termView,
-						const char* title);
-			void	SessionChanged();
+			void				SessionChanged();
 
 protected:
-	virtual bool	QuitRequested();
-	virtual void	MessageReceived(BMessage *message);
-	virtual void	WindowActivated(bool);
-	virtual void	MenusBeginning();
-	virtual	void	Zoom(BPoint leftTop, float width, float height);
-	virtual void	FrameResized(float newWidth, float newHeight);
+	virtual bool				QuitRequested();
+	virtual void				MessageReceived(BMessage* message);
+	virtual void				WindowActivated(bool);
+	virtual void				MenusBeginning();
+	virtual	void				Zoom(BPoint leftTop, float width, float height);
+	virtual void				FrameResized(float newWidth, float newHeight);
 
 private:
-	struct Session;
-	class TabView;
-	friend class TabView;
+	// SmartTabView::Listener
+	virtual	void				TabSelected(SmartTabView* tabView, int32 index);
+	virtual	void				TabDoubleClicked(SmartTabView* tabView,
+									BPoint point, int32 index);
+	virtual	void				TabMiddleClicked(SmartTabView* tabView,
+									BPoint point, int32 index);
+	virtual	void				TabRightClicked(SmartTabView* tabView,
+									BPoint point, int32 index);
 
-	void			_SetTermColors(TermViewContainerView *termView);
-	void			_InitWindow();
-	void			_SetupMenu();
-	static BMenu*	_MakeEncodingMenu();
-	static BMenu*	_MakeWindowSizeMenu();
-	
-	void			_GetPreferredFont(BFont &font);
-	status_t		_DoPageSetup();
-	void			_DoPrint();
-	void			_AddTab(Arguments *args);
-	void			_RemoveTab(int32 index);
-	bool			_CanClose(int32 index);
-	TermViewContainerView* _ActiveTermViewContainerView() const;
-	TermViewContainerView* _TermViewContainerViewAt(int32 index) const;
-	TermView*		_ActiveTermView() const;
-	TermView*		_TermViewAt(int32 index) const;
-	int32			_IndexOfTermView(TermView* termView) const;
-	void			_CheckChildren();
-	void			_ResizeView(TermView *view);
-	
-	int32			_NewSessionID();
+	// TermView::Listener
+	virtual	void				NotifyTermViewQuit(TermView* view,
+									int32 reason);
+	virtual	void				SetTermViewTitle(TermView* view,
+									const char* title);
+	virtual	void				PreviousTermView(TermView* view, bool move);
+	virtual	void				NextTermView(TermView* view, bool move);
 
-	BString			fInitialTitle;
-	BList			fSessions;
+private:
+			struct Title {
+				BString			title;
+				BString			pattern;
+				bool			patternUserDefined;
+			};
 
-	TabView			*fTabView;
-	TermView		*fTermView;
+			struct SessionID {
+								SessionID(int32 id);
+								SessionID(const BMessage& message,
+									const char* field);
 
-	BMenuBar		*fMenubar;
-	BMenu			*fFilemenu;
-	BMenu			*fEditmenu;
-	BMenu			*fEncodingmenu;
-	BMenu			*fHelpmenu;
-	BMenu			*fWindowSizeMenu;
-	BMenu			*fSizeMenu;
+				status_t		AddToMessage(BMessage& message,
+									const char* field) const;
 
-	BMessage		*fPrintSettings;
-	PrefWindow		*fPrefWindow;
-	FindWindow		*fFindPanel;
-	BRect			fSavedFrame;
-	window_look		fSavedLook;
+			private:
+				int32			fID;
+			};
 
-	// Saved search parameters
-	BString			fFindString;
-	BMenuItem		*fFindNextMenuItem;
-	BMenuItem 		*fFindPreviousMenuItem;
-	BMenuItem		*fIncreaseFontSizeMenuItem;
-	BMenuItem		*fDecreaseFontSizeMenuItem;
+			struct Session;
 
-	bool			fFindSelection;
-	bool			fForwardSearch;
-	bool			fMatchCase;
-	bool			fMatchWord;
+			void				_SetTermColors(TermViewContainerView* termView);
+			void				_InitWindow();
+			void				_SetupMenu();
+			static BMenu*		_MakeEncodingMenu();
+			static BMenu*		_MakeWindowSizeMenu();
 
-	bool			fFullScreen;
+			void				_GetPreferredFont(BFont &font);
+			status_t			_DoPageSetup();
+			void				_DoPrint();
+
+			void				_NewTab();
+			void				_AddTab(Arguments* args,
+									const BString& currentDirectory
+										= BString());
+			void				_RemoveTab(int32 index);
+			void				_NavigateTab(int32 index, int32 direction,
+									bool move);
+
+			bool				_CanClose(int32 index);
+			TermViewContainerView* _ActiveTermViewContainerView() const;
+			TermViewContainerView* _TermViewContainerViewAt(int32 index) const;
+			TermView*			_ActiveTermView() const;
+			TermView*			_TermViewAt(int32 index) const;
+			int32				_IndexOfTermView(TermView* termView) const;
+			void				_CheckChildren();
+			void				_ResizeView(TermView* view);
+
+			void				_TitleSettingsChanged();
+			void				_UpdateTitles();
+			void				_UpdateSessionTitle(int32 index);
+
+			SessionID			_NewSessionID();
+			int32				_NewSessionIndex();
+
+private:
+			Title				fTitle;
+			BString				fSessionTitlePattern;
+			int32				fWindowIndex;
+			BMessageRunner		fTitleUpdateRunner;
+
+			BList				fSessions;
+			int32				fNextSessionID;
+
+			SmartTabView*		fTabView;
+			TermView*			fTermView;
+
+			BMenuBar*			fMenubar;
+			BMenu*				fFilemenu;
+			BMenu*				fEditmenu;
+			BMenu*				fEncodingmenu;
+			BMenu*				fHelpmenu;
+			BMenu*				fWindowSizeMenu;
+			BMenu*				fSizeMenu;
+
+			BMessage*			fPrintSettings;
+			PrefWindow*			fPrefWindow;
+			FindWindow*			fFindPanel;
+			BRect				fSavedFrame;
+			window_look			fSavedLook;
+
+			// Saved search parameters
+			BString				fFindString;
+			BMenuItem*			fFindNextMenuItem;
+			BMenuItem *			fFindPreviousMenuItem;
+			BMenuItem*			fIncreaseFontSizeMenuItem;
+			BMenuItem*			fDecreaseFontSizeMenuItem;
+
+			bool				fFindSelection;
+			bool				fForwardSearch;
+			bool				fMatchCase;
+			bool				fMatchWord;
+
+			bool				fFullScreen;
 };
 
-#endif // __TERMWINDOW_H
+
+#endif // TERM_WINDOW_H
