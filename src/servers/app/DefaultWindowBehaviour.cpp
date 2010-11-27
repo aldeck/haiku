@@ -9,11 +9,17 @@
  *		Axel Dörfler <axeld@pinc-software.de>
  *		Brecht Machiels <brecht@mos6581.org>
  *		Clemens Zeidler <haiku@clemens-zeidler.de>
+ *		Ingo Weinhold <ingo_weinhold@gmx.de>
  */
 
 
 #include "DefaultWindowBehaviour.h"
 
+#include <math.h>
+
+#include <WindowPrivate.h>
+
+#include "ClickTarget.h"
 #include "Desktop.h"
 #include "DrawingEngine.h"
 #include "Window.h"
@@ -27,318 +33,204 @@
 #endif
 
 
+// The span between mouse down
 static const bigtime_t kWindowActivationTimeout = 500000LL;
 
 
-DefaultWindowBehaviour::DefaultWindowBehaviour(Window* window)
-	:
-	fWindow(window),
-
-	fIsClosing(false),
-	fIsMinimizing(false),
-	fIsZooming(false),
-	fIsSlidingTab(false),
-	fActivateOnMouseUp(false),
-
-	fLastMousePosition(0.0f, 0.0f),
-	fMouseMoveDistance(0.0f),
-	fLastMoveTime(0),
-	fLastSnapTime(0)
-{
-	fDesktop = fWindow->Desktop();
-}
+// #pragma mark - State
 
 
-DefaultWindowBehaviour::~DefaultWindowBehaviour()
-{
-}
-
-
-bool
-DefaultWindowBehaviour::MouseDown(BMessage* message, BPoint where)
-{
-	Decorator* decorator = fWindow->Decorator();
-
-	bool inBorderRegion = false;
-	if (decorator != NULL)
-		inBorderRegion = decorator->GetFootprint().Contains(where);
-
-	int32 modifiers = message->FindInt32("modifiers");
-	bool windowModifier = _IsWindowModifier(modifiers);
-	click_type action = CLICK_NONE;
-
-	if (windowModifier || inBorderRegion) {
-		// Click on the window border or we have the window modifier keys held
-		int32 buttons = message->FindInt32("buttons");
-
-		if (inBorderRegion)
-			action = _ActionFor(message, buttons, modifiers);
-		else {
-			if ((buttons & B_SECONDARY_MOUSE_BUTTON) != 0)
-				action = CLICK_MOVE_TO_BACK;
-			else if ((fWindow->Flags() & B_NOT_MINIMIZABLE) == 0
-				&& message->FindInt32("clicks") == 2)
-				action = CLICK_MINIMIZE;
-			else if ((fWindow->Flags() & B_NOT_MOVABLE) == 0
-				&& decorator != NULL)
-				action = CLICK_DRAG;
-			else {
-				// pass click on to the application
-				windowModifier = false;
-			}
-		}
+struct DefaultWindowBehaviour::State {
+	State(DefaultWindowBehaviour& behavior)
+		:
+		fBehavior(behavior),
+		fWindow(behavior.fWindow),
+		fDesktop(behavior.fDesktop)
+	{
 	}
 
-	if (!windowModifier && !inBorderRegion) {
-		// This is a click inside the window's contents
-		return false;
+	virtual ~State()
+	{
 	}
 
-	DesktopSettings desktopSettings(fDesktop);
-	if (!desktopSettings.AcceptFirstClick()) {
-		// Ignore clicks on decorator buttons if the
-		// non-floating window doesn't have focus
-		if (!fWindow->IsFocus() && !fWindow->IsFloating()
-			&& action != CLICK_MOVE_TO_BACK
-			&& action != CLICK_RESIZE && action != CLICK_SLIDE_TAB)
-			action = CLICK_DRAG;
+	virtual void EnterState(State* previousState)
+	{
 	}
 
-	// set decorator internals
-	switch (action) {
-		case CLICK_CLOSE:
-			fIsClosing = true;
-			STRACE_CLICK(("===> CLICK_CLOSE\n"));
-			break;
-
-		case CLICK_ZOOM:
-			fIsZooming = true;
-			STRACE_CLICK(("===> CLICK_ZOOM\n"));
-			break;
-
-		case CLICK_MINIMIZE:
-			if ((fWindow->Flags() & B_NOT_MINIMIZABLE) == 0) {
-				fIsMinimizing = true;
-				STRACE_CLICK(("===> CLICK_MINIMIZE\n"));
-			}
-			break;
-
-		case CLICK_DRAG:
-			fIsDragging = true;
-			fLastMousePosition = where;
-			STRACE_CLICK(("===> CLICK_DRAG\n"));
-			break;
-
-		case CLICK_RESIZE:
-			fIsResizing = true;
-			fLastMousePosition = where;
-			STRACE_CLICK(("===> CLICK_RESIZE\n"));
-			break;
-
-		case CLICK_SLIDE_TAB:
-			fIsSlidingTab = true;
-			fLastMousePosition = where;
-			STRACE_CLICK(("===> CLICK_SLIDE_TAB\n"));
-			break;
-
-		default:
-			break;
+	virtual void ExitState(State* nextState)
+	{
 	}
 
-	if (decorator != NULL) {
-		// redraw decorator
-		BRegion* visibleBorder = fWindow->RegionPool()->GetRegion();
-		fWindow->GetBorderRegion(visibleBorder);
-		visibleBorder->IntersectWith(&fWindow->VisibleRegion());
-
-		DrawingEngine* engine = decorator->GetDrawingEngine();
-		engine->LockParallelAccess();
-		engine->ConstrainClippingRegion(visibleBorder);
-
-		if (fIsZooming)
-			decorator->SetZoom(true);
-		else if (fIsClosing)
-			decorator->SetClose(true);
-		else if (fIsMinimizing)
-			decorator->SetMinimize(true);
-
-		engine->UnlockParallelAccess();
-
-		fWindow->RegionPool()->Recycle(visibleBorder);
-	} else if (fIsMinimizing) {
-		fWindow->ServerWindow()->NotifyQuitRequested();
+	virtual bool MouseDown(BMessage* message, BPoint where, bool& _unhandled)
+	{
 		return true;
 	}
 
-	if (action == CLICK_MOVE_TO_BACK) {
-		if (!fIsDragging || fWindow != fDesktop->BackWindow())
-			fDesktop->SendWindowBehind(fWindow);
-		else
-			fDesktop->ActivateWindow(fWindow);
-	} else {
-		fDesktop->SetMouseEventWindow(fWindow);
+	virtual void MouseUp(BMessage* message, BPoint where)
+	{
+	}
 
-		// activate window if in click to activate mode, else only focus it
-		if (desktopSettings.MouseMode() == B_NORMAL_MOUSE)
-			fDesktop->ActivateWindow(fWindow);
-		else {
-			fDesktop->SetFocusWindow(fWindow);
+	virtual void MouseMoved(BMessage* message, BPoint where, bool isFake)
+	{
+	}
 
-			if (action == CLICK_DRAG || action == CLICK_RESIZE) {
-				fActivateOnMouseUp = true;
-				fMouseMoveDistance = 0.0f;
-				fLastMoveTime = system_time();
+	virtual void ModifiersChanged(BPoint where, int32 modifiers)
+	{
+	}
+
+protected:
+	DefaultWindowBehaviour&	fBehavior;
+	Window*					fWindow;
+	Desktop*				fDesktop;
+};
+
+
+// #pragma mark - MouseTrackingState
+
+
+struct DefaultWindowBehaviour::MouseTrackingState : State {
+	MouseTrackingState(DefaultWindowBehaviour& behavior, BPoint where,
+		bool windowActionOnMouseUp, bool minimizeCheckOnMouseUp,
+		int32 mouseButton = B_PRIMARY_MOUSE_BUTTON)
+		:
+		State(behavior),
+		fMouseButton(mouseButton),
+		fWindowActionOnMouseUp(windowActionOnMouseUp),
+		fMinimizeCheckOnMouseUp(minimizeCheckOnMouseUp),
+		fLastMousePosition(where),
+		fMouseMoveDistance(0),
+		fLastMoveTime(system_time())
+	{
+	}
+
+	virtual void MouseUp(BMessage* message, BPoint where)
+	{
+		// ignore, if it's not our mouse button
+		int32 buttons = message->FindInt32("buttons");
+		if ((buttons & fMouseButton) != 0)
+			return;
+
+		if (fMinimizeCheckOnMouseUp) {
+			// If the modifiers haven't changed in the meantime and not too
+			// much time has elapsed, we're supposed to minimize the window.
+			fMinimizeCheckOnMouseUp = false;
+			if (message->FindInt32("modifiers") == fBehavior.fLastModifiers
+				&& (fWindow->Flags() & B_NOT_MINIMIZABLE) == 0
+				&& system_time() - fLastMoveTime < kWindowActivationTimeout) {
+				fWindow->ServerWindow()->NotifyMinimize(true);
 			}
 		}
-	}
 
-	return true;
-}
-
-
-void
-DefaultWindowBehaviour::MouseUp(BMessage* message, BPoint where)
-{
-	Decorator* decorator = fWindow->Decorator();
-
-	if (decorator != NULL) {
-		int32 modifiers = message->FindInt32("modifiers");
-		int32 buttons = message->FindInt32("buttons");
-		click_type action = _ActionFor(message, buttons, modifiers);
-
-		// redraw decorator
-		BRegion* visibleBorder = fWindow->RegionPool()->GetRegion();
-		fWindow->GetBorderRegion(visibleBorder);
-		visibleBorder->IntersectWith(&fWindow->VisibleRegion());
-
-		DrawingEngine* engine = decorator->GetDrawingEngine();
-		engine->LockParallelAccess();
-		engine->ConstrainClippingRegion(visibleBorder);
-
-		if (fIsZooming) {
-			fIsZooming = false;
-			decorator->SetZoom(false);
-			if (action == CLICK_ZOOM)
-				fWindow->ServerWindow()->NotifyZoom();
-		}
-		if (fIsClosing) {
-			fIsClosing = false;
-			decorator->SetClose(false);
-			if (action == CLICK_CLOSE)
-				fWindow->ServerWindow()->NotifyQuitRequested();
-		}
-		if (fIsMinimizing) {
-			fIsMinimizing = false;
-			decorator->SetMinimize(false);
-			if (action == CLICK_MINIMIZE || _IsWindowModifier(modifiers))
-				fWindow->ServerWindow()->NotifyMinimize(true);
+		// Perform the window action in case the mouse was not moved.
+		if (fWindowActionOnMouseUp) {
+			// There is a time window for this feature, i.e. click and press
+			// too long, nothing will happen.
+			if (system_time() - fLastMoveTime < kWindowActivationTimeout)
+				MouseUpWindowAction();
 		}
 
-		engine->UnlockParallelAccess();
-
-		fWindow->RegionPool()->Recycle(visibleBorder);
-
-		// if the primary mouse button is released, stop
-		// dragging/resizing/sliding
-		if ((buttons & B_PRIMARY_MOUSE_BUTTON) == 0) {
-			fIsDragging = false;
-			fIsResizing = false;
-			fIsSlidingTab = false;
-		}
+		fBehavior._NextState(NULL);
 	}
 
-	// in FFM mode, activate the window and bring it
-	// to front in case this was a drag click but the
-	// mouse was not moved
-	if (fActivateOnMouseUp) {
-		fActivateOnMouseUp = false;
-		// on R5, there is a time window for this feature
-		// ie, click and press too long, nothing will happen
-		if (system_time() - fLastMoveTime < kWindowActivationTimeout)
-			fDesktop->ActivateWindow(fWindow);
-	}
-}
-
-
-void
-DefaultWindowBehaviour::MouseMoved(BMessage *message, BPoint where, bool isFake)
-{
-	Decorator* decorator = fWindow->Decorator();
-
-	#if 0
-	if (decorator != NULL && fWindow->TopView() != NULL) {
-		DrawingEngine* engine = decorator->GetDrawingEngine();
-		engine->LockParallelAccess();
-		engine->ConstrainClippingRegion(&fWindow->VisibleRegion());
-
-		fWindow->TopView()->MarkAt(engine, where);
-		engine->UnlockParallelAccess();
-	}
-	#endif
-	// limit the rate at which "mouse moved" events
-	// are handled that move or resize the window
-	bigtime_t now = 0;
-	if (fIsDragging || fIsResizing) {
-		now = system_time();
+	virtual void MouseMoved(BMessage* message, BPoint where, bool isFake)
+	{
+		// Limit the rate at which "mouse moved" events are handled that move
+		// or resize the window. At the moment this affects also tab sliding,
+		// but 1/75 s is a pretty fine granularity anyway, so don't bother.
+		bigtime_t now = system_time();
 		if (now - fLastMoveTime < 13333) {
 			// TODO: add a "timed event" to query for
 			// the then current mouse position
 			return;
 		}
-		if (fActivateOnMouseUp) {
+		if (fWindowActionOnMouseUp || fMinimizeCheckOnMouseUp) {
 			if (now - fLastMoveTime >= kWindowActivationTimeout) {
-				// This click is too long already for window activation.
-				fActivateOnMouseUp = false;
+				// This click is too long already for window activation/
+				// minimizing.
+				fWindowActionOnMouseUp = false;
+				fMinimizeCheckOnMouseUp = false;
+				fLastMoveTime = now;
 			}
 		} else
 			fLastMoveTime = now;
+
+		BPoint delta = where - fLastMousePosition;
+		// NOTE: "delta" is later used to change fLastMousePosition.
+		// If for some reason no change should take effect, delta
+		// is to be set to (0, 0) so that fLastMousePosition is not
+		// adjusted. This way the relative mouse position to the
+		// item being changed (border during resizing, tab during
+		// sliding...) stays fixed when the mouse is moved so that
+		// changes are taking effect again.
+
+		// If the window was moved enough, it doesn't come to
+		// the front in FFM mode when the mouse is released.
+		if (fWindowActionOnMouseUp || fMinimizeCheckOnMouseUp) {
+			fMouseMoveDistance += delta.x * delta.x + delta.y * delta.y;
+			if (fMouseMoveDistance > 16.0f) {
+				fWindowActionOnMouseUp = false;
+				fMinimizeCheckOnMouseUp = false;
+			} else
+				delta = B_ORIGIN;
+		}
+
+		// perform the action (this also updates the delta)
+		MouseMovedAction(delta, now);
+
+		// set the new mouse position
+		fLastMousePosition += delta;
 	}
 
-	if (decorator != NULL) {
-		BRegion* visibleBorder = fWindow->RegionPool()->GetRegion();
-		fWindow->GetBorderRegion(visibleBorder);
-		visibleBorder->IntersectWith(&fWindow->VisibleRegion());
+	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
+	{
+	}
 
-		DrawingEngine* engine = decorator->GetDrawingEngine();
-		engine->LockParallelAccess();
-		engine->ConstrainClippingRegion(visibleBorder);
+	virtual void MouseUpWindowAction()
+	{
+		// default is window activation
+		fDesktop->ActivateWindow(fWindow);
+	}
 
+protected:
+	int32				fMouseButton;
+	bool				fWindowActionOnMouseUp : 1;
+	bool				fMinimizeCheckOnMouseUp : 1;
+
+	BPoint				fLastMousePosition;
+	float				fMouseMoveDistance;
+	bigtime_t			fLastMoveTime;
+};
+
+
+// #pragma mark - DragState
+
+
+struct DefaultWindowBehaviour::DragState : MouseTrackingState {
+	DragState(DefaultWindowBehaviour& behavior, BPoint where,
+		bool activateOnMouseUp, bool minimizeCheckOnMouseUp)
+		:
+		MouseTrackingState(behavior, where, activateOnMouseUp,
+			minimizeCheckOnMouseUp)
+	{
+	}
+
+	virtual bool MouseDown(BMessage* message, BPoint where, bool& _unhandled)
+	{
+		// right-click while dragging shall bring the window to front
 		int32 buttons = message->FindInt32("buttons");
-		int32 modifiers = message->FindInt32("modifiers");
-		click_type type = _ActionFor(message, buttons, modifiers);
+		if ((buttons & B_SECONDARY_MOUSE_BUTTON) != 0) {
+			if (fWindow == fDesktop->BackWindow())
+				fDesktop->ActivateWindow(fWindow);
+			else
+				fDesktop->SendWindowBehind(fWindow);
+			return true;
+		}
 
-		if (fIsZooming)
-			decorator->SetZoom(type == CLICK_ZOOM);
-		else if (fIsClosing)
-			decorator->SetClose(type == CLICK_CLOSE);
-		else if (fIsMinimizing)
-			decorator->SetMinimize(type == CLICK_MINIMIZE);
-
-		engine->UnlockParallelAccess();
-		fWindow->RegionPool()->Recycle(visibleBorder);
+		return MouseTrackingState::MouseDown(message, where, _unhandled);
 	}
 
-	BPoint delta = where - fLastMousePosition;
-	// NOTE: "delta" is later used to change fLastMousePosition.
-	// If for some reason no change should take effect, delta
-	// is to be set to (0, 0) so that fLastMousePosition is not
-	// adjusted. This way the relative mouse position to the
-	// item being changed (border during resizing, tab during
-	// sliding...) stays fixed when the mouse is moved so that
-	// changes are taking effect again.
-
-	// If the window was moved enough, it doesn't come to
-	// the front in FFM mode when the mouse is released.
-	if (fActivateOnMouseUp) {
-		fMouseMoveDistance += delta.x * delta.x + delta.y * delta.y;
-		if (fMouseMoveDistance > 16.0f)
-			fActivateOnMouseUp = false;
-		else
-			delta = B_ORIGIN;
-	}
-
-	// moving
-	if (fIsDragging) {
+	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
+	{
 		if (!(fWindow->Flags() & B_NOT_MOVABLE)) {
 			BPoint oldLeftTop = fWindow->Frame().LeftTop();
 
@@ -350,8 +242,94 @@ DefaultWindowBehaviour::MouseMoved(BMessage *message, BPoint where, bool isFake)
 		} else
 			delta = BPoint(0, 0);
 	}
-	// resizing
-	if (fIsResizing) {
+
+private:
+	void _AlterDeltaForSnap(BPoint& delta, bigtime_t now)
+	{
+		// Alter the delta (which is a proposed offset used while dragging a
+		// window) so that the frame of the window 'snaps' to the edges of the
+		// screen.
+
+		const bigtime_t kSnappingDuration = 1500000LL;
+		const bigtime_t kSnappingPause = 3000000LL;
+		const float kSnapDistance = 8.0f;
+
+		if (now - fLastSnapTime > kSnappingDuration
+			&& now - fLastSnapTime < kSnappingPause) {
+			// Maintain a pause between snapping.
+			return;
+		}
+
+		BRect frame = fWindow->Frame();
+		BPoint offsetWithinFrame;
+		// TODO: Perhaps obtain the usable area (not covered by the Deskbar)?
+		BRect screenFrame = fWindow->Screen()->Frame();
+
+		Decorator* decorator = fWindow->Decorator();
+		if (decorator) {
+			frame = decorator->GetFootprint().Frame();
+			offsetWithinFrame.x = fWindow->Frame().left - frame.left;
+			offsetWithinFrame.y = fWindow->Frame().top - frame.top;
+		}
+
+		frame.OffsetBy(delta);
+
+		float leftDist = fabs(frame.left - screenFrame.left);
+		float topDist = fabs(frame.top - screenFrame.top);
+		float rightDist = fabs(frame.right - screenFrame.right);
+		float bottomDist = fabs(frame.bottom - screenFrame.bottom);
+
+		bool snapped = false;
+		if (leftDist < kSnapDistance || rightDist < kSnapDistance) {
+			snapped = true;
+			if (leftDist < rightDist) {
+				frame.right -= frame.left;
+				frame.left = 0.0f;
+			} else {
+				frame.left -= frame.right - screenFrame.right;
+				frame.right = screenFrame.right;
+			}
+		}
+
+		if (topDist < kSnapDistance || bottomDist < kSnapDistance) {
+			snapped = true;
+			if (topDist < bottomDist) {
+				frame.bottom -= frame.top;
+				frame.top = 0.0f;
+			} else {
+				frame.top -= frame.bottom - screenFrame.bottom;
+				frame.bottom = screenFrame.bottom;
+			}
+		}
+		if (snapped && now - fLastSnapTime > kSnappingPause)
+			fLastSnapTime = now;
+
+
+		frame.top += offsetWithinFrame.y;
+		frame.left += offsetWithinFrame.x;
+
+		delta.y = frame.top - fWindow->Frame().top;
+		delta.x = frame.left - fWindow->Frame().left;
+	}
+
+private:
+	bigtime_t			fLastSnapTime;
+};
+
+
+// #pragma mark - ResizeState
+
+
+struct DefaultWindowBehaviour::ResizeState : MouseTrackingState {
+	ResizeState(DefaultWindowBehaviour& behavior, BPoint where,
+		bool activateOnMouseUp)
+		:
+		MouseTrackingState(behavior, where, activateOnMouseUp, false)
+	{
+	}
+
+	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
+	{
 		if (!(fWindow->Flags() & B_NOT_RESIZABLE)) {
 			if (fWindow->Flags() & B_NOT_V_RESIZABLE)
 				delta.y = 0;
@@ -367,8 +345,21 @@ DefaultWindowBehaviour::MouseMoved(BMessage *message, BPoint where, bool isFake)
 		} else
 			delta = BPoint(0, 0);
 	}
-	// sliding tab
-	if (fIsSlidingTab) {
+};
+
+
+// #pragma mark - SlideTabState
+
+
+struct DefaultWindowBehaviour::SlideTabState : MouseTrackingState {
+	SlideTabState(DefaultWindowBehaviour& behavior, BPoint where)
+		:
+		MouseTrackingState(behavior, where, false, false)
+	{
+	}
+
+	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
+	{
 		float loc = fWindow->TabLocation();
 		// TODO: change to [0:1]
 		loc += delta.x;
@@ -377,10 +368,632 @@ DefaultWindowBehaviour::MouseMoved(BMessage *message, BPoint where, bool isFake)
 		else
 			delta = BPoint(0, 0);
 	}
+};
 
-	// NOTE: fLastMousePosition is currently only
-	// used for window moving/resizing/sliding the tab
-	fLastMousePosition += delta;
+
+// #pragma mark - ResizeBorderState
+
+
+struct DefaultWindowBehaviour::ResizeBorderState : MouseTrackingState {
+	ResizeBorderState(DefaultWindowBehaviour& behavior, BPoint where,
+		Decorator::Region region)
+		:
+		MouseTrackingState(behavior, where, true, false,
+			B_SECONDARY_MOUSE_BUTTON),
+		fHorizontal(NONE),
+		fVertical(NONE)
+	{
+		switch (region) {
+			case Decorator::REGION_TAB:
+				// TODO: Handle like the border it is attached to (top/left)?
+				break;
+			case Decorator::REGION_LEFT_BORDER:
+				fHorizontal = LEFT;
+				break;
+			case Decorator::REGION_RIGHT_BORDER:
+				fHorizontal = RIGHT;
+				break;
+			case Decorator::REGION_TOP_BORDER:
+				fVertical = TOP;
+				break;
+			case Decorator::REGION_BOTTOM_BORDER:
+				fVertical = BOTTOM;
+				break;
+			case Decorator::REGION_LEFT_TOP_CORNER:
+				fHorizontal = LEFT;
+				fVertical = TOP;
+				break;
+			case Decorator::REGION_LEFT_BOTTOM_CORNER:
+				fHorizontal = LEFT;
+				fVertical = BOTTOM;
+				break;
+			case Decorator::REGION_RIGHT_TOP_CORNER:
+				fHorizontal = RIGHT;
+				fVertical = TOP;
+				break;
+			case Decorator::REGION_RIGHT_BOTTOM_CORNER:
+				fHorizontal = RIGHT;
+				fVertical = BOTTOM;
+				break;
+			default:
+				break;
+		}
+	}
+
+	ResizeBorderState(DefaultWindowBehaviour& behavior, BPoint where,
+		int8 horizontal, int8 vertical)
+		:
+		MouseTrackingState(behavior, where, true, false,
+			B_SECONDARY_MOUSE_BUTTON),
+		fHorizontal(horizontal),
+		fVertical(vertical)
+	{
+	}
+
+	virtual void EnterState(State* previousState)
+	{
+		fBehavior._SetResizeCursor(fHorizontal, fVertical);
+	}
+
+	virtual void ExitState(State* nextState)
+	{
+		fBehavior._ResetResizeCursor();
+	}
+
+	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
+	{
+		if ((fWindow->Flags() & B_NOT_RESIZABLE) != 0) {
+			delta = BPoint(0, 0);
+			return;
+		}
+
+		if ((fWindow->Flags() & B_NOT_H_RESIZABLE) != 0 || fHorizontal == NONE)
+			delta.x = 0;
+		if ((fWindow->Flags() & B_NOT_V_RESIZABLE) != 0 || fVertical == NONE)
+			delta.y = 0;
+
+		if (delta.x == 0 && delta.y == 0)
+			return;
+
+		// Resize first -- due to the window size limits this is not unlikely
+		// to turn out differently from what we request.
+		BPoint oldRightBottom = fWindow->Frame().RightBottom();
+
+		fDesktop->ResizeWindowBy(fWindow, delta.x * fHorizontal,
+			delta.y * fVertical);
+
+		// constrain delta to true change in size
+		delta = fWindow->Frame().RightBottom() - oldRightBottom;
+		delta.x *= fHorizontal;
+		delta.y *= fVertical;
+
+		// see, if we have to move, too
+		float moveX = fHorizontal == LEFT ? delta.x : 0;
+		float moveY = fVertical == TOP ? delta.y : 0;
+
+		if (moveX != 0 || moveY != 0)
+			fDesktop->MoveWindowBy(fWindow, moveX, moveY);
+	}
+
+	virtual void MouseUpWindowAction()
+	{
+		fDesktop->SendWindowBehind(fWindow);
+	}
+
+private:
+	int8	fHorizontal;
+	int8	fVertical;
+};
+
+
+// #pragma mark - DecoratorButtonState
+
+
+struct DefaultWindowBehaviour::DecoratorButtonState : State {
+	DecoratorButtonState(DefaultWindowBehaviour& behavior,
+		Decorator::Region button)
+		:
+		State(behavior),
+		fButton(button)
+	{
+	}
+
+	virtual void EnterState(State* previousState)
+	{
+		_RedrawDecorator(NULL);
+	}
+
+	virtual void MouseUp(BMessage* message, BPoint where)
+	{
+		// ignore, if it's not the primary mouse button
+		int32 buttons = message->FindInt32("buttons");
+		if ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0)
+			return;
+
+		// redraw the decorator
+		if (Decorator* decorator = fWindow->Decorator()) {
+			BRegion* visibleBorder = fWindow->RegionPool()->GetRegion();
+			fWindow->GetBorderRegion(visibleBorder);
+			visibleBorder->IntersectWith(&fWindow->VisibleRegion());
+
+			DrawingEngine* engine = decorator->GetDrawingEngine();
+			engine->LockParallelAccess();
+			engine->ConstrainClippingRegion(visibleBorder);
+
+			switch (fButton) {
+				case Decorator::REGION_CLOSE_BUTTON:
+					decorator->SetClose(false);
+					if (fBehavior._RegionFor(message) == fButton)
+						fWindow->ServerWindow()->NotifyQuitRequested();
+					break;
+
+				case Decorator::REGION_ZOOM_BUTTON:
+					decorator->SetZoom(false);
+					if (fBehavior._RegionFor(message) == fButton)
+						fWindow->ServerWindow()->NotifyZoom();
+					break;
+
+				case Decorator::REGION_MINIMIZE_BUTTON:
+					decorator->SetMinimize(false);
+					if (fBehavior._RegionFor(message) == fButton)
+						fWindow->ServerWindow()->NotifyMinimize(true);
+					break;
+
+				default:
+					break;
+			}
+
+			engine->UnlockParallelAccess();
+
+			fWindow->RegionPool()->Recycle(visibleBorder);
+		}
+
+		fBehavior._NextState(NULL);
+	}
+
+	virtual void MouseMoved(BMessage* message, BPoint where, bool isFake)
+	{
+		_RedrawDecorator(message);
+	}
+
+private:
+	void _RedrawDecorator(const BMessage* message)
+	{
+		if (Decorator* decorator = fWindow->Decorator()) {
+			BRegion* visibleBorder = fWindow->RegionPool()->GetRegion();
+			fWindow->GetBorderRegion(visibleBorder);
+			visibleBorder->IntersectWith(&fWindow->VisibleRegion());
+
+			DrawingEngine* engine = decorator->GetDrawingEngine();
+			engine->LockParallelAccess();
+			engine->ConstrainClippingRegion(visibleBorder);
+
+			Decorator::Region hitRegion = message != NULL
+				? fBehavior._RegionFor(message) : fButton;
+
+			switch (fButton) {
+				case Decorator::REGION_CLOSE_BUTTON:
+					decorator->SetClose(hitRegion == fButton);
+					break;
+
+				case Decorator::REGION_ZOOM_BUTTON:
+					decorator->SetZoom(hitRegion == fButton);
+					break;
+
+				case Decorator::REGION_MINIMIZE_BUTTON:
+					decorator->SetMinimize(hitRegion == fButton);
+					break;
+
+				default:
+					break;
+			}
+
+			engine->UnlockParallelAccess();
+			fWindow->RegionPool()->Recycle(visibleBorder);
+		}
+	}
+
+protected:
+	Decorator::Region	fButton;
+};
+
+
+// #pragma mark - ManageWindowState
+
+
+struct DefaultWindowBehaviour::ManageWindowState : State {
+	ManageWindowState(DefaultWindowBehaviour& behavior, BPoint where)
+		:
+		State(behavior),
+		fLastMousePosition(where),
+		fHorizontal(NONE),
+		fVertical(NONE)
+	{
+	}
+
+	virtual void EnterState(State* previousState)
+	{
+		_UpdateBorders(fLastMousePosition);
+	}
+
+	virtual void ExitState(State* nextState)
+	{
+		fBehavior._SetBorderHighlights(fHorizontal, fVertical, false);
+	}
+
+	virtual bool MouseDown(BMessage* message, BPoint where, bool& _unhandled)
+	{
+		// We're only interested, if the secondary mouse button was pressed.
+		// Othewise let the our caller handle the event.
+		int32 buttons = message->FindInt32("buttons");
+		if ((buttons & B_SECONDARY_MOUSE_BUTTON) == 0) {
+			_unhandled = true;
+			return true;
+		}
+
+		fBehavior._NextState(new (std::nothrow) ResizeBorderState(fBehavior,
+			where, fHorizontal, fVertical));
+		return true;
+	}
+
+	virtual void MouseMoved(BMessage* message, BPoint where, bool isFake)
+	{
+		// If the mouse is still over our window, update the borders. Otherwise
+		// leave the state.
+		if (fDesktop->WindowAt(where) == fWindow) {
+			fLastMousePosition = where;
+			_UpdateBorders(fLastMousePosition);
+		} else
+			fBehavior._NextState(NULL);
+	}
+
+	virtual void ModifiersChanged(BPoint where, int32 modifiers)
+	{
+		if (!fBehavior._IsWindowModifier(modifiers))
+			fBehavior._NextState(NULL);
+	}
+
+private:
+	void _UpdateBorders(BPoint where)
+	{
+		// Compute the window center relative location of where. We divide by
+		// the width respective the height, so we compensate for the window's
+		// aspect ratio.
+		BRect frame(fWindow->Frame());
+		if (frame.Width() + 1 == 0 || frame.Height() + 1 == 0)
+			return;
+
+		float x = (where.x - (frame.left + frame.right) / 2)
+			/ (frame.Width() + 1);
+		float y = (where.y - (frame.top + frame.bottom) / 2)
+			/ (frame.Height() + 1);
+
+		// compute the resize direction
+		int8 horizontal;
+		int8 vertical;
+		_ComputeResizeDirection(x, y, horizontal, vertical);
+
+		// update the highlight, if necessary
+		if (horizontal != fHorizontal || vertical != fVertical) {
+			fBehavior._SetBorderHighlights(fHorizontal, fVertical, false);
+			fHorizontal = horizontal;
+			fVertical = vertical;
+			fBehavior._SetBorderHighlights(fHorizontal, fVertical, true);
+		}
+	}
+
+private:
+	BPoint	fLastMousePosition;
+	int8	fHorizontal;
+	int8	fVertical;
+};
+
+
+// #pragma mark - State
+
+
+struct DefaultWindowBehaviour::HumdingerResizeState : State {
+	HumdingerResizeState(DefaultWindowBehaviour& behavior, BPoint where)
+		:
+		State(behavior),
+		fInitialMousePosition(where),
+		fJitterPhase(true)
+	{
+	}
+
+	virtual void EnterState(State* previousState)
+	{
+		fDesktop->SetManagementCursor(
+			fDesktop->GetCursorManager().GetCursor(B_CURSOR_ID_MOVE));
+	}
+
+	virtual void ExitState(State* nextState)
+	{
+		fBehavior._ResetResizeCursor();
+	}
+
+	virtual void MouseUp(BMessage* message, BPoint where)
+	{
+		// Leave the state, when the middle mouse button has been released.
+		int32 buttons = message->FindInt32("buttons");
+		if ((buttons & B_TERTIARY_MOUSE_BUTTON) == 0)
+			fBehavior._NextState(NULL);
+	}
+
+	virtual void MouseMoved(BMessage* message, BPoint where, bool isFake)
+	{
+		// ignore the initial movement
+		float dx = where.x - fInitialMousePosition.x;
+		float dy = where.y - fInitialMousePosition.y;
+		if (dx * dx + dy * dy < (fJitterPhase ? 16 : 64))
+			return;
+
+		// Enter the next phase, if we're still in the first one.
+		if (fJitterPhase) {
+			fInitialMousePosition = where;
+			fJitterPhase = false;
+			return;
+		}
+
+		// The mouse has moved far enough for us to take a guess in which
+		// direction.
+		int8 horizontal;
+		int8 vertical;
+		_ComputeResizeDirection(dx, dy, horizontal, vertical);
+
+		fBehavior._NextState(new (std::nothrow) ResizeBorderState(fBehavior,
+			where, horizontal, vertical));
+	}
+
+private:
+	BPoint	fInitialMousePosition;
+	bool	fJitterPhase;
+};
+
+
+// #pragma mark - DefaultWindowBehaviour
+
+
+DefaultWindowBehaviour::DefaultWindowBehaviour(Window* window)
+	:
+	fWindow(window),
+	fDesktop(window->Desktop()),
+	fState(NULL),
+	fLastModifiers(0)
+{
+}
+
+
+DefaultWindowBehaviour::~DefaultWindowBehaviour()
+{
+	delete fState;
+}
+
+
+bool
+DefaultWindowBehaviour::MouseDown(BMessage* message, BPoint where,
+	int32 lastHitRegion, int32& clickCount, int32& _hitRegion)
+{
+	fLastModifiers = message->FindInt32("modifiers");
+	int32 buttons = message->FindInt32("buttons");
+
+	// if a state is active, let it do the job
+	if (fState != NULL) {
+		bool unhandled = false;
+		bool result = fState->MouseDown(message, where, unhandled);
+		if (!unhandled)
+			return result;
+	}
+
+	// No state active yet, or it wants us to handle the event -- determine the
+	// click region and decide what to do.
+
+	Decorator* decorator = fWindow->Decorator();
+
+	Decorator::Region hitRegion = Decorator::REGION_NONE;
+	Action action = ACTION_NONE;
+
+	bool inBorderRegion = false;
+	if (decorator != NULL)
+		inBorderRegion = decorator->GetFootprint().Contains(where);
+
+	bool windowModifier = _IsWindowModifier(fLastModifiers);
+
+	if (windowModifier || inBorderRegion) {
+		// click on the window decorator or we have the window modifier keys
+		// held
+
+		// get the functional hit region
+		if (windowModifier) {
+			// click with window modifier keys -- let the whole window behave
+			// like the border
+			hitRegion = Decorator::REGION_LEFT_BORDER;
+		} else {
+			// click on the decorator -- get the exact region
+			hitRegion = _RegionFor(message);
+		}
+
+		// translate the region into an action
+		uint32 flags = fWindow->Flags();
+
+		if ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0) {
+			// left mouse button
+			switch (hitRegion) {
+				case Decorator::REGION_TAB:
+					// tab sliding in any case if either shift key is held down
+					// except sliding up-down by moving mouse left-right would
+					// look strange
+					if ((fLastModifiers & B_SHIFT_KEY) != 0
+						&& fWindow->Look() != kLeftTitledWindowLook) {
+						action = ACTION_SLIDE_TAB;
+						break;
+					}
+					action = ACTION_DRAG;
+					break;
+
+				case Decorator::REGION_LEFT_BORDER:
+				case Decorator::REGION_RIGHT_BORDER:
+				case Decorator::REGION_TOP_BORDER:
+				case Decorator::REGION_BOTTOM_BORDER:
+					action = ACTION_DRAG;
+					break;
+
+				case Decorator::REGION_CLOSE_BUTTON:
+					action = (flags & B_NOT_CLOSABLE) == 0
+						? ACTION_CLOSE : ACTION_DRAG;
+					break;
+
+				case Decorator::REGION_ZOOM_BUTTON:
+					action = (flags & B_NOT_ZOOMABLE) == 0
+						? ACTION_ZOOM : ACTION_DRAG;
+					break;
+
+				case Decorator::REGION_MINIMIZE_BUTTON:
+					action = (flags & B_NOT_MINIMIZABLE) == 0
+						? ACTION_MINIMIZE : ACTION_DRAG;
+					break;
+
+				case Decorator::REGION_LEFT_TOP_CORNER:
+				case Decorator::REGION_LEFT_BOTTOM_CORNER:
+				case Decorator::REGION_RIGHT_TOP_CORNER:
+					// TODO: Handle correctly!
+					action = ACTION_DRAG;
+					break;
+
+				case Decorator::REGION_RIGHT_BOTTOM_CORNER:
+					action = (flags & B_NOT_RESIZABLE) == 0
+						? ACTION_RESIZE : ACTION_DRAG;
+					break;
+
+				default:
+					break;
+			}
+		} else if ((buttons & B_SECONDARY_MOUSE_BUTTON) != 0) {
+			// right mouse button
+			switch (hitRegion) {
+				case Decorator::REGION_TAB:
+				case Decorator::REGION_LEFT_BORDER:
+				case Decorator::REGION_RIGHT_BORDER:
+				case Decorator::REGION_TOP_BORDER:
+				case Decorator::REGION_BOTTOM_BORDER:
+				case Decorator::REGION_CLOSE_BUTTON:
+				case Decorator::REGION_ZOOM_BUTTON:
+				case Decorator::REGION_MINIMIZE_BUTTON:
+				case Decorator::REGION_LEFT_TOP_CORNER:
+				case Decorator::REGION_LEFT_BOTTOM_CORNER:
+				case Decorator::REGION_RIGHT_TOP_CORNER:
+				case Decorator::REGION_RIGHT_BOTTOM_CORNER:
+					action = ACTION_RESIZE_BORDER;
+					break;
+
+				default:
+					break;
+			}
+		} else if ((buttons & B_TERTIARY_MOUSE_BUTTON) != 0) {
+			// Middle-click anywhere on the window shall initiate
+			// humdinger-resize mode.
+			if (windowModifier && hitRegion != Decorator::REGION_NONE)
+				action = ACTION_HUMDINGER_RESIZE;
+		}
+	}
+
+	_hitRegion = (int32)hitRegion;
+
+	if (action == ACTION_NONE) {
+		// No action -- if this is a click inside the window's contents,
+		// let it be forwarded to the window.
+		return inBorderRegion;
+	}
+
+	// reset the click count, if the hit region differs from the previous one
+	if (hitRegion != lastHitRegion)
+		clickCount = 1;
+
+	DesktopSettings desktopSettings(fDesktop);
+	if (!desktopSettings.AcceptFirstClick()) {
+		// Ignore clicks on decorator buttons if the
+		// non-floating window doesn't have focus
+		if (!fWindow->IsFocus() && !fWindow->IsFloating()
+			&& action != ACTION_RESIZE_BORDER
+			&& action != ACTION_RESIZE && action != ACTION_SLIDE_TAB)
+			action = ACTION_DRAG;
+	}
+
+	bool activateOnMouseUp = false;
+	if (action != ACTION_RESIZE_BORDER) {
+		// activate window if in click to activate mode, else only focus it
+		if (desktopSettings.MouseMode() == B_NORMAL_MOUSE) {
+			fDesktop->ActivateWindow(fWindow);
+		} else {
+			fDesktop->SetFocusWindow(fWindow);
+			activateOnMouseUp = true;
+		}
+	}
+
+	// switch to the new state
+	switch (action) {
+		case ACTION_CLOSE:
+		case ACTION_ZOOM:
+		case ACTION_MINIMIZE:
+			_NextState(
+				new (std::nothrow) DecoratorButtonState(*this, hitRegion));
+			STRACE_CLICK(("===> ACTION_CLOSE/ZOOM/MINIMIZE\n"));
+			break;
+
+		case ACTION_DRAG:
+			_NextState(new (std::nothrow) DragState(*this, where,
+				activateOnMouseUp, clickCount == 2));
+			STRACE_CLICK(("===> ACTION_DRAG\n"));
+			break;
+
+		case ACTION_RESIZE:
+			_NextState(new (std::nothrow) ResizeState(*this, where,
+				activateOnMouseUp));
+			STRACE_CLICK(("===> ACTION_RESIZE\n"));
+			break;
+
+		case ACTION_SLIDE_TAB:
+			_NextState(new (std::nothrow) SlideTabState(*this, where));
+			STRACE_CLICK(("===> ACTION_SLIDE_TAB\n"));
+			break;
+
+		case ACTION_RESIZE_BORDER:
+			_NextState(new (std::nothrow) ResizeBorderState(*this, where,
+				hitRegion));
+			STRACE_CLICK(("===> ACTION_RESIZE_BORDER\n"));
+			break;
+
+		case ACTION_HUMDINGER_RESIZE:
+			_NextState(new (std::nothrow) HumdingerResizeState(*this, where));
+			STRACE_CLICK(("===> ACTION_HUMDINGER_RESIZE\n"));
+			break;
+
+		default:
+			break;
+	}
+
+	return true;
+}
+
+
+void
+DefaultWindowBehaviour::MouseUp(BMessage* message, BPoint where)
+{
+	if (fState != NULL)
+		fState->MouseUp(message, where);
+}
+
+
+void
+DefaultWindowBehaviour::MouseMoved(BMessage* message, BPoint where, bool isFake)
+{
+	if (fState != NULL) {
+		fState->MouseMoved(message, where, isFake);
+	} else {
+		// If the window modifiers are hold, enter the window management state.
+		if (_IsWindowModifier(message->FindInt32("modifiers")))
+			_NextState(new(std::nothrow) ManageWindowState(*this, where));
+	}
 
 	// change focus in FFM mode
 	DesktopSettings desktopSettings(fDesktop);
@@ -394,6 +1007,23 @@ DefaultWindowBehaviour::MouseMoved(BMessage *message, BPoint where, bool isFake)
 }
 
 
+void
+DefaultWindowBehaviour::ModifiersChanged(int32 modifiers)
+{
+	BPoint where;
+	int32 buttons;
+	fDesktop->GetLastMouseState(&where, &buttons);
+
+	if (fState != NULL) {
+		fState->ModifiersChanged(where, modifiers);
+	} else {
+		// If the window modifiers are hold, enter the window management state.
+		if (_IsWindowModifier(modifiers))
+			_NextState(new(std::nothrow) ManageWindowState(*this, where));
+	}
+}
+
+
 bool
 DefaultWindowBehaviour::_IsWindowModifier(int32 modifiers) const
 {
@@ -403,87 +1033,217 @@ DefaultWindowBehaviour::_IsWindowModifier(int32 modifiers) const
 }
 
 
-click_type
-DefaultWindowBehaviour::_ActionFor(const BMessage* message, int32 buttons,
-	int32 modifiers) const
+Decorator::Region
+DefaultWindowBehaviour::_RegionFor(const BMessage* message) const
 {
 	Decorator* decorator = fWindow->Decorator();
 	if (decorator == NULL)
-		return CLICK_NONE;
+		return Decorator::REGION_NONE;
 
 	BPoint where;
 	if (message->FindPoint("where", &where) != B_OK)
-		return CLICK_NONE;
+		return Decorator::REGION_NONE;
 
-	return decorator->MouseAction(message, where, buttons, modifiers);
+	return decorator->RegionAt(where);
 }
 
 
 void
-DefaultWindowBehaviour::_AlterDeltaForSnap(BPoint& delta, bigtime_t now)
+DefaultWindowBehaviour::_SetBorderHighlights(int8 horizontal, int8 vertical,
+	bool active)
 {
-	// Alter the delta (which is a proposed offset used while dragging a
-	// window) so that the frame of the window 'snaps' to the edges of the
-	// screen.
+	if (Decorator* decorator = fWindow->Decorator()) {
+		uint8 highlight = active
+			? Decorator::HIGHLIGHT_RESIZE_BORDER
+			: Decorator::HIGHLIGHT_NONE;
 
-	const bigtime_t kSnappingDuration = 1500000LL;
-	const bigtime_t kSnappingPause = 3000000LL;
-	const float kSnapDistance = 8.0f;
+		// set the highlights for the borders
+		BRegion dirtyRegion;
+		switch (horizontal) {
+			case LEFT:
+				decorator->SetRegionHighlight(Decorator::REGION_LEFT_BORDER,
+					highlight, &dirtyRegion);
+				break;
+			case RIGHT:
+				decorator->SetRegionHighlight(
+					Decorator::REGION_RIGHT_BORDER, highlight,
+					&dirtyRegion);
+				break;
+		}
 
-	if (now - fLastSnapTime > kSnappingDuration
-		&& now - fLastSnapTime < kSnappingPause) {
-		// Maintain a pause between snapping.
+		switch (vertical) {
+			case TOP:
+				decorator->SetRegionHighlight(Decorator::REGION_TOP_BORDER,
+					highlight, &dirtyRegion);
+				break;
+			case BOTTOM:
+				decorator->SetRegionHighlight(
+					Decorator::REGION_BOTTOM_BORDER, highlight,
+					&dirtyRegion);
+				break;
+		}
+
+		// set the highlights for the corners
+		if (horizontal != NONE && vertical != NONE) {
+			if (horizontal == LEFT) {
+				if (vertical == TOP) {
+					decorator->SetRegionHighlight(
+						Decorator::REGION_LEFT_TOP_CORNER, highlight,
+						&dirtyRegion);
+				} else {
+					decorator->SetRegionHighlight(
+						Decorator::REGION_LEFT_BOTTOM_CORNER, highlight,
+						&dirtyRegion);
+				}
+			} else {
+				if (vertical == TOP) {
+					decorator->SetRegionHighlight(
+						Decorator::REGION_RIGHT_TOP_CORNER, highlight,
+						&dirtyRegion);
+				} else {
+					decorator->SetRegionHighlight(
+						Decorator::REGION_RIGHT_BOTTOM_CORNER, highlight,
+						&dirtyRegion);
+				}
+			}
+		}
+
+		// invalidate the affected regions
+		dirtyRegion.IntersectWith(&fWindow->VisibleRegion());
+		BRect dirtyRect(dirtyRegion.Frame());
+
+		if (dirtyRect.IsValid()) {
+			DrawingEngine* engine = decorator->GetDrawingEngine();
+			engine->LockParallelAccess();
+			engine->ConstrainClippingRegion(&dirtyRegion);
+
+			decorator->Draw(dirtyRect);
+
+			engine->UnlockParallelAccess();
+		}
+	}
+}
+
+
+ServerCursor*
+DefaultWindowBehaviour::_ResizeCursorFor(int8 horizontal, int8 vertical)
+{
+	// get the cursor ID corresponding to the border/corner
+	BCursorID cursorID = B_CURSOR_ID_SYSTEM_DEFAULT;
+
+	if (horizontal == LEFT) {
+		if (vertical == TOP)
+			cursorID = B_CURSOR_ID_RESIZE_NORTH_WEST;
+		else if (vertical == BOTTOM)
+			cursorID = B_CURSOR_ID_RESIZE_SOUTH_WEST;
+		else
+			cursorID = B_CURSOR_ID_RESIZE_WEST;
+	} else if (horizontal == RIGHT) {
+		if (vertical == TOP)
+			cursorID = B_CURSOR_ID_RESIZE_NORTH_EAST;
+		else if (vertical == BOTTOM)
+			cursorID = B_CURSOR_ID_RESIZE_SOUTH_EAST;
+		else
+			cursorID = B_CURSOR_ID_RESIZE_EAST;
+	} else {
+		if (vertical == TOP)
+			cursorID = B_CURSOR_ID_RESIZE_NORTH;
+		else if (vertical == BOTTOM)
+			cursorID = B_CURSOR_ID_RESIZE_SOUTH;
+	}
+
+	return fDesktop->GetCursorManager().GetCursor(cursorID);
+}
+
+
+void
+DefaultWindowBehaviour::_SetResizeCursor(int8 horizontal, int8 vertical)
+{
+	fDesktop->SetManagementCursor(_ResizeCursorFor(horizontal, vertical));
+}
+
+
+void
+DefaultWindowBehaviour::_ResetResizeCursor()
+{
+	fDesktop->SetManagementCursor(NULL);
+}
+
+
+/*static*/ void
+DefaultWindowBehaviour::_ComputeResizeDirection(float x, float y,
+	int8& _horizontal, int8& _vertical)
+{
+	_horizontal = NONE;
+	_vertical = NONE;
+
+	// compute the angle
+	if (x == 0 && y == 0)
 		return;
+
+	float angle = atan2f(y, x);
+
+	// rotate by 22.5 degree to align our sectors with 45 degree multiples
+	angle += M_PI / 8;
+
+	// add 180 degree to the negative values, so we get a nice 0 to 360
+	// degree range
+	if (angle < 0)
+		angle += M_PI * 2;
+
+	switch (int(angle / M_PI_4)) {
+		case 0:
+			_horizontal = RIGHT;
+			break;
+		case 1:
+			_horizontal = RIGHT;
+			_vertical = BOTTOM;
+			break;
+		case 2:
+			_vertical = BOTTOM;
+			break;
+		case 3:
+			_horizontal = LEFT;
+			_vertical = BOTTOM;
+			break;
+		case 4:
+			_horizontal = LEFT;
+			break;
+		case 5:
+			_horizontal = LEFT;
+			_vertical = TOP;
+			break;
+		case 6:
+			_vertical = TOP;
+			break;
+		case 7:
+		default:
+			_horizontal = RIGHT;
+			_vertical = TOP;
+			break;
+	}
+}
+
+
+void
+DefaultWindowBehaviour::_NextState(State* state)
+{
+	// exit the old state
+	if (fState != NULL)
+		fState->ExitState(state);
+
+	// set and enter the new state
+	State* oldState = fState;
+	fState = state;
+
+	if (fState != NULL) {
+		fState->EnterState(oldState);
+		fDesktop->SetMouseEventWindow(fWindow);
+	} else if (oldState != NULL) {
+		// no state anymore -- reset the mouse event window, if it's still us
+		if (fDesktop->MouseEventWindow() == fWindow)
+			fDesktop->SetMouseEventWindow(NULL);
 	}
 
-	BRect frame = fWindow->Frame();
-	BPoint offsetWithinFrame;
-	// TODO: Perhaps obtain the usable area (not covered by the Deskbar)?
-	BRect screenFrame = fWindow->Screen()->Frame();
-
-	Decorator* decorator = fWindow->Decorator();
-	if (decorator) {
-		frame = decorator->GetFootprint().Frame();
-		offsetWithinFrame.x = fWindow->Frame().left - frame.left;
-		offsetWithinFrame.y = fWindow->Frame().top - frame.top;
-	}
-
-	frame.OffsetBy(delta);
-
-	float leftDist = fabs(frame.left - screenFrame.left);
-	float topDist = fabs(frame.top - screenFrame.top);
-	float rightDist = fabs(frame.right - screenFrame.right);
-	float bottomDist = fabs(frame.bottom - screenFrame.bottom);
-
-	bool snapped = false;
-	if (leftDist < kSnapDistance || rightDist < kSnapDistance) {
-		snapped = true;
-		if (leftDist < rightDist) {
-			frame.right -= frame.left;
-			frame.left = 0.0f;
-		} else {
-			frame.left -= frame.right - screenFrame.right;
-			frame.right = screenFrame.right;
-		}
-	}
-
-	if (topDist < kSnapDistance || bottomDist < kSnapDistance) {
-		snapped = true;
-		if (topDist < bottomDist) {
-			frame.bottom -= frame.top;
-			frame.top = 0.0f;
-		} else {
-			frame.top -= frame.bottom - screenFrame.bottom;
-			frame.bottom = screenFrame.bottom;
-		}
-	}
-	if (snapped && now - fLastSnapTime > kSnappingPause)
-		fLastSnapTime = now;
-
-
-	frame.top += offsetWithinFrame.y;
-	frame.left += offsetWithinFrame.x;
-
-	delta.y = frame.top - fWindow->Frame().top;
-	delta.x = frame.left - fWindow->Frame().left;
+	delete oldState;
 }

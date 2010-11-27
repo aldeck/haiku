@@ -5,14 +5,16 @@
  * Authors:
  *		Axel Dörfler, axeld@pinc-software.de
  *		Vegard Wærp, vegarwa@online.no
+ *		Philippe Houdoin, <phoudoin at haiku-os dot org>
  */
 
 
 #include "DHCPClient.h"
-#include "NetServer.h"
 
 #include <Message.h>
 #include <MessageRunner.h>
+#include <NetworkDevice.h>
+#include <NetworkInterface.h>
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -21,6 +23,12 @@
 #include <syslog.h>
 #include <sys/sockio.h>
 #include <sys/time.h>
+
+#include <Debug.h>
+#include <Message.h>
+#include <MessageRunner.h>
+
+#include "NetServer.h"
 
 
 // See RFC 2131 for DHCP, see RFC 1533 for BOOTP/DHCP options
@@ -48,10 +56,10 @@ enum message_option {
 	OPTION_DOMAIN_NAME_SERVER = 6,
 	OPTION_HOST_NAME = 12,
 	OPTION_DOMAIN_NAME = 15,
-	OPTION_DATAGRAM_SIZE = 22,
-	OPTION_MTU = 26,
+	OPTION_MAX_DATAGRAM_SIZE = 22,
+	OPTION_INTERFACE_MTU = 26,
 	OPTION_BROADCAST_ADDRESS = 28,
-	OPTION_NETWORK_TIME_SERVERS = 42,
+	OPTION_NETWORK_TIME_PROTOCOL_SERVERS = 42,
 	OPTION_NETBIOS_NAME_SERVER = 44,
 	OPTION_NETBIOS_SCOPE = 47,
 
@@ -63,7 +71,7 @@ enum message_option {
 	OPTION_SERVER_ADDRESS = 54,
 	OPTION_REQUEST_PARAMETERS = 55,
 	OPTION_ERROR_MESSAGE = 56,
-	OPTION_MESSAGE_SIZE = 57,
+	OPTION_MAX_MESSAGE_SIZE = 57,
 	OPTION_RENEWAL_TIME = 58,
 	OPTION_REBINDING_TIME = 59,
 	OPTION_CLASS_IDENTIFIER = 60,
@@ -134,6 +142,8 @@ struct dhcp_message {
 	uint8* PutOption(uint8* options, message_option option, const uint8* data,
 		uint32 size);
 	uint8* FinishOptions(uint8* options);
+
+	static const char* TypeToString(message_type type);
 } _PACKED;
 
 #define DHCP_FLAG_BROADCAST		0x8000
@@ -151,6 +161,7 @@ static const uint8 kRequestParameters[] = {
 
 dhcp_message::dhcp_message(message_type type)
 {
+	// ASSERT(this == offsetof(this, opcode));
 	memset(this, 0, sizeof(*this));
 	options_magic = htonl(OPTION_MAGIC);
 
@@ -170,10 +181,10 @@ bool
 dhcp_message::NextOption(dhcp_option_cookie& cookie,
 	message_option& option, const uint8*& data, size_t& size) const
 {
-	if (cookie.state == 0) {
-		if (!HasOptions())
-			return false;
+	if (!HasOptions())
+		return false;
 
+	if (cookie.state == 0) {
 		cookie.state++;
 		cookie.next = options;
 	}
@@ -183,31 +194,61 @@ dhcp_message::NextOption(dhcp_option_cookie& cookie,
 	switch (cookie.state) {
 		case 1:
 			// options from "options"
-			bytesLeft = sizeof(options) + cookie.next - options;
+			bytesLeft = sizeof(options) - (cookie.next - options);
 			break;
 
 		case 2:
 			// options from "file"
-			bytesLeft = sizeof(options) + cookie.next - options;
+			bytesLeft = sizeof(file) - (cookie.next - file);
 			break;
 
 		case 3:
 			// options from "server_name"
-			bytesLeft = sizeof(options) + cookie.next - options;
+			bytesLeft = sizeof(server_name) - (cookie.next - server_name);
 			break;
 	}
 
 	while (true) {
 		if (bytesLeft == 0) {
-			// TODO: suppport OPTION_OVERLOAD!
-			cookie.state = 4;
-			return false;
+			cookie.state++;
+
+			// handle option overload in file and/or server_name fields.
+			switch (cookie.state) {
+				case 2:
+					// options from "file" field
+					if (cookie.file_has_options) {
+						bytesLeft = sizeof(file);
+						cookie.next = file;
+					}
+					break;
+
+				case 3:
+					// options from "server_name" field
+					if (cookie.server_name_has_options) {
+						bytesLeft = sizeof(server_name);
+						cookie.next = server_name;
+					}
+					break;
+
+				default:
+					// no more place to look for options
+					// if last option is not OPTION_END,
+					// there is no space left for other option!
+					if (option != OPTION_END)
+						cookie.next = NULL;
+					return false;
+			}
+
+			if (bytesLeft == 0) {
+				// no options in this state, try next one
+				continue;
+			}
 		}
 
 		option = (message_option)cookie.next[0];
 		if (option == OPTION_END) {
-			cookie.state = 4;
-			return false;
+			bytesLeft = 0;
+			continue;
 		} else if (option == OPTION_PAD) {
 			bytesLeft--;
 			cookie.next++;
@@ -217,6 +258,7 @@ dhcp_message::NextOption(dhcp_option_cookie& cookie,
 		size = cookie.next[1];
 		data = &cookie.next[2];
 		cookie.next += 2 + size;
+		bytesLeft -= 2 + size;
 
 		if (option == OPTION_OVERLOAD) {
 			cookie.file_has_options = data[0] & 1;
@@ -265,6 +307,13 @@ size_t
 dhcp_message::Size() const
 {
 	const uint8* last = LastOption();
+
+	if (last < options) {
+		// if last option is stored above "options" field, it means
+		// the whole options field and message is already filled...
+		return sizeof(dhcp_message);
+	}
+
 	return sizeof(dhcp_message) - sizeof(options) + last + 1 - options;
 }
 
@@ -274,7 +323,7 @@ dhcp_message::PrepareMessage(uint8 type)
 {
 	uint8* next = options;
 	next = PutOption(next, OPTION_MESSAGE_TYPE, type);
-	next = PutOption(next, OPTION_MESSAGE_SIZE,
+	next = PutOption(next, OPTION_MAX_MESSAGE_SIZE,
 		(uint16)htons(sizeof(dhcp_message)));
 	return next;
 }
@@ -313,6 +362,8 @@ uint8*
 dhcp_message::PutOption(uint8* options, message_option option,
 	const uint8* data, uint32 size)
 {
+	// TODO: check enough space is available
+
 	options[0] = option;
 	options[1] = size;
 	memcpy(&options[2], data, size);
@@ -328,27 +379,49 @@ dhcp_message::FinishOptions(uint8* options)
 }
 
 
+/*static*/ const char*
+dhcp_message::TypeToString(message_type type)
+{
+	switch (type) {
+#define CASE(x) case x: return #x;
+		CASE(DHCP_NONE)
+		CASE(DHCP_DISCOVER)
+		CASE(DHCP_OFFER)
+		CASE(DHCP_REQUEST)
+		CASE(DHCP_DECLINE)
+		CASE(DHCP_ACK)
+		CASE(DHCP_NACK)
+		CASE(DHCP_RELEASE)
+		CASE(DHCP_INFORM)
+#undef CASE
+	}
+
+	return "<unknown>";
+}
+
+
 //	#pragma mark -
 
 
 DHCPClient::DHCPClient(BMessenger target, const char* device)
-	: AutoconfigClient("dhcp", target, device),
+	:
+	AutoconfigClient("dhcp", target, device),
 	fConfiguration(kMsgConfigureInterface),
 	fResolverConfiguration(kMsgConfigureResolver),
 	fRunner(NULL),
+	fServer(AF_INET, NULL, DHCP_SERVER_PORT),
 	fLeaseTime(0)
 {
 	fStartTime = system_time();
 	fTransactionID = (uint32)fStartTime;
 
-	fStatus = get_mac_address(device, fMAC);
-	if (fStatus < B_OK)
+	BNetworkAddress link;
+	BNetworkInterface interface(device);
+	fStatus = interface.GetHardwareAddress(link);
+	if (fStatus != B_OK)
 		return;
 
-	memset(&fServer, 0, sizeof(struct sockaddr_in));
-	fServer.sin_family = AF_INET;
-	fServer.sin_len = sizeof(struct sockaddr_in);
-	fServer.sin_port = htons(DHCP_SERVER_PORT);
+	memcpy(fMAC, link.LinkLevelAddress(), sizeof(fMAC));
 
 	openlog_thread("DHCP", 0, LOG_DAEMON);
 }
@@ -393,12 +466,8 @@ DHCPClient::_Negotiate(dhcp_state state)
 	if (socket < 0)
 		return errno;
 
-	sockaddr_in local;
-	memset(&local, 0, sizeof(struct sockaddr_in));
-	local.sin_family = AF_INET;
-	local.sin_len = sizeof(struct sockaddr_in);
-	local.sin_port = htons(DHCP_CLIENT_PORT);
-	local.sin_addr.s_addr = INADDR_ANY;
+	BNetworkAddress local;
+	local.SetToWildcard(AF_INET, DHCP_CLIENT_PORT);
 
 	// Enable reusing the port . This is needed in case there is more
 	// than 1 interface that needs to be configured. Note that the only reason
@@ -407,17 +476,13 @@ DHCPClient::_Negotiate(dhcp_state state)
 	int option = 1;
 	setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &option, sizeof(option));
 
-	if (bind(socket, (struct sockaddr*)&local, sizeof(local)) < 0) {
+	if (bind(socket, local, local.Length()) < 0) {
 		close(socket);
 		return errno;
 	}
 
-	sockaddr_in broadcast;
-	memset(&broadcast, 0, sizeof(struct sockaddr_in));
-	broadcast.sin_family = AF_INET;
-	broadcast.sin_len = sizeof(struct sockaddr_in);
-	broadcast.sin_port = htons(DHCP_SERVER_PORT);
-	broadcast.sin_addr.s_addr = INADDR_BROADCAST;
+	BNetworkAddress broadcast;
+	broadcast.SetToBroadcast(AF_INET, DHCP_SERVER_PORT);
 
 	option = 1;
 	setsockopt(socket, SOL_SOCKET, SO_BROADCAST, &option, sizeof(option));
@@ -425,19 +490,10 @@ DHCPClient::_Negotiate(dhcp_state state)
 	if (state == INIT) {
 		// The local interface does not have an address yet, bind the socket
 		// to the device directly.
-		int linkSocket = ::socket(AF_LINK, SOCK_DGRAM, 0);
-		if (linkSocket >= 0) {
-			// we need to know the index of the device to be able to bind to it
-			ifreq request;
-			prepare_request(request, Device());
-			if (ioctl(linkSocket, SIOCGIFINDEX, &request, sizeof(struct ifreq))
-					== 0) {
-				setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE,
-					&request.ifr_index, sizeof(int));
-			}
+		BNetworkDevice device(Device());
+		int index = device.Index();
 
-			close(linkSocket);
-		}
+		setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE, &index, sizeof(int));
 	}
 
 	bigtime_t previousLeaseTime = fLeaseTime;
@@ -495,6 +551,9 @@ DHCPClient::_Negotiate(dhcp_state state)
 			continue;
 		}
 
+		syslog(LOG_DEBUG, "DHCP received %s for %s\n",
+			dhcp_message::TypeToString(message->Type()), Device());
+
 		switch (message->Type()) {
 			case DHCP_NONE:
 			default:
@@ -503,8 +562,6 @@ DHCPClient::_Negotiate(dhcp_state state)
 
 			case DHCP_OFFER:
 			{
-				syslog(LOG_DEBUG, "DHCP received offer for %s\n", Device());
-
 				// first offer wins
 				if (state != INIT)
 					break;
@@ -519,7 +576,7 @@ DHCPClient::_Negotiate(dhcp_state state)
 
 				BMessage address;
 				address.AddString("family", "inet");
-				address.AddString("address", _ToString(fAssignedAddress));
+				address.AddString("address", _AddressToString(fAssignedAddress));
 				fResolverConfiguration.MakeEmpty();
 				_ParseOptions(*message, address, fResolverConfiguration);
 
@@ -539,7 +596,6 @@ DHCPClient::_Negotiate(dhcp_state state)
 
 			case DHCP_ACK:
 			{
-				syslog(LOG_DEBUG, "DHCP received ack for %s\n", Device());
 				if (state != REQUESTING && state != REBINDING
 					&& state != RENEWAL)
 					continue;
@@ -548,7 +604,8 @@ DHCPClient::_Negotiate(dhcp_state state)
 				BMessage address;
 				fResolverConfiguration.MakeEmpty();
 				_ParseOptions(*message, address, fResolverConfiguration);
-					// TODO: currently, only lease time and DNS is updated this way
+					// TODO: currently, only lease time and DNS is updated this
+					// way
 
 				// our address request has been acknowledged
 				state = ACKNOWLEDGED;
@@ -558,9 +615,10 @@ DHCPClient::_Negotiate(dhcp_state state)
 				status = Target().SendMessage(&fConfiguration, &reply);
 				if (status == B_OK)
 					status = reply.FindInt32("status", &fStatus);
-					
+
 				// configure resolver
 				reply.MakeEmpty();
+				fResolverConfiguration.AddString("device", Device());
 				status = Target().SendMessage(&fResolverConfiguration, &reply);
 				if (status == B_OK)
 					status = reply.FindInt32("status", &fStatus);
@@ -568,8 +626,6 @@ DHCPClient::_Negotiate(dhcp_state state)
 			}
 
 			case DHCP_NACK:
-				syslog(LOG_DEBUG, "DHCP received nack for %s\n", Device());
-
 				if (state != REQUESTING)
 					continue;
 
@@ -632,28 +688,28 @@ DHCPClient::_ParseOptions(dhcp_message& message, BMessage& address,
 		// iterate through all options
 		switch (option) {
 			case OPTION_ROUTER_ADDRESS:
-				address.AddString("gateway", _ToString(data));
+				address.AddString("gateway", _AddressToString(data));
 				break;
 			case OPTION_SUBNET_MASK:
-				address.AddString("mask", _ToString(data));
+				address.AddString("mask", _AddressToString(data));
 				break;
 			case OPTION_BROADCAST_ADDRESS:
-				address.AddString("broadcast", _ToString(data));
+				address.AddString("broadcast", _AddressToString(data));
 				break;
 			case OPTION_DOMAIN_NAME_SERVER:
 			{
 				for (uint32 i = 0; i < size / 4; i++) {
 					syslog(LOG_INFO, "DHCP for %s got DNS: %s\n", Device(),
-						_ToString(&data[i * 4]).String());
+						_AddressToString(&data[i * 4]).String());
 					resolverConfiguration.AddString("nameserver",
-						_ToString(&data[i * 4]).String());
+						_AddressToString(&data[i * 4]).String());
 				}
 				resolverConfiguration.AddInt32("nameserver_count",
 					size / 4);
 				break;
 			}
 			case OPTION_SERVER_ADDRESS:
-				fServer.sin_addr.s_addr = *(in_addr_t*)data;
+				fServer.SetAddress(*(in_addr_t*)data);
 				break;
 
 			case OPTION_ADDRESS_LEASE_TIME:
@@ -684,12 +740,17 @@ DHCPClient::_ParseOptions(dhcp_message& message, BMessage& address,
 					min_c(size + 1, sizeof(domain)));
 
 				syslog(LOG_INFO, "DHCP domain name: \"%s\"\n", domain);
-				
-				resolverConfiguration.AddString("domain", domain);	
+
+				resolverConfiguration.AddString("domain", domain);
 				break;
 			}
 
 			case OPTION_MESSAGE_TYPE:
+				break;
+
+			case OPTION_ERROR_MESSAGE:
+				syslog(LOG_INFO, "DHCP error message: \"%.*s\"\n", (int)size,
+					(const char*)data);
 				break;
 
 			default:
@@ -713,42 +774,45 @@ DHCPClient::_PrepareMessage(dhcp_message& message, dhcp_state state)
 
 	message_type type = message.Type();
 
+	uint8 *next = message.PrepareMessage(type);
+
 	switch (type) {
-		case DHCP_REQUEST:
-		case DHCP_RELEASE:
-		{
-			// add server identifier option
-			uint8* next = message.PrepareMessage(type);
-			next = message.PutOption(next, OPTION_SERVER_ADDRESS,
-				(uint32)fServer.sin_addr.s_addr);
-
-			// In RENEWAL or REBINDING state, we must set the client_address field, and not
-			// use OPTION_REQUEST_IP_ADDRESS for DHCP_REQUEST messages
-			if (type == DHCP_REQUEST && (state == INIT || state == REQUESTING)) {
-				next = message.PutOption(next, OPTION_REQUEST_IP_ADDRESS,
-					(uint32)fAssignedAddress);
-				next = message.PutOption(next, OPTION_REQUEST_PARAMETERS,
-					kRequestParameters, sizeof(kRequestParameters));
-			} else
-				message.client_address = fAssignedAddress;
-
-			message.FinishOptions(next);
-			break;
-		}
-
 		case DHCP_DISCOVER:
-		{
-			uint8* next = message.PrepareMessage(type);
 			next = message.PutOption(next, OPTION_REQUEST_PARAMETERS,
 				kRequestParameters, sizeof(kRequestParameters));
-			message.FinishOptions(next);
+			break;
+
+		case DHCP_REQUEST:
+			next = message.PutOption(next, OPTION_REQUEST_PARAMETERS,
+				kRequestParameters, sizeof(kRequestParameters));
+
+			if (state == REQUESTING) {
+				const sockaddr_in& server = (sockaddr_in&)fServer.SockAddr();
+				next = message.PutOption(next, OPTION_SERVER_ADDRESS,
+					(uint32)server.sin_addr.s_addr);
+			}
+
+			if (state == INIT || state == REQUESTING) {
+				next = message.PutOption(next, OPTION_REQUEST_IP_ADDRESS,
+					(uint32)fAssignedAddress);
+			} else
+				message.client_address = fAssignedAddress;
+			break;
+
+		case DHCP_RELEASE: {
+			const sockaddr_in& server = (sockaddr_in&)fServer.SockAddr();
+			next = message.PutOption(next, OPTION_SERVER_ADDRESS,
+				(uint32)server.sin_addr.s_addr);
+
+			message.client_address = fAssignedAddress;
 			break;
 		}
 
 		default:
-			// the default options are fine
 			break;
 	}
+
+	message.FinishOptions(next);
 }
 
 
@@ -788,7 +852,7 @@ DHCPClient::_TimeoutShift(int socket, time_t& timeout, uint32& tries)
 
 
 BString
-DHCPClient::_ToString(const uint8* data) const
+DHCPClient::_AddressToString(const uint8* data) const
 {
 	BString target = inet_ntoa(*(in_addr*)data);
 	return target;
@@ -796,7 +860,7 @@ DHCPClient::_ToString(const uint8* data) const
 
 
 BString
-DHCPClient::_ToString(in_addr_t address) const
+DHCPClient::_AddressToString(in_addr_t address) const
 {
 	BString target = inet_ntoa(*(in_addr*)&address);
 	return target;
@@ -805,14 +869,13 @@ DHCPClient::_ToString(in_addr_t address) const
 
 status_t
 DHCPClient::_SendMessage(int socket, dhcp_message& message,
-	sockaddr_in& address) const
+	const BNetworkAddress& address) const
 {
-	syslog(LOG_DEBUG, "DHCP send message %u for %s\n", message.Type(),
-		Device());
+	syslog(LOG_DEBUG, "DHCP send message %s for %s\n",
+		dhcp_message::TypeToString(message.Type()), Device());
 
 	ssize_t bytesSent = sendto(socket, &message, message.Size(),
-		address.sin_addr.s_addr == INADDR_BROADCAST ? MSG_BCAST : 0,
-		(struct sockaddr*)&address, sizeof(sockaddr_in));
+		address.IsBroadcast() ? MSG_BCAST : 0, address, address.Length());
 	if (bytesSent < 0)
 		return errno;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2007, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2008-2010, François Revol, revol@free.fr. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 
@@ -7,6 +7,7 @@
 #include "keyboard.h"
 #include "toscalls.h"
 
+#include <boot/stage2.h>
 #include <boot/platform.h>
 #include <boot/stdio.h>
 #include <stdarg.h>
@@ -62,6 +63,7 @@ dprintf(const char *format, ...)
 	nat_feat_debugprintf(buffer);
 
 	//if (platform_boot_options() & BOOT_OPTION_DEBUG_OUTPUT)
+	if (!gKernelArgs.frame_buffer.enabled)
 		Bconput(DEV_CONSOLE, buffer);
 }
 

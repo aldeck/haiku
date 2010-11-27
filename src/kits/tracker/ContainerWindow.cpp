@@ -2965,6 +2965,8 @@ BContainerWindow::SetSingleWindowBrowseShortcuts(bool enabled)
 			new BMessage(kNavigatorCommandForward), Controller()->Navigator());
 		AddShortcut(B_UP_ARROW, B_OPTION_KEY | B_COMMAND_KEY,
 			new BMessage(kNavigatorCommandUp), Controller()->Navigator());
+		AddShortcut(B_DOWN_ARROW, B_OPTION_KEY | B_COMMAND_KEY,
+			new BMessage(kOpenSelection), PoseView());
 
 	} else {
 		RemoveShortcut(B_LEFT_ARROW, B_COMMAND_KEY);
@@ -2975,6 +2977,7 @@ BContainerWindow::SetSingleWindowBrowseShortcuts(bool enabled)
 		RemoveShortcut(B_LEFT_ARROW, B_OPTION_KEY | B_COMMAND_KEY);
 		RemoveShortcut(B_RIGHT_ARROW, B_OPTION_KEY | B_COMMAND_KEY);
 		RemoveShortcut(B_UP_ARROW, B_OPTION_KEY | B_COMMAND_KEY);
+		RemoveShortcut(B_DOWN_ARROW, B_COMMAND_KEY | B_OPTION_KEY);
 			// This also changes meaning, added again below.
 
 		AddShortcut(B_DOWN_ARROW, B_COMMAND_KEY | B_OPTION_KEY,

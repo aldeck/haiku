@@ -661,6 +661,19 @@ TermView::GetActiveProcessInfo(ActiveProcessInfo& _info) const
 }
 
 
+bool
+TermView::GetShellInfo(ShellInfo& _info) const
+{
+	if (fShell == NULL) {
+		_info = ShellInfo();
+		return false;
+	}
+
+	_info = fShell->Info();
+	return true;
+}
+
+
 /* static */
 BArchivable *
 TermView::Instantiate(BMessage* data)
@@ -1589,10 +1602,8 @@ TermView::KeyDown(const char *bytes, int32 numBytes)
 		case B_LEFT_ARROW:
 			if (rawChar == B_LEFT_ARROW) {
 				if ((mod & B_SHIFT_KEY) != 0) {
-					if (fListener != NULL) {
-						fListener->PreviousTermView(this,
-							(mod & B_COMMAND_KEY) != 0);
-					}
+					if (fListener != NULL)
+						fListener->PreviousTermView(this);
 					return;
 				}
 				if ((mod & B_CONTROL_KEY) || (mod & B_COMMAND_KEY))
@@ -1605,10 +1616,8 @@ TermView::KeyDown(const char *bytes, int32 numBytes)
 		case B_RIGHT_ARROW:
 			if (rawChar == B_RIGHT_ARROW) {
 				if ((mod & B_SHIFT_KEY) != 0) {
-					if (fListener != NULL) {
-						fListener->NextTermView(this,
-							(mod & B_COMMAND_KEY) != 0);
-					}
+					if (fListener != NULL)
+						fListener->NextTermView(this);
 					return;
 				}
 				if ((mod & B_CONTROL_KEY) || (mod & B_COMMAND_KEY))
@@ -1925,6 +1934,54 @@ TermView::MessageReceived(BMessage *msg)
 						break;
 				}
 			}
+			break;
+		}
+
+		case B_MOUSE_WHEEL_CHANGED:
+		{
+			// overridden to allow scrolling emulation in alternative screen
+			// mode
+			BAutolock locker(fTextBuffer);
+			float deltaY = 0;
+			if (fTextBuffer->IsAlternateScreenActive()
+				&& msg->FindFloat("be:wheel_delta_y", &deltaY) == B_OK
+				&& deltaY != 0) {
+				// We are in alternative screen mode and have a vertical delta
+				// we can work with -- emulate scrolling via terminal escape
+				// sequences.
+				locker.Unlock();
+
+				// scroll pagewise, if one of Option, Command, or Control is
+				// pressed
+				int32 steps;
+				const char* stepString;
+				if ((modifiers()
+						& (B_OPTION_KEY | B_COMMAND_KEY | B_CONTROL_KEY))
+						!= 0) {
+					// pagewise
+					stepString = deltaY > 0
+						? PAGE_DOWN_KEY_CODE : PAGE_UP_KEY_CODE;
+					steps = abs((int)deltaY);
+				} else {
+					// three lines per step
+					stepString = deltaY > 0
+						? DOWN_ARROW_KEY_CODE : UP_ARROW_KEY_CODE;
+					steps = 3 * abs((int)deltaY);
+				}
+
+				// We want to do only a single write(), so compose a string
+				// repeating the sequence as often as required by the delta.
+				BString toWrite;
+				for (int32 i = 0; i <steps; i++)
+					toWrite << stepString;
+
+				_WritePTY(toWrite.String(), toWrite.Length());
+			} else {
+				// let the BView's implementation handle the standard scrolling
+				locker.Unlock();
+				BView::MessageReceived(msg);
+			}
+
 			break;
 		}
 
@@ -3056,6 +3113,7 @@ TermView::AboutRequested()
 			"updated by Kian Duffy and others\n\n"
 			"Copyright " B_UTF8_COPYRIGHT "2003-2009, Haiku.\n"),
 		B_TRANSLATE("OK"));
+	alert->SetShortcut(0, B_ESCAPE);
 	if (alert != NULL)
 		alert->Go();
 }
@@ -3310,12 +3368,12 @@ TermView::Listener::SetTermViewTitle(TermView* view, const char* title)
 
 
 void
-TermView::Listener::PreviousTermView(TermView* view, bool move)
+TermView::Listener::PreviousTermView(TermView* view)
 {
 }
 
 
 void
-TermView::Listener::NextTermView(TermView* view, bool move)
+TermView::Listener::NextTermView(TermView* view)
 {
 }

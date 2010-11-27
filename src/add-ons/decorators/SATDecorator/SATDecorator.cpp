@@ -1,10 +1,12 @@
 /*
- * Copyright 2010, Haiku.
+ * Copyright 2010, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Clemens Zeidler <haiku@clemens-zeidler.de>
+ *		Ingo Weinhold <ingo_weinhold@gmx.de>
  */
+
 
 #include "SATDecorator.h"
 
@@ -25,6 +27,23 @@
 
 
 static const float kResizeKnobSize = 18.0;
+
+static const rgb_color kHighlightFrameColors[6] = {
+	{ 152, 0, 0, 255 },
+	{ 240, 0, 0, 255 },
+	{ 224, 0, 0, 255 },
+	{ 208, 0, 0, 255 },
+	{ 152, 0, 0, 255 },
+	{ 108, 0, 0, 255 }
+};
+
+static const rgb_color kHighlightTabColor	= { 255, 0, 0, 255 };
+static const rgb_color kHighlightTabColorLight = tint_color(kHighlightTabColor,
+	(B_LIGHTEN_MAX_TINT + B_LIGHTEN_2_TINT) / 2);
+static const rgb_color kHighlightTabColorBevel = tint_color(kHighlightTabColor,
+	B_LIGHTEN_2_TINT);
+static const rgb_color kHighlightTabColorShadow = tint_color(kHighlightTabColor,
+	(B_DARKEN_1_TINT + B_NO_TINT) / 2);
 
 
 SATDecorAddOn::SATDecorAddOn(image_id id, const char* name)
@@ -72,41 +91,20 @@ SATDecorator::SATDecorator(DesktopSettings& settings, BRect frame,
 	fStackedTabLength(0)
 {
 	fStackedDrawZoom = IsFocus();
-
-	// all colors are state based
-	fNonHighlightFrameColors[0] = (rgb_color){ 152, 152, 152, 255 };
-	fNonHighlightFrameColors[1] = (rgb_color){ 240, 240, 240, 255 };
-	fNonHighlightFrameColors[2] = (rgb_color){ 152, 152, 152, 255 };
-	fNonHighlightFrameColors[3] = (rgb_color){ 108, 108, 108, 255 };
-
-
-	fHighlightFrameColors[0] = (rgb_color){ 152, 0, 0, 255 };
-	fHighlightFrameColors[1] = (rgb_color){ 240, 0, 0, 255 };
-	fHighlightFrameColors[2] = (rgb_color){ 224, 0, 0, 255 };
-	fHighlightFrameColors[3] = (rgb_color){ 208, 0, 0, 255 };
-	fHighlightFrameColors[4] = (rgb_color){ 152, 0, 0, 255 };
-	fHighlightFrameColors[5] = (rgb_color){ 108, 0, 0, 255 };
-
-	// initial colors
-	fFrameColors[0] = fNonHighlightFrameColors[0];
-	fFrameColors[1] = fNonHighlightFrameColors[1];
-	fFrameColors[4] = fNonHighlightFrameColors[2];
-	fFrameColors[5] = fNonHighlightFrameColors[3];
-
-	fHighlightTabColor = (rgb_color){ 255, 0, 0, 255 };
 }
 
 
 void
 SATDecorator::HighlightTab(bool active, BRegion* dirty)
 {
-	if (active)
-		fTabColor = fHighlightTabColor;
-	else if (IsFocus())
-		fTabColor = fFocusTabColor;
-	else
-		fTabColor = fNonFocusTabColor;
-	dirty->Include(fTabRect);
+	if (active == fTabHighlighted)
+		return;
+
+	uint8 highlight = active ? HIGHLIGHT_STACK_AND_TILE : 0;
+	SetRegionHighlight(REGION_TAB, highlight, dirty);
+	SetRegionHighlight(REGION_CLOSE_BUTTON, highlight, dirty);
+	SetRegionHighlight(REGION_ZOOM_BUTTON, highlight, dirty);
+
 	fTabHighlighted = active;
 }
 
@@ -114,33 +112,16 @@ SATDecorator::HighlightTab(bool active, BRegion* dirty)
 void
 SATDecorator::HighlightBorders(bool active, BRegion* dirty)
 {
-	if (active) {
-		fFrameColors[0] = fHighlightFrameColors[0];
-		fFrameColors[1] = fHighlightFrameColors[1];
-		fFrameColors[2] = fHighlightFrameColors[2];
-		fFrameColors[3] = fHighlightFrameColors[3];
-		fFrameColors[4] = fHighlightFrameColors[4];
-		fFrameColors[5] = fHighlightFrameColors[5];
-	} else if (IsFocus()) {
-		fFrameColors[0] = fNonHighlightFrameColors[0];
-		fFrameColors[1] = fNonHighlightFrameColors[1];
-		fFrameColors[2] = fFocusFrameColors[0];
-		fFrameColors[3] = fFocusFrameColors[1];
-		fFrameColors[4] = fNonHighlightFrameColors[2];
-		fFrameColors[5] = fNonHighlightFrameColors[3];
-	} else {
-		fFrameColors[0] = fNonHighlightFrameColors[0];
-		fFrameColors[1] = fNonHighlightFrameColors[1];
-		fFrameColors[2] = fNonFocusFrameColors[0];
-		fFrameColors[3] = fNonFocusFrameColors[1];
-		fFrameColors[4] = fNonHighlightFrameColors[2];
-		fFrameColors[5] = fNonHighlightFrameColors[3];
-	}
-	dirty->Include(fLeftBorder);
-	dirty->Include(fRightBorder);
-	dirty->Include(fTopBorder);
-	dirty->Include(fBottomBorder);
-	dirty->Include(fResizeRect);
+	if (active == fBordersHighlighted)
+		return;
+
+	uint8 highlight = active ? HIGHLIGHT_STACK_AND_TILE : 0;
+	SetRegionHighlight(REGION_LEFT_BORDER, highlight, dirty);
+	SetRegionHighlight(REGION_RIGHT_BORDER, highlight, dirty);
+	SetRegionHighlight(REGION_TOP_BORDER, highlight, dirty);
+	SetRegionHighlight(REGION_BOTTOM_BORDER, highlight, dirty);
+	SetRegionHighlight(REGION_RIGHT_BOTTOM_CORNER, highlight, dirty);
+
 	fBordersHighlighted = active;
 }
 
@@ -405,79 +386,6 @@ SATDecorator::_LayoutTabItems(const BRect& tabRect)
 }
 
 
-void
-SATDecorator::_DrawTab(BRect invalid)
-{
-	STRACE(("_DrawTab(%.1f,%.1f,%.1f,%.1f)\n",
-			invalid.left, invalid.top, invalid.right, invalid.bottom));
-	// If a window has a tab, this will draw it and any buttons which are
-	// in it.
-	if (!fTabRect.IsValid() || !invalid.Intersects(fTabRect))
-		return;
-
-	// outer frame
-	fDrawingEngine->StrokeLine(fTabRect.LeftTop(), fTabRect.LeftBottom(),
-		fFrameColors[0]);
-	fDrawingEngine->StrokeLine(fTabRect.LeftTop(), fTabRect.RightTop(),
-		fFrameColors[0]);
-	if (fLook != kLeftTitledWindowLook) {
-		fDrawingEngine->StrokeLine(fTabRect.RightTop(), fTabRect.RightBottom(),
-			fFrameColors[5]);
-	} else {
-		fDrawingEngine->StrokeLine(fTabRect.LeftBottom(),
-			fTabRect.RightBottom(), fFrameColors[5]);
-	}
-
-	// bevel
-	fDrawingEngine->StrokeLine(BPoint(fTabRect.left + 1, fTabRect.top + 1),
-		BPoint(fTabRect.left + 1,
-			fTabRect.bottom - (fLook == kLeftTitledWindowLook ? 1 : 0)),
-		fTabColorBevel);
-	fDrawingEngine->StrokeLine(BPoint(fTabRect.left + 1, fTabRect.top + 1),
-		BPoint(fTabRect.right - (fLook == kLeftTitledWindowLook ? 0 : 1),
-			fTabRect.top + 1),
-		fTabColorBevel);
-
-	if (fLook != kLeftTitledWindowLook) {
-		fDrawingEngine->StrokeLine(BPoint(fTabRect.right - 1, fTabRect.top + 2),
-			BPoint(fTabRect.right - 1, fTabRect.bottom), fTabColorShadow);
-	} else {
-		fDrawingEngine->StrokeLine(
-			BPoint(fTabRect.left + 2, fTabRect.bottom - 1),
-			BPoint(fTabRect.right, fTabRect.bottom - 1), fTabColorShadow);
-	}
-
-	// fill
-	BGradientLinear gradient;
-	gradient.SetStart(fTabRect.LeftTop());
-	gradient.AddColor(fTabColorLight, 0);
-	gradient.AddColor(fTabColor, 255);
-
-	if (fLook != kLeftTitledWindowLook) {
-		gradient.SetEnd(fTabRect.LeftBottom());
-		fDrawingEngine->FillRect(BRect(fTabRect.left + 2, fTabRect.top + 2,
-			fTabRect.right - 2, fTabRect.bottom), gradient);
-	} else {
-		gradient.SetEnd(fTabRect.RightTop());
-		fDrawingEngine->FillRect(BRect(fTabRect.left + 2, fTabRect.top + 2,
-			fTabRect.right, fTabRect.bottom - 2), gradient);
-	}
-
-	_DrawTitle(fTabRect);
-
-	// Draw the buttons if we're supposed to
-	if (!(fFlags & B_NOT_CLOSABLE) && invalid.Intersects(fCloseRect))
-		_DrawClose(fCloseRect);
-	
-	if (fStackedMode) {
-		if (fStackedDrawZoom && invalid.Intersects(fZoomRect))
-			_DrawZoom(fZoomRect);
-	}
-	else if (!(fFlags & B_NOT_ZOOMABLE) && invalid.Intersects(fZoomRect))
-		_DrawZoom(fZoomRect);
-}
-
-
 bool
 SATDecorator::_SetTabLocation(float location, BRegion* updateRegion)
 {
@@ -537,8 +445,69 @@ SATDecorator::_SetFocus()
 }
 
 
+void
+SATDecorator::DrawButtons(const BRect& invalid)
+{
+	// Draw the buttons if we're supposed to
+	if (!(fFlags & B_NOT_CLOSABLE) && invalid.Intersects(fCloseRect))
+		_DrawClose(fCloseRect);
+
+	if (fStackedMode) {
+		// TODO: This should be solved differently. We don't just want to not
+		// draw the button, we actually want it removed. So rather add extra
+		// flags to remove the individual buttons to DefaultDecorator.
+		if (fStackedDrawZoom && invalid.Intersects(fZoomRect))
+			_DrawZoom(fZoomRect);
+	} else if (!(fFlags & B_NOT_ZOOMABLE) && invalid.Intersects(fZoomRect))
+		_DrawZoom(fZoomRect);
+}
+
+
+void
+SATDecorator::GetComponentColors(Component component, uint8 highlight,
+	ComponentColors _colors)
+{
+	// we handle only our own highlights
+	if (highlight != HIGHLIGHT_STACK_AND_TILE) {
+		DefaultDecorator::GetComponentColors(component, highlight, _colors);
+		return;
+	}
+
+	switch (component) {
+		case COMPONENT_TAB:
+			_colors[COLOR_TAB_FRAME_LIGHT] = kFrameColors[0];
+			_colors[COLOR_TAB_FRAME_DARK] = kFrameColors[3];
+			_colors[COLOR_TAB] = kHighlightTabColor;
+			_colors[COLOR_TAB_LIGHT] = kHighlightTabColorLight;
+			_colors[COLOR_TAB_BEVEL] = kHighlightTabColorBevel;
+			_colors[COLOR_TAB_SHADOW] = kHighlightTabColorShadow;
+			_colors[COLOR_TAB_TEXT] = kFocusTextColor;
+			break;
+
+		case COMPONENT_CLOSE_BUTTON:
+		case COMPONENT_ZOOM_BUTTON:
+			_colors[COLOR_BUTTON] = kHighlightTabColor;
+			_colors[COLOR_BUTTON_LIGHT] = kHighlightTabColorLight;
+			break;
+
+		case COMPONENT_LEFT_BORDER:
+		case COMPONENT_RIGHT_BORDER:
+		case COMPONENT_TOP_BORDER:
+		case COMPONENT_BOTTOM_BORDER:
+		case COMPONENT_RESIZE_CORNER:
+		default:
+			_colors[0] = kHighlightFrameColors[0];
+			_colors[1] = kHighlightFrameColors[1];
+			_colors[2] = kHighlightFrameColors[2];
+			_colors[3] = kHighlightFrameColors[3];
+			_colors[4] = kHighlightFrameColors[4];
+			_colors[5] = kHighlightFrameColors[5];
+			break;
+	}
+}
+
+
 extern "C" DecorAddOn* (instantiate_decor_addon)(image_id id, const char* name)
 {
 	return new (std::nothrow)SATDecorAddOn(id, name);
 }
-

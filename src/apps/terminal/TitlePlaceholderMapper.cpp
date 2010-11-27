@@ -10,15 +10,15 @@
 // #pragma mark - TitlePlaceholderMapper
 
 
-TitlePlaceholderMapper::TitlePlaceholderMapper(
+TitlePlaceholderMapper::TitlePlaceholderMapper(const ShellInfo& shellInfo,
 	const ActiveProcessInfo& processInfo)
 	:
+	fShellInfo(shellInfo),
 	fProcessInfo(processInfo)
 {
 }
 
 
-#include <stdio.h>
 bool
 TitlePlaceholderMapper::MapPlaceholder(char placeholder, int64 number,
 	bool numberGiven, BString& _string)
@@ -47,8 +47,13 @@ TitlePlaceholderMapper::MapPlaceholder(char placeholder, int64 number,
 		}
 
 		case 'p':
-			// process name
-			_string = fProcessInfo.Name();
+			// process name -- use "--", if the shell is active and it is the
+			// default shell
+			if (fProcessInfo.ID() == fShellInfo.ProcessID()
+				&& fShellInfo.IsDefaultShell()) {
+				_string = "--";
+			} else
+				_string = fProcessInfo.Name();
 			return true;
 	}
 
@@ -60,10 +65,10 @@ TitlePlaceholderMapper::MapPlaceholder(char placeholder, int64 number,
 
 
 WindowTitlePlaceholderMapper::WindowTitlePlaceholderMapper(
-	const ActiveProcessInfo& processInfo, int32 windowIndex,
-	const BString& tabTitle)
+	const ShellInfo& shellInfo, const ActiveProcessInfo& processInfo,
+	int32 windowIndex, const BString& tabTitle)
 	:
-	TitlePlaceholderMapper(processInfo),
+	TitlePlaceholderMapper(shellInfo, processInfo),
 	fWindowIndex(windowIndex),
 	fTabTitle(tabTitle)
 {
@@ -95,10 +100,10 @@ WindowTitlePlaceholderMapper::MapPlaceholder(char placeholder, int64 number,
 // #pragma mark - TabTitlePlaceholderMapper
 
 
-TabTitlePlaceholderMapper::TabTitlePlaceholderMapper(
+TabTitlePlaceholderMapper::TabTitlePlaceholderMapper(const ShellInfo& shellInfo,
 	const ActiveProcessInfo& processInfo, int32 tabIndex)
 	:
-	TitlePlaceholderMapper(processInfo),
+	TitlePlaceholderMapper(shellInfo, processInfo),
 	fTabIndex(tabIndex)
 {
 }

@@ -6,6 +6,7 @@
  *		DarkWyrm <bpmagic@columbus.rr.com>
  *		Stephan Aßmus <superstippi@gmx.de>
  *		Clemens Zeidler <haiku@clemens-zeidler.de>
+ *		Ingo Weinhold <ingo_weinhold@gmx.de>
  */
 #ifndef DECORATOR_H
 #define DECORATOR_H
@@ -24,29 +25,37 @@ class ServerFont;
 class BRegion;
 
 
-enum click_type {
-	CLICK_NONE = 0,
-	CLICK_ZOOM,
-	CLICK_CLOSE,
-	CLICK_MINIMIZE,
-	CLICK_TAB,
-	CLICK_DRAG,
-	CLICK_MOVE_TO_BACK,
-	CLICK_SLIDE_TAB,
-
-	CLICK_RESIZE,
-	CLICK_RESIZE_L,
-	CLICK_RESIZE_T,
-	CLICK_RESIZE_R,
-	CLICK_RESIZE_B,
-	CLICK_RESIZE_LT,
-	CLICK_RESIZE_RT,
-	CLICK_RESIZE_LB,
-	CLICK_RESIZE_RB
-};
-
-
 class Decorator {
+public:
+			enum Region {
+				REGION_NONE,
+
+				REGION_TAB,
+
+				REGION_CLOSE_BUTTON,
+				REGION_ZOOM_BUTTON,
+				REGION_MINIMIZE_BUTTON,
+
+				REGION_LEFT_BORDER,
+				REGION_RIGHT_BORDER,
+				REGION_TOP_BORDER,
+				REGION_BOTTOM_BORDER,
+
+				REGION_LEFT_TOP_CORNER,
+				REGION_LEFT_BOTTOM_CORNER,
+				REGION_RIGHT_TOP_CORNER,
+				REGION_RIGHT_BOTTOM_CORNER,
+
+				REGION_COUNT
+			};
+
+			enum {
+				HIGHLIGHT_NONE,
+				HIGHLIGHT_RESIZE_BORDER,
+
+				HIGHLIGHT_USER_DEFINED
+			};
+
 public:
 							Decorator(DesktopSettings& settings, BRect rect,
 								window_look look, uint32 flags);
@@ -91,8 +100,7 @@ public:
 
 			const BRegion&	GetFootprint();
 
-	virtual	click_type		MouseAction(const BMessage* message, BPoint where,
-								int32 buttons, int32 modifiers);
+	virtual	Region			RegionAt(BPoint where) const;
 
 			void			MoveBy(float x, float y);
 			void			MoveBy(BPoint offset);
@@ -106,6 +114,10 @@ public:
 								BRegion* /*updateRegion*/ = NULL);
 	virtual	float			TabLocation() const
 								{ return 0.0; }
+
+	virtual	bool			SetRegionHighlight(Region region, uint8 highlight,
+								BRegion* dirty);
+	inline	uint8			RegionHighlight(Region region) const;
 
 			bool			SetSettings(const BMessage& settings,
 								BRegion* updateRegion = NULL);
@@ -121,6 +133,8 @@ public:
 	virtual	void			DrawZoom();
 
 			rgb_color		UIColor(color_which which);
+
+	virtual	void			ExtendDirtyRegion(Region region, BRegion& dirty);
 
 protected:
 			int32			_TitleWidth() const
@@ -185,6 +199,18 @@ private:
 
 			BRegion			fFootprint;
 			bool			fFootprintValid : 1;
+
+			uint8			fRegionHighlights[REGION_COUNT - 1];
 };
+
+
+uint8
+Decorator::RegionHighlight(Region region) const
+{
+	int32 index = (int32)region - 1;
+	return index >= 0 && index < REGION_COUNT - 1
+		? fRegionHighlights[index] : 0;
+}
+
 
 #endif	// DECORATOR_H

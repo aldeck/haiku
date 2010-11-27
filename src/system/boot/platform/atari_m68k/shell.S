@@ -1,11 +1,9 @@
 /*
+ * Copyright 2008-2010, François Revol, revol@free.fr. All rights reserved.
  * Copyright 2004-2005, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
  * Copyright 2005, Ingo Weinhold, bonefish@users.sf.net.
  * Copyright 2007, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT license.
- *
- * Author:
- *		François Revol, revol@free.fr.
  */
 
 /**	This file contains the boot floppy and BFS boot block entry points for
@@ -474,9 +472,12 @@ copysect_loop:
 	// all done
 super_done:
 	// XXX: copy the rest !
+#if 1
+	// XXX: force floppy boot for testing to get the kernel tgz for now
 	move.b		#ATARI_BOOT_DRVAPI_FLOPPY,ATARI_ZBEOS_BASE + gBootDriveAPI - _bs_entry 
 	move.b		#0,ATARI_ZBEOS_BASE + gBootDriveID - _bs_entry 
 	move.b		#1,ATARI_ZBEOS_BASE + gBootedFromImage - _bs_entry 
+#endif
 
 	move.l		#0,%d0
 

@@ -32,9 +32,7 @@ public:
 			void				Draw(BRect r);
 			void				Draw();
 
-			click_type			MouseAction(const BMessage* message,
-									BPoint point, int32 buttons,
-									int32 modifiers);
+	virtual	Region				RegionAt(BPoint where) const;
 
 protected:
 			void				_DoLayout();
@@ -57,8 +55,6 @@ protected:
 									BRegion* updateRegion = NULL);
 			void				_SetFlags(uint32 flags,
 									BRegion* updateRegion = NULL);
-	
-			void				_SetColors();
 
 			void				_MoveBy(BPoint pt);
 			void				_ResizeBy(BPoint pt, BRegion* dirty);
@@ -72,7 +68,7 @@ private:
 
 private:
 			uint32 taboffset;
-		
+
 			rgb_color tab_highcol;
 			rgb_color tab_lowcol;
 			rgb_color frame_highcol;
@@ -85,10 +81,10 @@ private:
 			rgb_color			fFocusTextColor;
 			rgb_color			fNonFocusTextColor;
 			uint64 solidhigh, solidlow;
-		
+
 			BString				fTruncatedTitle;
 			int32				fTruncatedTitleLength;
-		
+
 			bool slidetab;
 			int textoffset;
 };

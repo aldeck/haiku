@@ -853,21 +853,22 @@ SATGroup::RestoreGroup(const BMessage& archive, StackAndTile* sat)
 		Tab* bottom = tempHTabs[bottomTab];
 
 		// adding windows to area
-		int64 windowId;
-		WindowArea* area = NULL;
-		for (int32 i = 0;
-			areaArchive.FindInt64("window", i, &windowId) == B_OK; i++) {
+		uint64 windowId;
+		SATWindow* prevWindow = NULL;
+		for (int32 i = 0; areaArchive.FindInt64("window", i,
+			(int64*)&windowId) == B_OK; i++) {
 			SATWindow* window = sat->FindSATWindow(windowId);
 			if (!window)
 				continue;
 
-			if (area == NULL) {
+			if (prevWindow == NULL) {
 				if (!group->AddWindow(window, left, top, right, bottom))
-					return B_ERROR;
-				area = window->GetWindowArea();
+					continue;
+				prevWindow = window;
 			} else {
-				if (!group->AddWindow(window, area))
-					return B_ERROR;
+				if (!prevWindow->StackWindow(window))
+					continue;
+				prevWindow = window;
 			}
 		}
 	}

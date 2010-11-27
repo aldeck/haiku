@@ -19,6 +19,10 @@
 #include <Catalog.h>
 #include <Clipboard.h>
 #include <Dragger.h>
+#include <File.h>
+#include <FindDirectory.h>
+#include <LayoutBuilder.h>
+#include <LayoutUtils.h>
 #include <Locale.h>
 #include <Menu.h>
 #include <MenuBar.h>
@@ -32,6 +36,8 @@
 #include <ScrollView.h>
 #include <String.h>
 
+#include <AutoLocker.h>
+
 #include "ActiveProcessInfo.h"
 #include "Arguments.h"
 #include "AppearPrefView.h"
@@ -40,6 +46,7 @@
 #include "Globals.h"
 #include "PrefWindow.h"
 #include "PrefHandler.h"
+#include "SetTitleDialog.h"
 #include "ShellParameters.h"
 #include "TermConst.h"
 #include "TermScrollView.h"
@@ -50,12 +57,18 @@ const static int32 kMaxTabs = 6;
 const static int32 kTermViewOffset = 3;
 
 // messages constants
-const static uint32 kNewTab = 'NTab';
-const static uint32 kCloseView = 'ClVw';
-const static uint32 kIncreaseFontSize = 'InFs';
-const static uint32 kDecreaseFontSize = 'DcFs';
-const static uint32 kSetActiveTab = 'STab';
-const static uint32 kUpdateTitles = 'UPti';
+static const uint32 kNewTab = 'NTab';
+static const uint32 kCloseView = 'ClVw';
+static const uint32 kCloseOtherViews = 'CloV';
+static const uint32 kIncreaseFontSize = 'InFs';
+static const uint32 kDecreaseFontSize = 'DcFs';
+static const uint32 kSetActiveTab = 'STab';
+static const uint32 kUpdateTitles = 'UPti';
+static const uint32 kEditTabTitle = 'ETti';
+static const uint32 kEditWindowTitle = 'EWti';
+static const uint32 kTabTitleChanged = 'TTch';
+static const uint32 kWindowTitleChanged = 'WTch';
+static const uint32 kUpdateSwitchTerminalsMenuItem = 'Ustm';
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -104,10 +117,9 @@ TermWindow::SessionID::SessionID(int32 id)
 
 
 TermWindow::SessionID::SessionID(const BMessage& message, const char* field)
-	:
-	fID(-1)
 {
-	message.FindInt32(field, &fID);
+	if (message.FindInt32(field, &fID) != B_OK)
+		fID = -1;
 }
 
 
@@ -143,26 +155,22 @@ struct TermWindow::Session {
 // #pragma mark - TermWindow
 
 
-TermWindow::TermWindow(BRect frame, const BString& title,
-	bool isUserDefinedTitle, int32 windowIndex, uint32 workspaces,
-	Arguments* args)
+TermWindow::TermWindow(const BString& title, Arguments* args)
 	:
-	BWindow(frame, title, B_DOCUMENT_WINDOW,
-		B_CURRENT_WORKSPACE | B_QUIT_ON_WINDOW_CLOSE, workspaces),
-	fWindowIndex(windowIndex),
+	BWindow(BRect(0, 0, 0, 0), title, B_DOCUMENT_WINDOW,
+		B_CURRENT_WORKSPACE | B_QUIT_ON_WINDOW_CLOSE),
 	fTitleUpdateRunner(this, BMessage(kUpdateTitles), 1000000),
 	fNextSessionID(0),
 	fTabView(NULL),
-	fMenubar(NULL),
-	fFilemenu(NULL),
-	fEditmenu(NULL),
-	fEncodingmenu(NULL),
-	fHelpmenu(NULL),
-	fWindowSizeMenu(NULL),
+	fMenuBar(NULL),
+	fSwitchTerminalsMenuItem(NULL),
+	fEncodingMenu(NULL),
 	fPrintSettings(NULL),
 	fPrefWindow(NULL),
 	fFindPanel(NULL),
 	fSavedFrame(0, 0, -1, -1),
+	fSetWindowTitleDialog(NULL),
+	fSetTabTitleDialog(NULL),
 	fFindString(""),
 	fFindNextMenuItem(NULL),
 	fFindPreviousMenuItem(NULL),
@@ -172,19 +180,62 @@ TermWindow::TermWindow(BRect frame, const BString& title,
 	fMatchWord(false),
 	fFullScreen(false)
 {
+	// register this terminal
+	fTerminalRoster.Register(Team(), this);
+	fTerminalRoster.SetListener(this);
+	int32 id = fTerminalRoster.ID();
+
 	// apply the title settings
-	fTitle.title = title;
 	fTitle.pattern = title;
-	fTitle.patternUserDefined = isUserDefinedTitle;
+	if (fTitle.pattern.Length() == 0) {
+		fTitle.pattern = B_TRANSLATE("Terminal");
+
+		if (id >= 0)
+			fTitle.pattern << " " << id + 1;
+
+		fTitle.patternUserDefined = false;
+	} else
+		fTitle.patternUserDefined = true;
+
+	fTitle.title = fTitle.pattern;
+	fTitle.pattern = title;
+
 	_TitleSettingsChanged();
 
+	// get the saved window position and workspaces
+	BRect frame;
+	uint32 workspaces;
+	if (_LoadWindowPosition(&frame, &workspaces) == B_OK) {
+		// apply
+		MoveTo(frame.LeftTop());
+		ResizeTo(frame.Width(), frame.Height());
+		SetWorkspaces(workspaces);
+	} else {
+		// use computed defaults
+		int i = id / 16;
+		int j = id % 16;
+		int k = (j * 16) + (i * 64) + 50;
+		int l = (j * 16)  + 50;
+
+		MoveTo(k, l);
+	}
+
+	// init the GUI and add a tab
 	_InitWindow();
 	_AddTab(args);
+
+	// Announce our window as no longer minimized. That's not true, since it's
+	// still hidden at this point, but it will be shown very soon.
+	fTerminalRoster.SetWindowInfo(false, Workspaces());
 }
 
 
 TermWindow::~TermWindow()
 {
+	fTerminalRoster.Unregister();
+
+	_FinishTitleDialog();
+
 	if (fPrefWindow)
 		fPrefWindow->PostMessage(B_QUIT_REQUESTED);
 
@@ -195,7 +246,7 @@ TermWindow::~TermWindow()
 
 	PrefHandler::DeleteDefault();
 
-	for (int32 i = 0; Session* session = (Session*)fSessions.ItemAt(i); i++)
+	for (int32 i = 0; Session* session = _SessionAt(i); i++)
 		delete session;
 }
 
@@ -220,8 +271,13 @@ TermWindow::_InitWindow()
 		AddShortcut('1' + i, B_COMMAND_KEY, message);
 	}
 
+	AddShortcut(B_LEFT_ARROW, B_COMMAND_KEY | B_SHIFT_KEY,
+		new BMessage(MSG_MOVE_TAB_LEFT));
+	AddShortcut(B_RIGHT_ARROW, B_COMMAND_KEY | B_SHIFT_KEY,
+		new BMessage(MSG_MOVE_TAB_RIGHT));
+
 	BRect textFrame = Bounds();
-	textFrame.top = fMenubar->Bounds().bottom + 1.0;
+	textFrame.top = fMenuBar->Bounds().bottom + 1.0;
 
 	fTabView = new SmartTabView(textFrame, "tab view", B_WIDTH_FROM_WIDEST);
 	fTabView->SetListener(this);
@@ -241,46 +297,76 @@ TermWindow::_CanClose(int32 index)
 	if (!warnOnExit)
 		return true;
 
-	bool isBusy = false;
-	if (index != -1)
-		isBusy = _TermViewAt(index)->IsShellBusy();
-	else {
+	uint32 busyProcessCount = 0;
+	BString busyProcessNames;
+		// all names, separated by "\n\t"
+
+	if (index != -1) {
+		ShellInfo shellInfo;
+		ActiveProcessInfo info;
+		TermView* termView = _TermViewAt(index);
+		if (termView->GetShellInfo(shellInfo)
+			&& termView->GetActiveProcessInfo(info)
+			&& (info.ID() != shellInfo.ProcessID()
+				|| !shellInfo.IsDefaultShell())) {
+			busyProcessCount++;
+			busyProcessNames = info.Name();
+		}
+	} else {
 		for (int32 i = 0; i < fSessions.CountItems(); i++) {
-			if (_TermViewAt(i)->IsShellBusy()) {
-				isBusy = true;
-				break;
+			ShellInfo shellInfo;
+			ActiveProcessInfo info;
+			TermView* termView = _TermViewAt(i);
+			if (termView->GetShellInfo(shellInfo)
+				&& termView->GetActiveProcessInfo(info)
+				&& (info.ID() != shellInfo.ProcessID()
+					|| !shellInfo.IsDefaultShell())) {
+				if (++busyProcessCount > 1)
+					busyProcessNames << "\n\t";
+				busyProcessNames << info.Name();
 			}
 		}
 	}
 
-	if (isBusy) {
-		const char* alertMessage = index == -1 || fSessions.CountItems() == 1
-			? B_TRANSLATE("A process is still running.\n"
+	if (busyProcessCount == 0)
+		return true;
+
+	BString alertMessage;
+	if (busyProcessCount == 1) {
+		// Only one pending process. Select the alert text depending on whether
+		// the terminal will be closed.
+		alertMessage = index == -1 || fSessions.CountItems() == 1
+			? B_TRANSLATE("The process \"%1\" is still running.\n"
 				"If you close the Terminal, the process will be killed.")
-			: B_TRANSLATE("A process is still running.\n"
+			: B_TRANSLATE("The process \"%1\" is still running.\n"
 				"If you close the tab, the process will be killed.");
-		BAlert* alert = new BAlert(B_TRANSLATE("Really close?"),
-			alertMessage, B_TRANSLATE("Close"), B_TRANSLATE("Cancel"), NULL,
-			B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-		int32 result = alert->Go();
-		if (result == 1)
-			return false;
+	} else {
+		// multiple pending processes
+		alertMessage = B_TRANSLATE(
+			"The following processes are still running:\n\n"
+			"\t%1\n\n"
+			"If you close the Terminal, the processes will be killed.");
 	}
 
-	return true;
+	alertMessage.ReplaceFirst("%1", busyProcessNames);
+
+	BAlert* alert = new BAlert(B_TRANSLATE("Really close?"),
+		alertMessage, B_TRANSLATE("Close"), B_TRANSLATE("Cancel"), NULL,
+		B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+	alert->SetShortcut(1, B_ESCAPE);
+	return alert->Go() == 0;
 }
 
 
 bool
 TermWindow::QuitRequested()
 {
+	_FinishTitleDialog();
+
 	if (!_CanClose(-1))
 		return false;
 
-	BMessage position = BMessage(MSG_SAVE_WINDOW_POSITION);
-	position.AddRect("rect", Frame());
-	position.AddInt32("workspaces", Workspaces());
-	be_app->PostMessage(&position);
+	_SaveWindowPosition();
 
 	return BWindow::QuitRequested();
 }
@@ -292,7 +378,7 @@ TermWindow::MenusBeginning()
 	TermView* view = _ActiveTermView();
 
 	// Syncronize Encode Menu Pop-up menu and Preference.
-	BMenuItem* item = fEncodingmenu->FindItem(
+	BMenuItem* item = fEncodingMenu->FindItem(
 		EncodingAsString(view->Encoding()));
 	if (item != NULL)
 		item->SetMarked(true);
@@ -338,90 +424,159 @@ TermWindow::_MakeEncodingMenu()
 void
 TermWindow::_SetupMenu()
 {
-	// Menu bar object.
-	fMenubar = new BMenuBar(Bounds(), "mbar");
+	BLayoutBuilder::Menu<>(fMenuBar = new BMenuBar(Bounds(), "mbar"))
+		// Terminal
+		.AddMenu(B_TRANSLATE("Terminal"))
+			.AddItem(B_TRANSLATE("Switch Terminals"), MENU_SWITCH_TERM, B_TAB)
+				.GetItem(fSwitchTerminalsMenuItem)
+			.AddItem(B_TRANSLATE("New Terminal"), MENU_NEW_TERM, 'N')
+			.AddItem(B_TRANSLATE("New tab"), kNewTab, 'T')
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("Page setup" B_UTF8_ELLIPSIS), MENU_PAGE_SETUP)
+			.AddItem(B_TRANSLATE("Print"), MENU_PRINT,'P')
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("About Terminal" B_UTF8_ELLIPSIS),
+				B_ABOUT_REQUESTED)
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("Close window"), B_QUIT_REQUESTED, 'W',
+				B_SHIFT_KEY)
+			.AddItem(B_TRANSLATE("Close active tab"), kCloseView, 'W')
+			.AddItem(B_TRANSLATE("Quit"), B_QUIT_REQUESTED, 'Q')
+		.End()
 
-	// Make File Menu.
-	fFilemenu = new BMenu(B_TRANSLATE("Terminal"));
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Switch Terminals"),
-		new BMessage(MENU_SWITCH_TERM), B_TAB));
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("New Terminal"),
-		new BMessage(MENU_NEW_TERM), 'N'));
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("New tab"),
-		new BMessage(kNewTab), 'T'));
+		// Edit
+		.AddMenu(B_TRANSLATE("Edit"))
+			.AddItem(B_TRANSLATE("Copy"), B_COPY,'C')
+			.AddItem(B_TRANSLATE("Paste"), B_PASTE,'V')
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("Select all"), B_SELECT_ALL, 'A')
+			.AddItem(B_TRANSLATE("Clear all"), MENU_CLEAR_ALL, 'L')
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("Find" B_UTF8_ELLIPSIS), MENU_FIND_STRING,'F')
+			.AddItem(B_TRANSLATE("Find previous"), MENU_FIND_PREVIOUS, 'G',
+					B_SHIFT_KEY)
+				.GetItem(fFindPreviousMenuItem)
+				.SetEnabled(false)
+			.AddItem(B_TRANSLATE("Find next"), MENU_FIND_NEXT, 'G')
+				.GetItem(fFindNextMenuItem)
+				.SetEnabled(false)
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("Window title" B_UTF8_ELLIPSIS),
+				kEditWindowTitle)
+		.End()
 
-	fFilemenu->AddSeparatorItem();
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Page setup" B_UTF8_ELLIPSIS),
-		new BMessage(MENU_PAGE_SETUP)));
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Print"),
-		new BMessage(MENU_PRINT),'P'));
-	fFilemenu->AddSeparatorItem();
-	fFilemenu->AddItem(new BMenuItem(
-		B_TRANSLATE("About Terminal" B_UTF8_ELLIPSIS),
-		new BMessage(B_ABOUT_REQUESTED)));
-	fFilemenu->AddSeparatorItem();
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Close window"),
-		new BMessage(B_QUIT_REQUESTED), 'W', B_SHIFT_KEY));
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Close active tab"),
-		new BMessage(kCloseView), 'W'));
-	fFilemenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
-		new BMessage(B_QUIT_REQUESTED), 'Q'));
-	fMenubar->AddItem(fFilemenu);
+		// Settings
+		.AddMenu(B_TRANSLATE("Settings"))
+			.AddItem(_MakeWindowSizeMenu())
+			.AddItem(fEncodingMenu = _MakeEncodingMenu())
+			.AddMenu(B_TRANSLATE("Text size"))
+				.AddItem(B_TRANSLATE("Increase"), kIncreaseFontSize, '+',
+						B_COMMAND_KEY)
+					.GetItem(fIncreaseFontSizeMenuItem)
+				.AddItem(B_TRANSLATE("Decrease"), kDecreaseFontSize, '-',
+						B_COMMAND_KEY)
+					.GetItem(fDecreaseFontSizeMenuItem)
+			.End()
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("Settings" B_UTF8_ELLIPSIS), MENU_PREF_OPEN)
+			.AddSeparator()
+			.AddItem(B_TRANSLATE("Save as default"), SAVE_AS_DEFAULT)
+		.End()
+	;
 
-	// Make Edit Menu.
-	fEditmenu = new BMenu(B_TRANSLATE("Edit"));
-	fEditmenu->AddItem(new BMenuItem(B_TRANSLATE("Copy"),
-		new BMessage(B_COPY),'C'));
-	fEditmenu->AddItem(new BMenuItem(B_TRANSLATE("Paste"),
-		new BMessage(B_PASTE),'V'));
-	fEditmenu->AddSeparatorItem();
-	fEditmenu->AddItem(new BMenuItem(B_TRANSLATE("Select all"),
-		new BMessage(B_SELECT_ALL), 'A'));
-	fEditmenu->AddItem(new BMenuItem(B_TRANSLATE("Clear all"),
-		new BMessage(MENU_CLEAR_ALL), 'L'));
-	fEditmenu->AddSeparatorItem();
-	fEditmenu->AddItem(new BMenuItem(B_TRANSLATE("Find" B_UTF8_ELLIPSIS),
-		new BMessage(MENU_FIND_STRING),'F'));
-	fFindPreviousMenuItem = new BMenuItem(B_TRANSLATE("Find previous"),
-		new BMessage(MENU_FIND_PREVIOUS), 'G', B_SHIFT_KEY);
-	fEditmenu->AddItem(fFindPreviousMenuItem);
-	fFindPreviousMenuItem->SetEnabled(false);
-	fFindNextMenuItem = new BMenuItem(B_TRANSLATE("Find next"),
-		new BMessage(MENU_FIND_NEXT), 'G');
-	fEditmenu->AddItem(fFindNextMenuItem);
-	fFindNextMenuItem->SetEnabled(false);
+	AddChild(fMenuBar);
 
-	fMenubar->AddItem(fEditmenu);
+	_UpdateSwitchTerminalsMenuItem();
+}
 
-	// Make Help Menu.
-	fHelpmenu = new BMenu(B_TRANSLATE("Settings"));
-	fWindowSizeMenu = _MakeWindowSizeMenu();
 
-	fEncodingmenu = _MakeEncodingMenu();
+status_t
+TermWindow::_GetWindowPositionFile(BFile* file, uint32 openMode)
+{
+	BPath path;
+	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path, true);
+	if (status != B_OK)
+		return status;
 
-	fSizeMenu = new BMenu(B_TRANSLATE("Text size"));
+	status = path.Append("Terminal_windows");
+	if (status != B_OK)
+		return status;
 
-	fIncreaseFontSizeMenuItem = new BMenuItem(B_TRANSLATE("Increase"),
-		new BMessage(kIncreaseFontSize), '+', B_COMMAND_KEY);
+	return file->SetTo(path.Path(), openMode);
+}
 
-	fDecreaseFontSizeMenuItem = new BMenuItem(B_TRANSLATE("Decrease"),
-		new BMessage(kDecreaseFontSize), '-', B_COMMAND_KEY);
 
-	fSizeMenu->AddItem(fIncreaseFontSizeMenuItem);
-	fSizeMenu->AddItem(fDecreaseFontSizeMenuItem);
+status_t
+TermWindow::_LoadWindowPosition(BRect* frame, uint32* workspaces)
+{
+	status_t status;
+	BMessage position;
 
-	fHelpmenu->AddItem(fWindowSizeMenu);
-	fHelpmenu->AddItem(fEncodingmenu);
-	fHelpmenu->AddItem(fSizeMenu);
-	fHelpmenu->AddSeparatorItem();
-	fHelpmenu->AddItem(new BMenuItem(B_TRANSLATE("Settings" B_UTF8_ELLIPSIS),
-		new BMessage(MENU_PREF_OPEN)));
-	fHelpmenu->AddSeparatorItem();
-	fHelpmenu->AddItem(new BMenuItem(B_TRANSLATE("Save as default"),
-		new BMessage(SAVE_AS_DEFAULT)));
-	fMenubar->AddItem(fHelpmenu);
+	BFile file;
+	status = _GetWindowPositionFile(&file, B_READ_ONLY);
+	if (status != B_OK)
+		return status;
 
-	AddChild(fMenubar);
+	status = position.Unflatten(&file);
+
+	file.Unset();
+
+	if (status != B_OK)
+		return status;
+
+	int32 id = fTerminalRoster.ID();
+	status = position.FindRect("rect", id, frame);
+	if (status != B_OK)
+		return status;
+
+	int32 _workspaces;
+	status = position.FindInt32("workspaces", id, &_workspaces);
+	if (status != B_OK)
+		return status;
+	if (modifiers() & B_SHIFT_KEY)
+		*workspaces = _workspaces;
+	else
+		*workspaces = B_CURRENT_WORKSPACE;
+
+	return B_OK;
+}
+
+
+status_t
+TermWindow::_SaveWindowPosition()
+{
+	BFile file;
+	BMessage originalSettings;
+
+	// We append ourself to the existing settings file
+	// So we have to read it, insert our BMessage, and rewrite it.
+
+	status_t status = _GetWindowPositionFile(&file, B_READ_ONLY);
+	if (status == B_OK) {
+		originalSettings.Unflatten(&file);
+			// No error checking on that : it fails if the settings
+			// file is missing, but we can create it.
+
+		file.Unset();
+	}
+
+	// Append the new settings
+	int32 id = fTerminalRoster.ID();
+	BRect rect(Frame());
+	if (originalSettings.ReplaceRect("rect", id, rect) != B_OK)
+		originalSettings.AddRect("rect", rect);
+
+	int32 workspaces = Workspaces();
+	if (originalSettings.ReplaceInt32("workspaces", id, workspaces) != B_OK)
+		originalSettings.AddInt32("workspaces", workspaces);
+
+	// Resave the whole thing
+	status = _GetWindowPositionFile (&file,
+		B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (status != B_OK)
+		return status;
+
+	return originalSettings.Flatten(&file);
 }
 
 
@@ -471,7 +626,7 @@ TermWindow::MessageReceived(BMessage *message)
 			break;
 
 		case MENU_SWITCH_TERM:
-			be_app->PostMessage(MENU_SWITCH_TERM);
+			_SwitchTerminal();
 			break;
 
 		case MENU_NEW_TERM:
@@ -536,6 +691,7 @@ TermWindow::MessageReceived(BMessage *message)
 				BAlert* alert = new BAlert(B_TRANSLATE("Find failed"),
 					errorMsg, B_TRANSLATE("OK"), NULL, NULL,
 					B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+				alert->SetShortcut(0, B_ESCAPE);
 
 				alert->Go();
 				fFindPreviousMenuItem->SetEnabled(false);
@@ -616,12 +772,12 @@ TermWindow::MessageReceived(BMessage *message)
 		case FULLSCREEN:
 			if (!fSavedFrame.IsValid()) { // go fullscreen
 				_ActiveTermView()->DisableResizeView();
-				float mbHeight = fMenubar->Bounds().Height() + 1;
+				float mbHeight = fMenuBar->Bounds().Height() + 1;
 				fSavedFrame = Frame();
 				BScreen screen(this);
 				_ActiveTermView()->ScrollBar()->ResizeBy(0, (B_H_SCROLL_BAR_HEIGHT - 2));
 
-				fMenubar->Hide();
+				fMenuBar->Hide();
 				fTabView->ResizeBy(0, mbHeight);
 				fTabView->MoveBy(0, -mbHeight);
 				fSavedLook = Look();
@@ -632,8 +788,8 @@ TermWindow::MessageReceived(BMessage *message)
 				fFullScreen = true;
 			} else { // exit fullscreen
 				_ActiveTermView()->DisableResizeView();
-				float mbHeight = fMenubar->Bounds().Height() + 1;
-				fMenubar->Show();
+				float mbHeight = fMenuBar->Bounds().Height() + 1;
+				fMenuBar->Show();
 				_ActiveTermView()->ScrollBar()->ResizeBy(0, -(B_H_SCROLL_BAR_HEIGHT - 2));
 				ResizeTo(fSavedFrame.Width(), fSavedFrame.Height());
 				MoveTo(fSavedFrame.left, fSavedFrame.top);
@@ -677,6 +833,49 @@ TermWindow::MessageReceived(BMessage *message)
 			_CheckChildren();
 			break;
 
+		case MSG_MOVE_TAB_LEFT:
+		case MSG_MOVE_TAB_RIGHT:
+			_NavigateTab(_IndexOfTermView(_ActiveTermView()),
+				message->what == MSG_MOVE_TAB_LEFT ? -1 : 1, true);
+			break;
+
+		case kTabTitleChanged:
+		{
+			// tab title changed message from SetTitleDialog
+			SessionID sessionID(*message, "session");
+			if (Session* session = _SessionForID(sessionID)) {
+				BString title;
+				if (message->FindString("title", &title) == B_OK) {
+					session->title.pattern = title;
+					session->title.patternUserDefined = true;
+				} else {
+					session->title.pattern.Truncate(0);
+					session->title.patternUserDefined = false;
+				}
+				_UpdateSessionTitle(_IndexOfSession(session));
+			}
+			break;
+		}
+
+		case kWindowTitleChanged:
+		{
+			// window title changed message from SetTitleDialog
+			BString title;
+			if (message->FindString("title", &title) == B_OK) {
+				fTitle.pattern = title;
+				fTitle.patternUserDefined = true;
+			} else {
+				fTitle.pattern
+					= PrefHandler::Default()->getString(PREF_WINDOW_TITLE);
+				fTitle.patternUserDefined = false;
+			}
+
+			_UpdateSessionTitle(fTabView->Selection());
+				// updates the window title as a side effect
+
+			break;
+		}
+
 		case kSetActiveTab:
 		{
 			int32 index;
@@ -693,15 +892,31 @@ TermWindow::MessageReceived(BMessage *message)
 
 		case kCloseView:
 		{
-			TermView* termView;
 			int32 index = -1;
-			if (message->FindPointer("termView", (void**)&termView) == B_OK)
-				index = _IndexOfTermView(termView);
-			else
+			SessionID sessionID(*message, "session");
+			if (sessionID.IsValid()) {
+				if (Session* session = _SessionForID(sessionID))
+					index = _IndexOfSession(session);
+			} else
 				index = _IndexOfTermView(_ActiveTermView());
 
 			if (index >= 0)
 				_RemoveTab(index);
+
+			break;
+		}
+
+		case kCloseOtherViews:
+		{
+			Session* session = _SessionForID(SessionID(*message, "session"));
+			if (session == NULL)
+				break;
+
+			int32 count = fSessions.CountItems();
+			for (int32 i = count - 1; i >= 0; i--) {
+				if (_SessionAt(i) != session)
+					_RemoveTab(i);
+			}
 
 			break;
 		}
@@ -737,6 +952,22 @@ TermWindow::MessageReceived(BMessage *message)
 			_UpdateTitles();
 			break;
 
+		case kEditTabTitle:
+		{
+			SessionID sessionID(*message, "session");
+			if (Session* session = _SessionForID(sessionID))
+				_OpenSetTabTitleDialog(_IndexOfSession(session));
+			break;
+		}
+
+		case kEditWindowTitle:
+			_OpenSetWindowTitleDialog();
+			break;
+
+		case kUpdateSwitchTerminalsMenuItem:
+			_UpdateSwitchTerminalsMenuItem();
+			break;
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -747,7 +978,8 @@ TermWindow::MessageReceived(BMessage *message)
 void
 TermWindow::WindowActivated(bool activated)
 {
-	BWindow::WindowActivated(activated);
+	if (activated)
+		_UpdateSwitchTerminalsMenuItem();
 }
 
 
@@ -785,9 +1017,11 @@ TermWindow::_DoPageSetup()
 void
 TermWindow::_DoPrint()
 {
-	if (!fPrintSettings || (_DoPageSetup() != B_OK)) {
-		(new BAlert(B_TRANSLATE("Cancel"), B_TRANSLATE("Print cancelled."),
-			B_TRANSLATE("OK")))->Go();
+	if (!fPrintSettings || _DoPageSetup() != B_OK) {
+		BAlert* alert = new BAlert(B_TRANSLATE("Cancel"),
+			B_TRANSLATE("Print cancelled."), B_TRANSLATE("OK"));
+		alert->SetShortcut(0, B_ESCAPE);
+		alert->Go();
 		return;
 	}
 
@@ -880,8 +1114,8 @@ TermWindow::_AddTab(Arguments* args, const BString& currentDirectory)
 		view->GetFontSize(&width, &height);
 
 		float minimumHeight = -1;
-		if (fMenubar)
-			minimumHeight += fMenubar->Bounds().Height() + 1;
+		if (fMenuBar)
+			minimumHeight += fMenuBar->Bounds().Height() + 1;
 		if (fTabView && fTabView->CountTabs() > 0)
 			minimumHeight += fTabView->TabHeight() + 1;
 		SetSizeLimits(MIN_COLS * width - 1, MAX_COLS * width - 1,
@@ -897,7 +1131,7 @@ TermWindow::_AddTab(Arguments* args, const BString& currentDirectory)
 
 			// Resize Window
 			ResizeTo(viewWidth + B_V_SCROLL_BAR_WIDTH,
-				viewHeight + fMenubar->Bounds().Height() + 1);
+				viewHeight + fMenuBar->Bounds().Height() + 1);
 				// NOTE: Width is one pixel too small, since the scroll view
 				// is one pixel wider than its parent.
 		}
@@ -931,13 +1165,16 @@ TermWindow::_AddTab(Arguments* args, const BString& currentDirectory)
 void
 TermWindow::_RemoveTab(int32 index)
 {
+	_FinishTitleDialog();
+		// always close to avoid confusion
+
 	if (fSessions.CountItems() > 1) {
 		if (!_CanClose(index))
 			return;
 		if (Session* session = (Session*)fSessions.RemoveItem(index)) {
 			if (fSessions.CountItems() == 1) {
 				fTabView->SetScrollView(dynamic_cast<BScrollView*>(
-					((Session*)fSessions.ItemAt(0))->containerView->Parent()));
+					_SessionAt(0)->containerView->Parent()));
 			}
 
 			delete session;
@@ -957,12 +1194,19 @@ TermWindow::_NavigateTab(int32 index, int32 direction, bool move)
 	if (count <= 1 || index < 0 || index >= count)
 		return;
 
+	int32 newIndex = (index + direction + count) % count;
+	if (newIndex == index)
+		return;
+
 	if (move) {
-		// TODO: Move the tab!
-	} else {
-		index += direction;
-		fTabView->Select((index + count) % count);
+		// move the given tab to the new index
+		Session* session = (Session*)fSessions.RemoveItem(index);
+		fSessions.AddItem(session, newIndex);
+		fTabView->MoveTab(index, newIndex);
 	}
+
+	// activate the respective tab
+	fTabView->Select(newIndex);
 }
 
 
@@ -976,7 +1220,7 @@ TermWindow::_ActiveTermViewContainerView() const
 TermViewContainerView*
 TermWindow::_TermViewContainerViewAt(int32 index) const
 {
-	if (Session* session = (Session*)fSessions.ItemAt(index))
+	if (Session* session = _SessionAt(index))
 		return session->containerView;
 	return NULL;
 }
@@ -1014,12 +1258,38 @@ TermWindow::_IndexOfTermView(TermView* termView) const
 }
 
 
+TermWindow::Session*
+TermWindow::_SessionAt(int32 index) const
+{
+	return (Session*)fSessions.ItemAt(index);
+}
+
+
+TermWindow::Session*
+TermWindow::_SessionForID(const SessionID& sessionID) const
+{
+	for (int32 i = 0; Session* session = _SessionAt(i); i++) {
+		if (session->id == sessionID)
+			return session;
+	}
+
+	return NULL;
+}
+
+
+int32
+TermWindow::_IndexOfSession(Session* session) const
+{
+	return fSessions.IndexOf(session);
+}
+
+
 void
 TermWindow::_CheckChildren()
 {
 	int32 count = fSessions.CountItems();
 	for (int32 i = count - 1; i >= 0; i--) {
-		Session* session = (Session*)fSessions.ItemAt(i);
+		Session* session = _SessionAt(i);
 		if (session->containerView->GetTermView()->CheckShellGone())
 			NotifyTermViewQuit(session->containerView->GetTermView(), 0);
 	}
@@ -1046,6 +1316,28 @@ TermWindow::FrameResized(float newWidth, float newHeight)
 
 
 void
+TermWindow::WorkspacesChanged(uint32 oldWorkspaces, uint32 newWorkspaces)
+{
+	fTerminalRoster.SetWindowInfo(IsMinimized(), Workspaces());
+}
+
+
+void
+TermWindow::WorkspaceActivated(int32 workspace, bool state)
+{
+	fTerminalRoster.SetWindowInfo(IsMinimized(), Workspaces());
+}
+
+
+void
+TermWindow::Minimize(bool minimize)
+{
+	BWindow::Minimize(minimize);
+	fTerminalRoster.SetWindowInfo(IsMinimized(), Workspaces());
+}
+
+
+void
 TermWindow::TabSelected(SmartTabView* tabView, int32 index)
 {
 	SessionChanged();
@@ -1056,7 +1348,8 @@ void
 TermWindow::TabDoubleClicked(SmartTabView* tabView, BPoint point, int32 index)
 {
 	if (index >= 0) {
-		// TODO: Open the change title dialog!
+		// clicked on a tab -- open the title dialog
+		_OpenSetTabTitleDialog(index);
 	} else {
 		// not clicked on a tab -- create a new one
 		_NewTab();
@@ -1082,11 +1375,24 @@ TermWindow::TabRightClicked(SmartTabView* tabView, BPoint point, int32 index)
 	if (termView == NULL)
 		return;
 
-	BMessage* message = new BMessage(kCloseView);
-	message->AddPointer("termview", termView);
+	BMessage* closeMessage = new BMessage(kCloseView);
+	_SessionAt(index)->id.AddToMessage(*closeMessage, "session");
+
+	BMessage* closeOthersMessage = new BMessage(kCloseOtherViews);
+	_SessionAt(index)->id.AddToMessage(*closeOthersMessage, "session");
+
+	BMessage* editTitleMessage = new BMessage(kEditTabTitle);
+	_SessionAt(index)->id.AddToMessage(*editTitleMessage, "session");
 
 	BPopUpMenu* popUpMenu = new BPopUpMenu("tab menu");
-	popUpMenu->AddItem(new BMenuItem(B_TRANSLATE("Close tab"), message));
+	BLayoutBuilder::Menu<>(popUpMenu)
+		.AddItem(B_TRANSLATE("Close tab"), closeMessage)
+		.AddItem(B_TRANSLATE("Close other tabs"), closeOthersMessage)
+		.AddSeparator()
+		.AddItem(B_TRANSLATE("Edit tab title" B_UTF8_ELLIPSIS),
+			editTitleMessage)
+	;
+
 	popUpMenu->SetAsyncAutoDestruct(true);
 	popUpMenu->SetTargetForItems(BMessenger(this));
 
@@ -1102,10 +1408,12 @@ TermWindow::NotifyTermViewQuit(TermView* view, int32 reason)
 {
 	// Since the notification can come from the view, we send a message to
 	// ourselves to avoid deleting the caller synchronously.
-	BMessage message(kCloseView);
-	message.AddPointer("termView", view);
-	message.AddInt32("reason", reason);
-	PostMessage(&message);
+	if (Session* session = _SessionAt(_IndexOfTermView(view))) {
+		BMessage message(kCloseView);
+		session->id.AddToMessage(message, "session");
+		message.AddInt32("reason", reason);
+		PostMessage(&message);
+	}
 }
 
 
@@ -1113,7 +1421,7 @@ void
 TermWindow::SetTermViewTitle(TermView* view, const char* title)
 {
 	int32 index = _IndexOfTermView(view);
-	if (Session* session = (Session*)fSessions.ItemAt(index)) {
+	if (Session* session = _SessionAt(index)) {
 		session->title.pattern = title;
 		session->title.patternUserDefined = true;
 		_UpdateSessionTitle(index);
@@ -1122,16 +1430,57 @@ TermWindow::SetTermViewTitle(TermView* view, const char* title)
 
 
 void
-TermWindow::PreviousTermView(TermView* view, bool move)
+TermWindow::TitleChanged(SetTitleDialog* dialog, const BString& title,
+	bool titleUserDefined)
 {
-	_NavigateTab(_IndexOfTermView(view), -1, move);
+	if (dialog == fSetTabTitleDialog) {
+		// tab title
+		BMessage message(kTabTitleChanged);
+		fSetTabTitleSession.AddToMessage(message, "session");
+		if (titleUserDefined)
+			message.AddString("title", title);
+
+		PostMessage(&message);
+	} else if (dialog == fSetWindowTitleDialog) {
+		// window title
+		BMessage message(kWindowTitleChanged);
+		if (titleUserDefined)
+			message.AddString("title", title);
+
+		PostMessage(&message);
+	}
 }
 
 
 void
-TermWindow::NextTermView(TermView* view, bool move)
+TermWindow::SetTitleDialogDone(SetTitleDialog* dialog)
 {
-	_NavigateTab(_IndexOfTermView(view), 1, move);
+	if (dialog == fSetTabTitleDialog) {
+		fSetTabTitleSession = SessionID();
+		fSetTabTitleDialog = NULL;
+			// assuming this is atomic
+	}
+}
+
+
+void
+TermWindow::TerminalInfosUpdated(TerminalRoster* roster)
+{
+	PostMessage(kUpdateSwitchTerminalsMenuItem);
+}
+
+
+void
+TermWindow::PreviousTermView(TermView* view)
+{
+	_NavigateTab(_IndexOfTermView(view), -1, false);
+}
+
+
+void
+TermWindow::NextTermView(TermView* view)
+{
+	_NavigateTab(_IndexOfTermView(view), 1, false);
 }
 
 
@@ -1142,8 +1491,8 @@ TermWindow::_ResizeView(TermView *view)
 	view->GetFontSize(&fontWidth, &fontHeight);
 
 	float minimumHeight = -1;
-	if (fMenubar)
-		minimumHeight += fMenubar->Bounds().Height() + 1;
+	if (fMenuBar)
+		minimumHeight += fMenuBar->Bounds().Height() + 1;
 	if (fTabView && fTabView->CountTabs() > 1)
 		minimumHeight += fTabView->TabHeight() + 1;
 
@@ -1157,7 +1506,7 @@ TermWindow::_ResizeView(TermView *view)
 	width += B_V_SCROLL_BAR_WIDTH;
 		// NOTE: Width is one pixel too small, since the scroll view
 		// is one pixel wider than its parent.
-	height += fMenubar->Bounds().Height() + 1;
+	height += fMenuBar->Bounds().Height() + 1;
 
 	ResizeTo(width, height);
 
@@ -1201,6 +1550,13 @@ TermWindow::_MakeWindowSizeMenu()
 
 
 void
+TermWindow::_UpdateSwitchTerminalsMenuItem()
+{
+	fSwitchTerminalsMenuItem->SetEnabled(_FindSwitchTerminalTarget() >= 0);
+}
+
+
+void
 TermWindow::_TitleSettingsChanged()
 {
 	if (!fTitle.patternUserDefined)
@@ -1224,19 +1580,24 @@ TermWindow::_UpdateTitles()
 void
 TermWindow::_UpdateSessionTitle(int32 index)
 {
-	Session* session = (Session*)fSessions.ItemAt(index);
+	Session* session = _SessionAt(index);
 	if (session == NULL)
 		return;
 
-	// get the active process info
+	// get the shell and active process infos
+	ShellInfo shellInfo;
 	ActiveProcessInfo activeProcessInfo;
-	if (!_TermViewAt(index)->GetActiveProcessInfo(activeProcessInfo))
+	TermView* termView = _TermViewAt(index);
+	if (!termView->GetShellInfo(shellInfo)
+		|| !termView->GetActiveProcessInfo(activeProcessInfo)) {
 		return;
+	}
 
 	// evaluate the session title pattern
 	BString sessionTitlePattern = session->title.patternUserDefined
 		? session->title.pattern : fSessionTitlePattern;
-	TabTitlePlaceholderMapper tabMapper(activeProcessInfo, session->index);
+	TabTitlePlaceholderMapper tabMapper(shellInfo, activeProcessInfo,
+		session->index);
 	const BString& sessionTitle = PatternEvaluator::Evaluate(
 		sessionTitlePattern, tabMapper);
 
@@ -1254,8 +1615,8 @@ TermWindow::_UpdateSessionTitle(int32 index)
 		return;
 
 	// evaluate the window title pattern
-	WindowTitlePlaceholderMapper windowMapper(activeProcessInfo, fWindowIndex,
-		sessionTitle);
+	WindowTitlePlaceholderMapper windowMapper(shellInfo, activeProcessInfo,
+		fTerminalRoster.ID() + 1, sessionTitle);
 	const BString& windowTitle = PatternEvaluator::Evaluate(fTitle.pattern,
 		windowMapper);
 
@@ -1263,6 +1624,142 @@ TermWindow::_UpdateSessionTitle(int32 index)
 	if (windowTitle != fTitle.title) {
 		fTitle.title = windowTitle;
 		SetTitle(fTitle.title);
+	}
+}
+
+
+void
+TermWindow::_OpenSetTabTitleDialog(int32 index)
+{
+	// If a dialog is active, finish it.
+	_FinishTitleDialog();
+
+	BString toolTip = BString(B_TRANSLATE(
+		"The pattern specifying the current tab title. The following "
+			"placeholders\n"
+		"can be used:\n")) << kTooTipSetTabTitlePlaceholders;
+	fSetTabTitleDialog = new SetTitleDialog(
+		B_TRANSLATE("Set tab title"), B_TRANSLATE("Tab title:"),
+		toolTip);
+
+	Session* session = _SessionAt(index);
+	bool userDefined = session->title.patternUserDefined;
+	const BString& title = userDefined
+		? session->title.pattern : fSessionTitlePattern;
+	fSetTabTitleSession = session->id;
+
+	// place the dialog window directly under the tab, but keep it on screen
+	BPoint location = fTabView->ConvertToScreen(
+		fTabView->TabFrame(index).LeftBottom() + BPoint(0, 1));
+	BRect frame(fSetTabTitleDialog->Frame().OffsetToCopy(location));
+	BSize screenSize(BScreen(fSetTabTitleDialog).Frame().Size());
+	fSetTabTitleDialog->MoveTo(
+		BLayoutUtils::MoveIntoFrame(frame, screenSize).LeftTop());
+
+	fSetTabTitleDialog->Go(title, userDefined, this);
+}
+
+
+void
+TermWindow::_OpenSetWindowTitleDialog()
+{
+	// If a dialog is active, finish it.
+	_FinishTitleDialog();
+
+	BString toolTip = BString(B_TRANSLATE(
+		"The pattern specifying the window title. The following placeholders\n"
+		"can be used:\n")) << kTooTipSetTabTitlePlaceholders;
+	fSetWindowTitleDialog = new SetTitleDialog(B_TRANSLATE("Set window title"),
+		B_TRANSLATE("Window title:"), toolTip);
+
+	// center the dialog in the window frame, but keep it on screen
+	fSetWindowTitleDialog->CenterIn(Frame());
+	BRect frame(fSetWindowTitleDialog->Frame());
+	BSize screenSize(BScreen(fSetWindowTitleDialog).Frame().Size());
+	fSetWindowTitleDialog->MoveTo(
+		BLayoutUtils::MoveIntoFrame(frame, screenSize).LeftTop());
+
+	fSetWindowTitleDialog->Go(fTitle.pattern, fTitle.patternUserDefined, this);
+}
+
+
+void
+TermWindow::_FinishTitleDialog()
+{
+	SetTitleDialog* oldDialog = fSetTabTitleDialog;
+	if (oldDialog != NULL && oldDialog->Lock()) {
+		// might have been unset in the meantime, so recheck
+		if (fSetTabTitleDialog == oldDialog) {
+			oldDialog->Finish();
+				// this also unsets the variables
+		}
+		oldDialog->Unlock();
+		return;
+	}
+
+	oldDialog = fSetWindowTitleDialog;
+	if (oldDialog != NULL && oldDialog->Lock()) {
+		// might have been unset in the meantime, so recheck
+		if (fSetWindowTitleDialog == oldDialog) {
+			oldDialog->Finish();
+				// this also unsets the variable
+		}
+		oldDialog->Unlock();
+		return;
+	}
+}
+
+
+void
+TermWindow::_SwitchTerminal()
+{
+	team_id teamID = _FindSwitchTerminalTarget();
+	if (teamID < 0)
+		return;
+
+	BMessenger app(TERM_SIGNATURE, teamID);
+	app.SendMessage(MSG_ACTIVATE_TERM);
+}
+
+
+team_id
+TermWindow::_FindSwitchTerminalTarget()
+{
+	AutoLocker<TerminalRoster> rosterLocker(fTerminalRoster);
+
+	team_id myTeamID = Team();
+
+	int32 numTerms = fTerminalRoster.CountTerminals();
+	if (numTerms <= 1)
+		return -1;
+
+	// Find our position in the Terminal teams.
+	int32 i;
+
+	for (i = 0; i < numTerms; i++) {
+		if (myTeamID == fTerminalRoster.TerminalAt(i)->team)
+			break;
+	}
+
+	if (i == numTerms) {
+		// we didn't find ourselves -- that shouldn't happen
+		return -1;
+	}
+
+	uint32 currentWorkspace = 1L << current_workspace();
+
+	while (true) {
+		if (--i < 0)
+			i = numTerms - 1;
+
+		const TerminalRoster::Info* info = fTerminalRoster.TerminalAt(i);
+		if (info->team == myTeamID) {
+			// That's ourselves again. We've run through the complete list.
+			return -1;
+		}
+
+		if (!info->minimized && (info->workspaces & currentWorkspace) != 0)
+			return info->team;
 	}
 }
 
@@ -1281,7 +1778,7 @@ TermWindow::_NewSessionIndex()
 		bool used = false;
 
 		for (int32 i = 0;
-			 Session* session = (Session*)fSessions.ItemAt(i); i++) {
+			 Session* session = _SessionAt(i); i++) {
 			if (id == session->index) {
 				used = true;
 				break;

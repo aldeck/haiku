@@ -91,6 +91,10 @@ static const uint32 MSG_SET_TERMNAL_TITLE				= 'sett';
 static const uint32 MSG_QUIT_TERMNAL					= 'qutt';
 static const uint32 MSG_REPORT_MOUSE_EVENT				= 'mous';
 static const uint32 MSG_SAVE_WINDOW_POSITION			= 'swps';
+static const uint32 MSG_MOVE_TAB_LEFT					= 'mvtl';
+static const uint32 MSG_MOVE_TAB_RIGHT					= 'mvtr';
+static const uint32 MSG_ACTIVATE_TERM					= 'msat';
+
 
 // Preference Read/Write Keys
 static const char* const PREF_HALF_FONT_FAMILY = "Half Font Family";
@@ -131,6 +135,10 @@ static const char* const PREF_WARN_ON_EXIT = "Warn on exit";
 
 static const char* const PREF_TAB_TITLE = "Tab title";
 static const char* const PREF_WINDOW_TITLE = "Window title";
+
+// shared strings
+extern const char* const kTooTipSetTabTitlePlaceholders;
+extern const char* const kTooTipSetWindowTitlePlaceholders;
 
 // Color type
 enum {

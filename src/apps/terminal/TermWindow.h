@@ -37,10 +37,13 @@
 #include <Window.h>
 
 #include "SmartTabView.h"
+#include "SetTitleDialog.h"
+#include "TerminalRoster.h"
 #include "TermView.h"
 
 
 class Arguments;
+class BFile;
 class BFont;
 class BMenu;
 class BMenuBar;
@@ -50,11 +53,11 @@ class TermViewContainerView;
 
 
 class TermWindow : public BWindow, private SmartTabView::Listener,
-	private TermView::Listener {
+	private TermView::Listener, private SetTitleDialog::Listener,
+	private TerminalRoster::Listener {
 public:
-								TermWindow(BRect frame, const BString& title,
-									bool isUserDefinedTitle, int32 windowIndex,
-									uint32 workspaces, Arguments* args);
+								TermWindow(const BString& title,
+									Arguments* args);
 	virtual						~TermWindow();
 
 			void				SessionChanged();
@@ -62,10 +65,15 @@ public:
 protected:
 	virtual bool				QuitRequested();
 	virtual void				MessageReceived(BMessage* message);
-	virtual void				WindowActivated(bool);
+	virtual void				WindowActivated(bool activated);
 	virtual void				MenusBeginning();
 	virtual	void				Zoom(BPoint leftTop, float width, float height);
 	virtual void				FrameResized(float newWidth, float newHeight);
+	virtual void				WorkspacesChanged(uint32 oldWorkspaces,
+									uint32 newWorkspaces);
+	virtual void				WorkspaceActivated(int32 workspace,
+									bool state);
+	virtual void				Minimize(bool minimize);
 
 private:
 	// SmartTabView::Listener
@@ -82,8 +90,17 @@ private:
 									int32 reason);
 	virtual	void				SetTermViewTitle(TermView* view,
 									const char* title);
-	virtual	void				PreviousTermView(TermView* view, bool move);
-	virtual	void				NextTermView(TermView* view, bool move);
+	virtual	void				PreviousTermView(TermView* view);
+	virtual	void				NextTermView(TermView* view);
+
+	// SetTitleDialog::Listener
+	virtual	void				TitleChanged(SetTitleDialog* dialog,
+									const BString& title,
+									bool titleUserDefined);
+	virtual	void				SetTitleDialogDone(SetTitleDialog* dialog);
+
+	// TerminalRoster::Listener
+	virtual	void				TerminalInfosUpdated(TerminalRoster* roster);
 
 private:
 			struct Title {
@@ -93,12 +110,19 @@ private:
 			};
 
 			struct SessionID {
-								SessionID(int32 id);
+								SessionID(int32 id = -1);
 								SessionID(const BMessage& message,
 									const char* field);
 
+				bool			IsValid() const		{ return fID >= 0; }
+
 				status_t		AddToMessage(BMessage& message,
 									const char* field) const;
+
+				bool			operator==(const SessionID& other) const
+									{ return fID == other.fID; }
+				bool			operator!=(const SessionID& other) const
+									{ return !(*this == other); }
 
 			private:
 				int32			fID;
@@ -106,11 +130,19 @@ private:
 
 			struct Session;
 
+private:
 			void				_SetTermColors(TermViewContainerView* termView);
 			void				_InitWindow();
 			void				_SetupMenu();
-			static BMenu*		_MakeEncodingMenu();
-			static BMenu*		_MakeWindowSizeMenu();
+	static	BMenu*				_MakeEncodingMenu();
+	static	BMenu*				_MakeWindowSizeMenu();
+			void				_UpdateSwitchTerminalsMenuItem();
+
+			status_t			_GetWindowPositionFile(BFile* file,
+									uint32 openMode);
+			status_t			_LoadWindowPosition(BRect* frame,
+									uint32* workspaces);
+			status_t			_SaveWindowPosition();
 
 			void				_GetPreferredFont(BFont &font);
 			status_t			_DoPageSetup();
@@ -125,46 +157,57 @@ private:
 									bool move);
 
 			bool				_CanClose(int32 index);
+
 			TermViewContainerView* _ActiveTermViewContainerView() const;
 			TermViewContainerView* _TermViewContainerViewAt(int32 index) const;
 			TermView*			_ActiveTermView() const;
 			TermView*			_TermViewAt(int32 index) const;
 			int32				_IndexOfTermView(TermView* termView) const;
+	inline	Session*			_SessionAt(int32 index) const;
+			Session*			_SessionForID(const SessionID& sessionID) const;
+	inline	int32				_IndexOfSession(Session* session) const;
+
 			void				_CheckChildren();
 			void				_ResizeView(TermView* view);
 
 			void				_TitleSettingsChanged();
 			void				_UpdateTitles();
 			void				_UpdateSessionTitle(int32 index);
+			void				_OpenSetTabTitleDialog(int32 index);
+			void				_OpenSetWindowTitleDialog();
+			void				_FinishTitleDialog();
+
+			void				_SwitchTerminal();
+			team_id				_FindSwitchTerminalTarget();
 
 			SessionID			_NewSessionID();
 			int32				_NewSessionIndex();
 
 private:
+			TerminalRoster		fTerminalRoster;
+
 			Title				fTitle;
 			BString				fSessionTitlePattern;
-			int32				fWindowIndex;
 			BMessageRunner		fTitleUpdateRunner;
 
 			BList				fSessions;
 			int32				fNextSessionID;
 
 			SmartTabView*		fTabView;
-			TermView*			fTermView;
 
-			BMenuBar*			fMenubar;
-			BMenu*				fFilemenu;
-			BMenu*				fEditmenu;
-			BMenu*				fEncodingmenu;
-			BMenu*				fHelpmenu;
-			BMenu*				fWindowSizeMenu;
-			BMenu*				fSizeMenu;
+			BMenuBar*			fMenuBar;
+			BMenuItem*			fSwitchTerminalsMenuItem;
+			BMenu*				fEncodingMenu;
 
 			BMessage*			fPrintSettings;
 			PrefWindow*			fPrefWindow;
 			FindWindow*			fFindPanel;
 			BRect				fSavedFrame;
 			window_look			fSavedLook;
+
+			SetTitleDialog*		fSetWindowTitleDialog;
+			SetTitleDialog*		fSetTabTitleDialog;
+			SessionID			fSetTabTitleSession;
 
 			// Saved search parameters
 			BString				fFindString;

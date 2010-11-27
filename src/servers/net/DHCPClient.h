@@ -13,8 +13,12 @@
 
 #include <netinet/in.h>
 
+#include <NetworkAddress.h>
+
+
 class BMessageRunner;
 class dhcp_message;
+
 
 enum dhcp_state {
 	INIT,
@@ -44,15 +48,15 @@ private:
 			void				_PrepareMessage(dhcp_message& message,
 									dhcp_state state);
 			status_t			_SendMessage(int socket, dhcp_message& message,
-									sockaddr_in& address) const;
+									const BNetworkAddress& address) const;
 			dhcp_state			_CurrentState() const;
 			void				_ResetTimeout(int socket, time_t& timeout,
 									uint32& tries);
 			bool				_TimeoutShift(int socket, time_t& timeout,
 									uint32& tries);
 			void				_RestartLease(bigtime_t lease);
-			BString				_ToString(const uint8* data) const;
-			BString				_ToString(in_addr_t address) const;
+			BString				_AddressToString(const uint8* data) const;
+			BString				_AddressToString(in_addr_t address) const;
 
 private:
 			BMessage			fConfiguration;
@@ -61,7 +65,7 @@ private:
 			uint8				fMAC[6];
 			uint32				fTransactionID;
 			in_addr_t			fAssignedAddress;
-			sockaddr_in			fServer;
+			BNetworkAddress		fServer;
 			bigtime_t			fStartTime;
 			bigtime_t			fRenewalTime;
 			bigtime_t			fRebindingTime;

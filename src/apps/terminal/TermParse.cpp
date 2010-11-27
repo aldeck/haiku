@@ -504,7 +504,7 @@ TermParse::EscParse()
 					break;
 
 				case CASE_CR:
-					fBuffer->InsertCR();
+					fBuffer->InsertCR(fAttr);
 					break;
 
 				case CASE_SJIS_KANA:
@@ -605,7 +605,7 @@ TermParse::EscParse()
 					break;
 
 				case CASE_TAB:
-					fBuffer->InsertTab();
+					fBuffer->InsertTab(fAttr);
 					break;
 
 				case CASE_ESC:

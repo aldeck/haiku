@@ -61,6 +61,9 @@ public:
 	inline	int32				HistorySize() const;
 	inline	int32				HistoryCapacity() const;
 
+			bool				IsAlternateScreenActive() const
+									{ return fAlternateScreenActive; }
+
 			TerminalBufferDirtyInfo& DirtyInfo()	{ return fDirtyInfo; }
 
 	virtual	status_t			ResizeTo(int32 width, int32 height);
@@ -105,10 +108,10 @@ public:
 									uint32 width, uint32 attributes);
 			void				FillScreen(UTF8Char c, uint32 width, uint32 attr);
 
-			void				InsertCR();
+			void				InsertCR(uint32 attrs);
 			void				InsertLF();
 			void				InsertRI();
-			void				InsertTab();
+			void				InsertTab(uint32 attr);
 			void				SetInsertMode(int flag);
 			void				InsertSpace(int32 num);
 			void				InsertLines(int32 numLines);

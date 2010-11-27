@@ -24,6 +24,7 @@ using namespace std;
 
 StackAndTile::StackAndTile()
 	:
+	fDesktop(NULL),
 	fSATKeyPressed(false),
 	fCurrentSATWindow(NULL),
 	fTabIsShifting(false)
@@ -48,6 +49,8 @@ StackAndTile::Identifier()
 void
 StackAndTile::ListenerRegistered(Desktop* desktop)
 {
+	fDesktop = desktop;
+
 	WindowList& windows = desktop->AllWindows();
 	for (Window *window = windows.FirstWindow(); window != NULL;
 			window = window->NextWindow(kAllWindowList))
@@ -68,13 +71,17 @@ StackAndTile::ListenerUnregistered()
 
 
 bool
-StackAndTile::HandleMessage(Window* sender, BPrivate::ServerLink& link)
+StackAndTile::HandleMessage(Window* sender, BPrivate::LinkReceiver& link,
+	BPrivate::LinkSender& reply)
 {
+	if (sender == NULL)
+		return _HandleMessage(link, reply);
+
 	SATWindow* satWindow = GetSATWindow(sender);
 	if (!satWindow)
 		return false;
 
-	return satWindow->HandleMessage(satWindow, link);
+	return satWindow->HandleMessage(satWindow, link, reply);
 }
 
 
@@ -133,12 +140,22 @@ StackAndTile::MouseDown(Window* window, BMessage* message, const BPoint& where)
 	// we are only interested in single clicks
 	if (message->FindInt32("clicks") == 2)
 		return;
-	int32 modifiers = message->FindInt32("modifiers");
-	int32 buttons = message->FindInt32("buttons");
-	click_type clickArea = satWindow->GetDecorator()->MouseAction(message,
-		where, buttons, modifiers);
-	if (clickArea != CLICK_DRAG && clickArea < CLICK_RESIZE)
-		return;
+
+	switch (satWindow->GetDecorator()->RegionAt(where)) {
+		case Decorator::REGION_TAB:
+		case Decorator::REGION_LEFT_BORDER:
+		case Decorator::REGION_RIGHT_BORDER:
+		case Decorator::REGION_TOP_BORDER:
+		case Decorator::REGION_BOTTOM_BORDER:
+		case Decorator::REGION_LEFT_TOP_CORNER:
+		case Decorator::REGION_LEFT_BOTTOM_CORNER:
+		case Decorator::REGION_RIGHT_TOP_CORNER:
+		case Decorator::REGION_RIGHT_BOTTOM_CORNER:
+			break;
+
+		default:
+			return;
+	}
 
 	ASSERT(fCurrentSATWindow == NULL);
 	fCurrentSATWindow = satWindow;
@@ -323,7 +340,7 @@ StackAndTile::WindowLookChanged(Window* window, window_look look)
 	SATGroup* group = satWindow->GetGroup();
 	if (!group)
 		return;
-	group->RemoveWindow(satWindow);	
+	group->RemoveWindow(satWindow);
 }
 
 
@@ -441,6 +458,65 @@ StackAndTile::_ActivateWindow(SATWindow* satWindow)
 }
 
 
+bool
+StackAndTile::_HandleMessage(BPrivate::LinkReceiver& link,
+	BPrivate::LinkSender& reply)
+{
+	int32 what;
+	link.Read<int32>(&what);
+
+	switch (what) {
+		case BPrivate::kSaveAllGroups:
+		{
+			BMessage allGroupsArchive;
+			GroupIterator groups(this, fDesktop);
+			while (true) {
+				SATGroup* group = groups.NextGroup();
+				if (group == NULL)
+					break;
+				if (group->CountItems() <= 1)
+					continue;
+				BMessage groupArchive;
+				if (group->ArchiveGroup(groupArchive) != B_OK)
+					continue;
+				allGroupsArchive.AddMessage("group", &groupArchive);
+			}
+			int32 size = allGroupsArchive.FlattenedSize();
+			char buffer[size];
+			if (allGroupsArchive.Flatten(buffer, size) == B_OK) {
+				reply.StartMessage(B_OK);
+				reply.Attach<int32>(size);
+				reply.Attach(buffer, size);
+			} else
+				reply.StartMessage(B_ERROR);
+			reply.Flush();
+			break;
+		}
+
+		case BPrivate::kRestoreGroup:
+		{
+			int32 size;
+			if (link.Read<int32>(&size) == B_OK) {
+				char buffer[size];
+				BMessage group;
+				if (link.Read(buffer, size) == B_OK
+					&& group.Unflatten(buffer) == B_OK) {
+					status_t status = SATGroup::RestoreGroup(group, this);
+					reply.StartMessage(status);
+					reply.Flush();
+				}
+			}
+			break;
+		}
+
+		default:
+			return false;
+	}
+
+	return true;
+}
+
+
 GroupIterator::GroupIterator(StackAndTile* sat, Desktop* desktop)
 	:
 	fStackAndTile(sat),
@@ -551,5 +627,5 @@ WindowIterator::_ReverseRewind()
 
 SATSnappingBehaviour::~SATSnappingBehaviour()
 {
-	
+
 }

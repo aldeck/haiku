@@ -44,7 +44,7 @@ public:
 			int32				IndexOfItem(const BLayoutItem* item) const;
 			int32				IndexOfView(BView* child) const;
 
-			bool				AncestorsVisible();
+			bool				AncestorsVisible() const;
 
 	// Layouting related methods
 
@@ -57,7 +57,7 @@ public:
 
 			void				LayoutItems(bool force = false);
 			BRect				LayoutArea();
-			BLayoutContext*		LayoutContext();
+			BLayoutContext*		LayoutContext() const;
 
 	// Archiving methods
 

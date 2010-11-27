@@ -1,9 +1,6 @@
 /*
- * Copyright 2007, Haiku, Inc. All Rights Reserved.
- * Distributed under the terms of the MIT license.
- *
- * Author:
- *		François Revol, revol@free.fr.
+ * Copyright 2008-2010, François Revol, revol@free.fr. All rights reserved.
+ * Distributed under the terms of the MIT License.
  */
 #ifndef _TOSCALLS_H
 #define _TOSCALLS_H
@@ -103,6 +100,30 @@ extern "C" {
 	retvalue;					\
 })
 
+#define toscallWWL(trapnr, callnr, p1, p2, p3)		\
+({							\
+	register int32 retvalue __asm__("d0");		\
+	int16 _p1 = (int16)(p1);			\
+	int16 _p2 = (int16)(p2);			\
+	int32 _p3 = (int32)(p3);			\
+							\
+	__asm__ volatile				\
+	(/*"; toscall(" #trapnr ", " #callnr ")"*/"\n	\
+		move.l	%3,-(%%sp) \n			\
+		move.w	%2,-(%%sp) \n			\
+		move.w	%1,-(%%sp) \n			\
+		move.w	%[calln],-(%%sp)\n		\
+		trap	%[trapn]\n			\
+		add.l	#10,%%sp \n "			\
+	: "=r"(retvalue)	/* output */		\
+	: "r"(_p1), "r"(_p2),				\
+	  "r"(_p3),			/* input */	\
+	  [trapn]"i"(trapnr),[calln]"i"(callnr)		\
+	: TOS_CLOBBER_LIST /* clobbered regs */		\
+	);						\
+	retvalue;					\
+})
+
 #define toscallWLWWWL(trapnr, callnr, p1, p2, p3, p4, p5, p6)	\
 ({							\
 	register int32 retvalue __asm__("d0");		\
@@ -128,6 +149,32 @@ extern "C" {
 	: "r"(_p1), "r"(_p2),				\
 	  "r"(_p3), "r"(_p4),				\
 	  "r"(_p5), "r"(_p6),		/* input */	\
+	  [trapn]"i"(trapnr),[calln]"i"(callnr)		\
+	: TOS_CLOBBER_LIST /* clobbered regs */		\
+	);						\
+	retvalue;					\
+})
+
+#define toscallLLWW(trapnr, callnr, p1, p2, p3, p4)	\
+({							\
+	register int32 retvalue __asm__("d0");		\
+	int32 _p1 = (int32)(p1);			\
+	int32 _p2 = (int32)(p2);			\
+	int16 _p3 = (int16)(p3);			\
+	int16 _p4 = (int16)(p4);			\
+							\
+	__asm__ volatile				\
+	(/*"; toscall(" #trapnr ", " #callnr ")"*/"\n	\
+		move.w	%4,-(%%sp) \n			\
+		move.w	%3,-(%%sp) \n			\
+		move.l	%2,-(%%sp) \n			\
+		move.l	%1,-(%%sp) \n			\
+		move.w	%[calln],-(%%sp)\n		\
+		trap	%[trapn]\n			\
+		add.l	#14,%%sp \n "			\
+	: "=r"(retvalue)	/* output */		\
+	: "r"(_p1), "r"(_p2),				\
+	  "r"(_p3), "r"(_p4),		/* input */	\
 	  [trapn]"i"(trapnr),[calln]"i"(callnr)		\
 	: TOS_CLOBBER_LIST /* clobbered regs */		\
 	);						\
@@ -170,11 +217,14 @@ extern "C" {
 
 /* pointer versions */
 #define toscallP(trapnr, callnr, a) toscallL(trapnr, callnr, (int32)a)
+#define toscallWWP(trapnr, callnr, p1, p2, p3)		\
+	toscallWWL(trapnr, callnr, p1, p2, (int32)p3)
 #define toscallWPWWWL(trapnr, callnr, p1, p2, p3, p4, p5, p6) \
 	toscallWLWWWL(trapnr, callnr, p1, (int32)p2, p3, p4, p5, p6)
 #define toscallPLWWWWW(trapnr, callnr, p1, p2, p3, p4, p5, p6, p7)		\
 	toscallLLWWWWW(trapnr, callnr, (int32)p1, (int32)p2, p3, p4, p5, p6, p7)
-
+#define toscallPPWW(trapnr, callnr, p1, p2, p3, p4)		\
+	toscallLLWW(trapnr, callnr, (int32)p1, (int32)p2, p3, p4)
 
 
 #endif /* __ASSEMBLER__ */
@@ -194,7 +244,7 @@ extern "C" {
 /* 
  * TOS Variables
  * only relevant ones,
- * see toshyp.atari.org/003004.htm
+ * see http://toshyp.atari.org/en/003004.html
  */
 #define TOSVAR_autopath	_TOSV_P(0x4ca)
 #define TOSVAR_bootdev	_TOSV_W(0x446)
@@ -357,7 +407,7 @@ static inline int Bconputs(int16 handle, const char *string)
 #define Logbase() (void *)toscallV(XBIOS_TRAP, 3)
 //#define Getrez() toscallV(XBIOS_TRAP, 4)
 #define Setscreen(log, phys, mode) toscallPPW(XBIOS_TRAP, 5, (void *)log, (void *)phys, (int16)mode)
-#define VsetScreen(log, phys, mode, modecode) toscallPPW(XBIOS_TRAP, 5, (void *)log, (void *)phys, (int16)mode)
+#define VsetScreen(log, phys, mode, modecode) toscallPPWW(XBIOS_TRAP, 5, (void *)log, (void *)phys, (int16)mode, (int16)modecode)
 #define Floprd(buf, dummy, dev, sect, track, side, count) toscallPLWWWWW(XBIOS_TRAP, 8, (void *)buf, (int32)dummy, (int16)dev, (int16)sect, (int16)track, (int16)side, (int16)count)
 //#define Mfpint() toscallV(XBIOS_TRAP, 13, )
 #define Rsconf(speed, flow, ucr, rsr, tsr, scr) toscallWWWWWW(XBIOS_TRAP, 15, (int16)speed, (int16)flow, (int16)ucr, (int16)rsr, (int16)tsr, (int16)scr)
@@ -367,12 +417,15 @@ static inline int Bconputs(int16 handle, const char *string)
 #define Jdisint(intno) toscallW(XBIOS_TRAP, 26, (int16)intno)
 #define Jenabint(intno) toscallW(XBIOS_TRAP, 27, (int16)intno)
 #define Supexec(func) toscallP(XBIOS_TRAP, 38, (void *)func)
-//#define Puntaes() toscallV(XBIOS_TRAP, 39)
+#define Puntaes() toscallV(XBIOS_TRAP, 39)
 #define DMAread(sect, count, buf, dev) toscallLWPW(XBIOS_TRAP, 42, (int32)sect, (int16)count, (void *)buf, (int16)dev)
 #define DMAwrite(sect, count, buf, dev) toscallWPLW(XBIOS_TRAP, 43, (int32)sect, (int16)count, (void *)buf, (int16)dev)
 #define NVMaccess(op, start, count, buffer) toscallWWWP(XBIOS_TRAP, 46, (int16)op, (int16)start, (int16)count, (char *)buffer)
 #define VsetMode(mode) toscallW(XBIOS_TRAP, 88, (int16)mode)
 #define VgetMonitor() toscallV(XBIOS_TRAP, 89)
+#define mon_type() toscallV(XBIOS_TRAP, 89)
+#define VgetSize(mode) toscallW(XBIOS_TRAP, 91, (int16)mode)
+#define VsetRGB(index, count, array) toscallWWP(XBIOS_TRAP, 93, (int16)index, (int16)count, (void *)array)
 #define Locksnd() toscallV(XBIOS_TRAP, 128)
 #define Unlocksnd() toscallV(XBIOS_TRAP, 129)
 
@@ -801,11 +854,14 @@ static inline int32 nat_feat_getid(const char *name)
 	int32 ret = -1;				\
 	NatFeatCookie *c = nat_features();	\
 	if (c)					\
-		ret = c->nfCall(id | code, a);	\
+		ret = c->nfCall(id | code, ##a);	\
 	ret;					\
 })
 
 extern void nat_feat_debugprintf(const char *str);
+
+extern int nat_feat_get_bootdrive(void);
+extern status_t nat_feat_get_bootargs(char *str, long size);
 
 #endif /* __ASSEMBLER__ */
 

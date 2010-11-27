@@ -4,7 +4,7 @@ SetSubDirSupportedPlatformsBeOSCompatible ;
 
 UseHeaders [ FDirName $(HAIKU_TOP) src kits tracker ] ;
 
-UsePrivateHeaders libroot kernel system ;
+UsePrivateHeaders libroot kernel shared system ;
 
 Application Terminal :
 	ActiveProcessInfo.cpp
@@ -20,12 +20,16 @@ Application Terminal :
 	PatternEvaluator.cpp
 	PrefHandler.cpp
 	PrefWindow.cpp
+	SetTitleDialog.cpp
 	Shell.cpp
+	ShellInfo.cpp
 	ShellParameters.cpp
 	SmartTabView.cpp
 	TermApp.cpp
 	TerminalBuffer.cpp
 	TerminalCharClassifier.cpp
+	TerminalRoster.cpp
+	TermConst.cpp
 	TermParse.cpp
 	TermScrollView.cpp
 	TermView.cpp

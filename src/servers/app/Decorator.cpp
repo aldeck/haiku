@@ -6,6 +6,7 @@
  *		DarkWyrm <bpmagic@columbus.rr.com>
  *		Stephan Aßmus <superstippi@gmx.de>
  *		Clemens Zeidler <haiku@clemens-zeidler.de>
+ *		Ingo Weinhold <ingo_weinhold@gmx.de>
  */
 
 
@@ -56,6 +57,7 @@ Decorator::Decorator(DesktopSettings& settings, BRect rect, window_look look,
 
 	fFootprintValid(false)
 {
+	memset(&fRegionHighlights, HIGHLIGHT_NONE, sizeof(fRegionHighlights));
 }
 
 
@@ -314,44 +316,39 @@ Decorator::GetFootprint()
 }
 
 
-/*!	\brief Performs hit-testing for the decorator
+/*!	\brief Performs hit-testing for the decorator.
 
-	Clicked is called whenever it has been determined that the window has
-	received a mouse click. The default version returns CLICK_NONE. A subclass
-	may use any or all of them.
+	The base class provides a basic implementation, recognizing only button and
+	tab hits. Derived classes must override/enhance it to handle borders and
+	corners correctly.
 
-	Click type : Action taken by the server
-
-	- \c CLICK_NONE: Do nothing
-	- \c CLICK_ZOOM: Handles the zoom button (setting states, etc)
-	- \c CLICK_CLOSE: Handles the close button (setting states, etc)
-	- \c CLICK_MINIMIZE: Handles the minimize button (setting states, etc)
-	- \c CLICK_TAB: Currently unused
-	- \c CLICK_DRAG: Moves the window to the front and prepares to move the
-		window
-	- \c CLICK_MOVE_TO_BACK: Moves the window to the back of the stack
-	- \c CLICK_MOVE_TO_FRONT: Moves the window to the front of the stack
-	- \c CLICK_SLIDE_TAB: Initiates tab-sliding
-
-	- \c CLICK_RESIZE: Handle window resizing as appropriate
-	- \c CLICK_RESIZE_L
-	- \c CLICK_RESIZE_T
-	- \c CLICK_RESIZE_R
-	- \c CLICK_RESIZE_B
-	- \c CLICK_RESIZE_LT
-	- \c CLICK_RESIZE_RT
-	- \c CLICK_RESIZE_LB
-	- \c CLICK_RESIZE_RB
-
-	This function is required by all subclasses.
-
-	\return The type of area clicked
+	\param where The point to be tested.
+	\return Either of the following, depending on what was hit:
+		- \c REGION_NONE: None of the decorator regions.
+		- \c REGION_TAB: The window tab (but none of the buttons embedded).
+		- \c REGION_CLOSE_BUTTON: The close button.
+		- \c REGION_ZOOM_BUTTON: The zoom button.
+		- \c REGION_MINIMIZE_BUTTON: The minimize button.
+		- \c REGION_LEFT_BORDER: The left border.
+		- \c REGION_RIGHT_BORDER: The right border.
+		- \c REGION_TOP_BORDER: The top border.
+		- \c REGION_BOTTOM_BORDER: The bottom border.
+		- \c REGION_LEFT_TOP_CORNER: The left-top corner.
+		- \c REGION_LEFT_BOTTOM_CORNER: The left-bottom corner.
+		- \c REGION_RIGHT_TOP_CORNER: The right-top corner.
+		- \c REGION_RIGHT_BOTTOM_CORNER The right-bottom corner.
 */
-click_type
-Decorator::MouseAction(const BMessage* message, BPoint point, int32 buttons,
-	int32 modifiers)
+Decorator::Region
+Decorator::RegionAt(BPoint where) const
 {
-	return CLICK_NONE;
+	if (fCloseRect.Contains(where))
+		return REGION_CLOSE_BUTTON;
+	if (fZoomRect.Contains(where))
+		return REGION_ZOOM_BUTTON;
+	if (fTabRect.Contains(where))
+		return REGION_TAB;
+
+	return REGION_NONE;
 }
 
 
@@ -422,6 +419,33 @@ Decorator::SetTabLocation(float location, BRegion* updateRegion)
 		return true;
 	}
 	return false;
+}
+
+
+/*!	\brief Sets a specific highlight for a decorator region.
+
+	Can be overridden by derived classes, but the base class version must be
+	called, if the highlight shall be applied.
+
+	\param region The decorator region.
+	\param highlight The value identifying the kind of highlight.
+	\param dirty The dirty region to be extended, if the highlight changes. Can
+		be \c NULL.
+	\return \c true, if the highlight could be applied.
+*/
+bool
+Decorator::SetRegionHighlight(Region region, uint8 highlight, BRegion* dirty)
+{
+	int32 index = (int32)region - 1;
+	if (index < 0 || index >= REGION_COUNT - 1)
+		return false;
+
+	fRegionHighlights[index] = highlight;
+
+	if (dirty != NULL)
+		ExtendDirtyRegion(region, *dirty);
+
+	return true;
 }
 
 
@@ -524,6 +548,19 @@ Decorator::UIColor(color_which which)
 	// TODO: for now - calling ui_color() from within the app_server
 	//	will always return the default colors (as there is no be_app)
 	return ui_color(which);
+}
+
+
+/*!	\brief Extends a dirty region by a decorator region.
+
+	Must be implemented by derived classes.
+
+	\param region The decorator region.
+	\param dirty The dirty region to be extended.
+*/
+void
+Decorator::ExtendDirtyRegion(Region region, BRegion& dirty)
+{
 }
 
 
