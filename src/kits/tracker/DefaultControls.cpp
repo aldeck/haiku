@@ -23,13 +23,18 @@
 #include "IconMenuItem.h"
 #include "FavoritesMenu.h"
 #include "FSUtils.h"
+#include "MimeTypes.h"
 #include "PoseView.h"
 #include "PoseViewController.h"
 #include "TemplatesMenu.h"
+#include "Tracker.h"
 
 
 #undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "libtracker"
+#define B_TRANSLATE_CONTEXT "Menus"
+
+
+const float kMaxMenuWidth = 150; // OpenWithMenu
 
 
 //	#pragma mark - DefaultFileContextMenu
@@ -902,3 +907,236 @@ DefaultAttributeMenu::_AddMimeMenu(const BMimeType& mimeType, bool isSuperType,
 
 	return mimeMenu;
 }
+
+
+//	#pragma mark - OpenWithMenu
+
+
+OpenWithMenu::OpenWithMenu(const char *label, PoseViewController* controller)
+	: 
+	BSlowMenu(label),
+	fIterator(NULL),
+	fSupportingAppList(NULL),
+	fController(controller)
+{
+	InitIconPreloader();
+
+	SetFont(be_plain_font);
+
+	// too long to have triggers
+	SetTriggersEnabled(false);
+}
+
+namespace BPrivate {
+
+int
+SortByRelationAndName(const RelationCachingModelProxy *model1,
+	const RelationCachingModelProxy *model2, void *castToMenu)
+{
+	OpenWithMenu *menu = (OpenWithMenu *)castToMenu;
+
+	// find out the relations of app models to the opened entries
+	int32 relation1 = model1->Relation(menu->fIterator, &menu->fEntriesToOpen);
+	int32 relation2 = model2->Relation(menu->fIterator, &menu->fEntriesToOpen);
+
+	if (relation1 < relation2) {
+		// relation with the lowest number goes first
+		return 1;
+	} else if (relation1 > relation2)
+		return -1;
+
+	// if relations match, sort by app name
+	return strcmp(model1->fModel->Name(), model2->fModel->Name());
+}
+
+} // namespace BPrivate
+
+
+void
+OpenWithMenu::AttachedToWindow()
+{
+	// Emtpy the menu
+	RemoveItems(0, CountItems(), true);
+
+	int32 count = fController->PoseView()->SelectionList()->CountItems();
+
+	if (count == 0 || fController->PoseView()->TargetModel()->IsRoot())
+		return;
+
+	// old TODO:
+	// check if only item in selection list is the root
+	// and do not add if true
+
+	// build a list of all refs to open	
+	BMessage message(B_REFS_RECEIVED);
+	message.AddMessenger("TrackerViewToken", BMessenger(fController->PoseView()));
+	for (int32 index = 0; index < count; index++) {
+		BPose *pose = fController->PoseView()->SelectionList()->ItemAt(index);
+		message.AddRef("refs", pose->TargetModel()->EntryRef());
+	}
+	fEntriesToOpen = message;
+	fMenuBuilt = false;
+
+	BSlowMenu::AttachedToWindow();
+}
+
+
+void
+OpenWithMenu::TargetModelChanged()
+{
+}
+
+
+void
+OpenWithMenu::SelectionChanged()
+{
+	// TODO asynchronous rebuild
+		
+	if (Superitem() != NULL) {
+		int32 count = fController->PoseView()->SelectionList()->CountItems();
+		Superitem()->SetEnabled(count > 0);
+	}
+}
+
+
+bool
+OpenWithMenu::StartBuildingItemList()
+{
+	fIterator = new SearchForSignatureEntryList(false);
+	// push all the supporting apps from all the entries into the
+	// search for signature iterator
+	EachEntryRef(&fEntriesToOpen, OpenWithUtils::AddOneRefSignatures,
+		fIterator, 100);
+	// add superhandlers
+	OpenWithUtils::AddSupportingAppForTypeToQuery(fIterator,
+		B_FILE_MIMETYPE);
+
+	fHaveCommonPreferredApp = fIterator->GetPreferredApp(&fPreferredRef);
+	status_t error = fIterator->Rewind();
+	if (error != B_OK) {
+		PRINT(("failed to initialize iterator %s\n", strerror(error)));
+		return false;
+	}
+
+	fSupportingAppList = new BObjectList<RelationCachingModelProxy>(20, true);
+
+	//queryRetrieval = new BStopWatch("get next entry on BQuery");
+	return true;
+}
+
+
+bool
+OpenWithMenu::AddNextItem()
+{
+	BEntry entry;
+	if (fIterator->GetNextEntry(&entry) != B_OK)
+		return false;
+
+	Model *model = new Model(&entry, true);
+	if (model->InitCheck() != B_OK
+		|| !fIterator->CanOpenWithFilter(model, &fEntriesToOpen,
+				fHaveCommonPreferredApp ? &fPreferredRef : 0)) {
+		// only allow executables, filter out multiple copies of the
+		// Tracker, filter out version that don't list the correct types,
+		// etc.
+		delete model;
+	} else
+		fSupportingAppList->AddItem(new RelationCachingModelProxy(model));
+
+	return true;
+}
+
+
+void
+OpenWithMenu::DoneBuildingItemList()
+{
+	// sort by app name
+	fSupportingAppList->SortItems(SortByRelationAndName, this);
+
+	// check if each app is unique
+	bool unique = true;
+	int32 count = fSupportingAppList->CountItems();
+	for (int32 index = 0; index < count - 1; index++) {
+		// the list is sorted, just compare two adjacent models
+		if (strcmp(fSupportingAppList->ItemAt(index)->fModel->Name(),
+			fSupportingAppList->ItemAt(index + 1)->fModel->Name()) == 0) {
+			unique = false;
+			break;
+		}
+	}
+
+	// add apps as menu items
+	BFont font;
+	GetFont(&font);
+
+	int32 lastRelation = -1;
+	for (int32 index = 0; index < count ; index++) {
+		RelationCachingModelProxy *modelProxy = fSupportingAppList->ItemAt(index);
+		Model *model = modelProxy->fModel;
+		BMessage *message = new BMessage(fEntriesToOpen);
+		message->AddRef("handler", model->EntryRef());
+		message->AddData("nodeRefsToClose", B_RAW_TYPE,
+			fController->PoseView()->TargetModel()->NodeRef(),
+			sizeof(node_ref));
+
+		BString result;
+		if (unique) {
+			// just use the app name
+			result = model->Name();
+		} else {
+			// get a truncated full path
+			BPath path;
+			BEntry entry(model->EntryRef());
+			if (entry.GetPath(&path) != B_OK) {
+				PRINT(("stale entry ref %s\n", model->Name()));
+				delete message;
+				continue;
+			}
+			result = path.Path();
+			font.TruncateString(&result, B_TRUNCATE_MIDDLE, kMaxMenuWidth);
+		}
+#if DEBUG
+		BString relationDescription;
+		fIterator->RelationDescription(&fEntriesToOpen, model, &relationDescription);
+		result += " (";
+		result += relationDescription;
+		result += ")";
+#endif
+
+		// divide different relations of opening with a separator
+		int32 relation = modelProxy->Relation(fIterator, &fEntriesToOpen);
+		if (lastRelation != -1 && relation != lastRelation)
+			AddSeparatorItem();
+		lastRelation = relation;
+
+		ModelMenuItem *item = new ModelMenuItem(model, result.String(), message);
+		AddItem(item);
+		// mark item if it represents the preferred app
+		if (fHaveCommonPreferredApp && *(model->EntryRef()) == fPreferredRef) {
+			//PRINT(("marking item for % as preferred", model->Name()));
+			item->SetMarked(true);
+		}
+	}
+
+	// target the menu
+	SetTargetForItems(be_app);
+
+	if (!CountItems()) {
+		BMenuItem* item = new BMenuItem(B_TRANSLATE("no supporting apps"), 0);
+		item->SetEnabled(false);
+		AddItem(item);
+	}
+}
+
+
+void
+OpenWithMenu::ClearMenuBuildingState()
+{
+	delete fIterator;
+	fIterator = NULL;
+	delete fSupportingAppList;
+	fSupportingAppList = NULL;
+}
+
+
+

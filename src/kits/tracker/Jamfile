@@ -58,6 +58,7 @@ SharedLibrary libtracker.so :
 	NodePreloader.cpp
 	NodeWalker.cpp
 	OpenWithWindow.cpp
+	OpenWithUtils.cpp
 	OverrideAlert.cpp
 	PendingNodeMonitorCache.cpp
 	Pose.cpp

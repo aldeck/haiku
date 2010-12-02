@@ -40,10 +40,9 @@ All rights reserved.
 #include "ContainerWindow.h"
 #include "EntryIterator.h"
 #include "NodeWalker.h"
+#include "OpenWithUtils.h"
 #include "PoseView.h"
-#include "PoseViewListener.h"
 #include "Query.h"
-#include "SlowMenu.h"
 #include "Utilities.h"
 
 namespace BPrivate {
@@ -51,83 +50,6 @@ namespace BPrivate {
 class OpenWithPoseView;
 class PoseViewController;
 
-// OpenWithContainerWindow supports the Open With feature
-
-enum {
-	kUnknownRelation = -1,
-	kNoRelation = 0,
-	kSuperhandler,
-	kSupportsSupertype,
-	kSupportsType,
-	kPreferredForType,
-	kPreferredForFile
-};
-
-// pass in a predicate; a query will search for matches
-// matches will be returned in iteration
-class SearchForSignatureEntryList : public EntryListBase {
-	public:
-		SearchForSignatureEntryList(bool canAddAllApps);
-		virtual ~SearchForSignatureEntryList();
-
-		void PushUniqueSignature(const char *);
-			// add one signature to search for
-
-		// entry list iterators
-		virtual status_t GetNextEntry(BEntry *entry, bool traverse = false);
-		virtual status_t GetNextRef(entry_ref *ref);
-		virtual int32 GetNextDirents(struct dirent *buffer, size_t length,
-			int32 count = INT_MAX);
-
-		virtual status_t Rewind();
-		virtual int32 CountEntries();
-
-		bool GetPreferredApp(entry_ref *ref) const;
-			// gets the preferred app for all the files it was asked to
-			// find supporting apps for, returns false if no preferred app
-			// found or if more than one found
-		void TrySettingPreferredApp(const entry_ref *);
-		void TrySettingPreferredAppForFile(const entry_ref *);
-
-		int32 Relation(const BMessage *entriesToOpen, const Model *) const;
-			// returns the reason why an application is shown in Open With window
-		void RelationDescription(const BMessage *entriesToOpen, const Model *,
-			BString *) const;
-			// returns a string describing why application handles files to open
-
-		static int32 Relation(const BMessage *entriesToOpen,
-			const Model *, const entry_ref *preferredApp,
-			const entry_ref *preferredAppForFile);
-			// returns the reason why an application is shown in Open With window
-			// static version, needs the preferred app for preformance
-		static void RelationDescription(const BMessage *entriesToOpen,
-			const Model *, BString *, const entry_ref *preferredApp,
-			const entry_ref *preferredAppForFile);
-			// returns a string describing why application handles files to open
-
-		bool CanOpenWithFilter(const Model *appModel, const BMessage *entriesToOpen,
-			const entry_ref *preferredApp);
-
-		void NonGenericFileFound();
-		bool GenericFilesOnly() const;
-
-		bool ShowAllApplications() const;
-
-	private:
-		static int32 Relation(const Model *node, const Model *app);
-			// returns the reason why an application is shown in Open With window
-
-		CachedEntryIteratorList *fIteratorList;
-		BObjectList<BString> fSignatures;
-
-		entry_ref fPreferredRef;
-		int32 fPreferredAppCount;
-		entry_ref fPreferredRefForFile;
-		int32 fPreferredAppForFileCount;
-		bool fGenericFilesOnly;
-		bool fCanAddAllApps;
-		bool fFoundOneNonSuperHandler;
-};
 
 class OpenWithContainerWindow : public BContainerWindow {
 	public:
@@ -182,6 +104,7 @@ class OpenWithContainerWindow : public BContainerWindow {
 
 		typedef BContainerWindow _inherited;
 };
+
 
 class OpenWithPoseView : public BPoseView {
 	public:
@@ -247,71 +170,6 @@ class OpenWithPoseView : public BPoseView {
 		typedef BPoseView _inherited;
 };
 
-class RelationCachingModelProxy {
-	public:
-		RelationCachingModelProxy(Model *model);
-		~RelationCachingModelProxy();
-
-		int32 Relation(SearchForSignatureEntryList *iterator, BMessage *entries) const;
-
-		Model *fModel;
-		mutable int32 fRelation;
-};
-
-class OpenWithMenu : public BSlowMenu, public PoseViewListener {
-public:
-								OpenWithMenu(const char* label, PoseViewController* controller);
-			
-	virtual	void				AttachedToWindow();
-	virtual	void				TargetModelChanged();
-	virtual	void				SelectionChanged();
-	virtual	void				MimeTypesChanged() {};
-	virtual	void				ColumnsChanged() {};
-
-	private:
-		friend int SortByRelationAndName(const RelationCachingModelProxy *,
-			const RelationCachingModelProxy *, void *);
-
-		virtual bool StartBuildingItemList();
-		virtual bool AddNextItem();
-		virtual void DoneBuildingItemList();
-		virtual void ClearMenuBuildingState();
-
-		BMessage fEntriesToOpen;
-
-		// menu building state
-		SearchForSignatureEntryList *fIterator;
-		entry_ref fPreferredRef;
-		BObjectList<RelationCachingModelProxy> *fSupportingAppList;
-		bool fHaveCommonPreferredApp;
-		PoseViewController* fController;
-
-		typedef BSlowMenu _inherited;
-};
-
-// used for optionally showing the list of all apps. Do nothing
-// until asked to iterate and only if supposed to do so
-class ConditionalAllAppsIterator : public EntryListBase {
-	public:
-		ConditionalAllAppsIterator(SearchForSignatureEntryList *parent);
-		~ConditionalAllAppsIterator();
-
-		virtual status_t GetNextEntry(BEntry *entry, bool traverse = false);
-		virtual status_t GetNextRef(entry_ref *ref);
-		virtual int32 GetNextDirents(struct dirent *buffer, size_t length,
-			int32 count = INT_MAX);
-
-		virtual status_t Rewind();
-		virtual int32 CountEntries();
-
-	protected:
-		bool Iterate() const;
-		void Instantiate();
-
-	private:
-		SearchForSignatureEntryList *fParent;
-		BTrackerPrivate::TWalker *fWalker;
-};
 
 } // namespace BPrivate
 

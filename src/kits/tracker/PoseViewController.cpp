@@ -23,7 +23,6 @@
 #include "DefaultControls.h"
 #include "IconMenuItem.h"
 #include "Navigator.h"
-#include "OpenWithWindow.h" // only needed for openwithmenu
 #include "PoseView.h"
 #include "DesktopPoseView.h"
 #include "PublicCommands.h"

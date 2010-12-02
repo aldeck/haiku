@@ -13,7 +13,9 @@
 #include <PopUpMenu.h>
 
 #include "NavMenu.h"
+#include "OpenWithUtils.h"
 #include "PoseViewListener.h"
+#include "SlowMenu.h"
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -102,6 +104,41 @@ protected:
 									BMenu* menu, int32 start);
 
 			PoseViewController*	fController;
+};
+
+
+class OpenWithMenu : public BSlowMenu, public PoseViewListener {
+public:
+								OpenWithMenu(const char* label,
+									PoseViewController* controller);
+			
+	virtual	void				AttachedToWindow();
+	virtual	void				TargetModelChanged();
+	virtual	void				SelectionChanged();
+	virtual	void				MimeTypesChanged() {};
+	virtual	void				ColumnsChanged() {};
+
+private:
+	friend	int					SortByRelationAndName(
+									const RelationCachingModelProxy*,
+									const RelationCachingModelProxy*,
+									void*);
+
+	virtual bool				StartBuildingItemList();
+	virtual bool				AddNextItem();
+	virtual void				DoneBuildingItemList();
+	virtual void				ClearMenuBuildingState();
+
+			BMessage			fEntriesToOpen;
+
+	// menu building state
+	SearchForSignatureEntryList*	fIterator;
+	entry_ref 					fPreferredRef;
+	BObjectList<RelationCachingModelProxy>*	fSupportingAppList;
+	bool 						fHaveCommonPreferredApp;
+	PoseViewController* 		fController;
+
+	typedef BSlowMenu _inherited;
 };
 
 
