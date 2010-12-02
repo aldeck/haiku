@@ -195,7 +195,6 @@ class BContainerWindow : public BWindow {
 		virtual	void SetCleanUpItem(BMenu *);
 		virtual void SetCloseItem(BMenu *);
 		virtual	void SetupNavigationMenu(const entry_ref *, BMenu *);
-		virtual	void SetupOpenWithMenu(BMenu *);
 		virtual	void SetUpEditQueryItem(BMenu *);
 		virtual	void SetUpDiskMenu(BMenu *);
 
@@ -226,7 +225,6 @@ class BContainerWindow : public BWindow {
 		BPopUpMenu *fTrashContextMenu;
 		BSlowContextMenu *fDragContextMenu;
 
-		BMenuItem *fOpenWithItem;
 		ModelMenuItem *fNavigationItem;
 	
 		PoseViewController* fController;

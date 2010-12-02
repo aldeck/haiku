@@ -551,7 +551,6 @@ BContainerWindow::BContainerWindow(Model* model,
 	fDropContextMenu(NULL),
 	fVolumeContextMenu(NULL),
 	fDragContextMenu(NULL),
-	fOpenWithItem(NULL),
 	fNavigationItem(NULL),
 	fController(NULL),
 	fPoseView(NULL),
@@ -670,11 +669,6 @@ BContainerWindow::Quit()
 		fNavigationItem = NULL;
 	}
 
-	if (fOpenWithItem && !fOpenWithItem->Menu()) {
-		delete fOpenWithItem;
-		fOpenWithItem = NULL;
-	}
-
 	delete fFileContextMenu;
 	fFileContextMenu = NULL;
 	delete fWindowContextMenu;
@@ -741,12 +735,6 @@ void
 BContainerWindow::RepopulateMenus()
 {
 	// Avoid these menus to be destroyed:
-	if (fOpenWithItem && fOpenWithItem->Menu()) {
-		fOpenWithItem->Menu()->RemoveItem(fOpenWithItem);
-		delete fOpenWithItem;
-		fOpenWithItem = NULL;
-	}
-
 	if (fNavigationItem) {
 		BMenu *menu = fNavigationItem->Menu();
 		if (menu) {
@@ -775,12 +763,6 @@ BContainerWindow::RepopulateMenus()
 	Controller()->MenuBar()->AddItem(Controller()->WindowMenu());
 	Controller()->AddWindowMenu(Controller()->WindowMenu());
 	*/
-
-	SetupOpenWithMenu(Controller()->FileMenu());
-
-	// Shouldn't be necessary anymore, the File menu now steals
-	// the shared submenus by itself
-	//Controller()->ReparentMoveCopyMenus(Controller()->FileMenu());
 }
 
 
@@ -835,24 +817,30 @@ BContainerWindow::_Init(const BMessage *message)
 	Controller()->TitleView()->Reset();
 		// TODO just use PoseViewListener
 
+	// TODO: this kind of call could come from a ViewMode object hook that
+	// customizes the ui
 	if (PoseView()->ViewMode() == kListMode)
 		Controller()->ShowAttributeMenu();
 
 	TrackerSettings settings;
-	if (settings.SingleWindowBrowse()
+	bool showNavigator =
+		settings.SingleWindowBrowse()
 		&& fCreationModel->IsDirectory()
-		&& !fPoseView->IsFilePanel()) {
+		&& !fPoseView->IsFilePanel()
+		&& settings.ShowNavigator();
 
-		Controller()->SetControlVisible(Controller()->Navigator(), settings.ShowNavigator());
-	}
+	Controller()->SetControlVisible(Controller()->Navigator(), showNavigator);
 
 	Controller()->CreateMoveCopyMenus();
 
 	Controller()->TitleView()->Reset();
 		// TODO make TitleView a poseview listener
 
+	// TODO: this kind of call could come from a ViewMode object hook that
+	// customizes the ui
 	if (fBackgroundImage && PoseView()->ViewMode() != kListMode)
 		fBackgroundImage->Show(PoseView(), current_workspace());
+
 
 	// add folder icon to menu bar
 	// TODO
@@ -1725,8 +1713,6 @@ BContainerWindow::MenusBeginning()
 		// invoked - this would prevent Cut/Copy/Paste from working
 		fPoseView->CommitActivePose();
 
-	SetupOpenWithMenu(Controller()->FileMenu());
-
 	UpdateMenu(Controller()->MenuBar(), kMenuBarContext);
 }
 
@@ -1736,7 +1722,6 @@ BContainerWindow::MenusEnded()
 {
 	// when we're done we want to clear nav menus for next time
 	DeleteSubmenu(fNavigationItem);
-	DeleteSubmenu(fOpenWithItem);
 }
 
 
@@ -1852,59 +1837,6 @@ BContainerWindow::SetUpEditQueryItem(BMenu *menu)
 			query->SetTarget(PoseView());
 		}
 	}
-}
-
-
-void
-BContainerWindow::SetupOpenWithMenu(BMenu *parent)
-{
-	// start by removing nav item (and separator) from old menu
-	if (fOpenWithItem) {
-		BMenu *menu = fOpenWithItem->Menu();
-		if (menu)
-			menu->RemoveItem(fOpenWithItem);
-
-		delete fOpenWithItem;
-		fOpenWithItem = 0;
-	}
-
-	if (PoseView()->SelectionList()->CountItems() == 0)
-		// no selection, nothing to open
-		return;
-
-	if (TargetModel()->IsRoot())
-		// don't add ourselves if we are root
-		return;
-
-	// ToDo:
-	// check if only item in selection list is the root
-	// and do not add if true
-
-	// add after "Open"
-	BMenuItem *item = parent->FindItem(kOpenSelection);
-
-	int32 count = PoseView()->SelectionList()->CountItems();
-	if (!count)
-		return;
-
-	// build a list of all refs to open
-	BMessage message(B_REFS_RECEIVED);
-	for (int32 index = 0; index < count; index++) {
-		BPose *pose = PoseView()->SelectionList()->ItemAt(index);
-		message.AddRef("refs", pose->TargetModel()->EntryRef());
-	}
-
-	// add Tracker token so that refs received recipients can script us
-	message.AddMessenger("TrackerViewToken", BMessenger(PoseView()));
-
-	int32 index = item->Menu()->IndexOf(item);
-	fOpenWithItem = new BMenuItem(
-		new OpenWithMenu(B_TRANSLATE("Open with" B_UTF8_ELLIPSIS),
-			&message, this, be_app), new BMessage(kOpenSelectionWith));
-	fOpenWithItem->SetTarget(PoseView());
-	fOpenWithItem->SetShortcut('O', B_COMMAND_KEY | B_CONTROL_KEY);
-
-	item->Menu()->AddItem(fOpenWithItem, index + 1);
 }
 
 
@@ -2055,8 +1987,7 @@ BContainerWindow::ShowContextMenu(BPoint loc, const entry_ref *ref, BView *)
 
 				SetupNavigationMenu(ref, fContextMenu);
 				if (!showAsVolume && !filePanel) {
-					Controller()->ReparentMoveCopyMenus(fContextMenu);
-					SetupOpenWithMenu(fContextMenu);
+					Controller()->ReparentSharedMenus(fContextMenu);
 				}
 
 				UpdateMenu(fContextMenu, kPosePopUpContext);

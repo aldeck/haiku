@@ -986,33 +986,12 @@ RelationCachingModelProxy::Relation(SearchForSignatureEntryList *iterator,
 //	#pragma mark -
 
 
-OpenWithMenu::OpenWithMenu(const char *label, const BMessage *entriesToOpen,
-		BWindow *parentWindow, BHandler *target)
-	: BSlowMenu(label),
-	fEntriesToOpen(*entriesToOpen),
-	target(target),
+OpenWithMenu::OpenWithMenu(const char *label, PoseViewController* controller)
+	: 
+	BSlowMenu(label),
 	fIterator(NULL),
 	fSupportingAppList(NULL),
-	fParentWindow(parentWindow)
-{
-	InitIconPreloader();
-
-	SetFont(be_plain_font);
-
-	// too long to have triggers
-	SetTriggersEnabled(false);
-}
-
-
-OpenWithMenu::OpenWithMenu(const char *label, const BMessage *entriesToOpen,
-		BWindow *parentWindow, const BMessenger &messenger)
-	: BSlowMenu(label),
-	fEntriesToOpen(*entriesToOpen),
-	target(NULL),
-	fMessenger(messenger),
-	fIterator(NULL),
-	fSupportingAppList(NULL),
-	fParentWindow(parentWindow)
+	fController(controller)
 {
 	InitIconPreloader();
 
@@ -1046,6 +1025,53 @@ SortByRelationAndName(const RelationCachingModelProxy *model1,
 }
 
 } // namespace BPrivate
+
+
+void
+OpenWithMenu::AttachedToWindow()
+{
+	// Emtpy the menu
+	RemoveItems(0, CountItems(), true);
+
+	int32 count = fController->PoseView()->SelectionList()->CountItems();
+
+	if (count == 0 || fController->PoseView()->TargetModel()->IsRoot())
+		return;
+
+	// old TODO:
+	// check if only item in selection list is the root
+	// and do not add if true
+
+	// build a list of all refs to open	
+	BMessage message(B_REFS_RECEIVED);
+	message.AddMessenger("TrackerViewToken", BMessenger(fController->PoseView()));
+	for (int32 index = 0; index < count; index++) {
+		BPose *pose = fController->PoseView()->SelectionList()->ItemAt(index);
+		message.AddRef("refs", pose->TargetModel()->EntryRef());
+	}
+	fEntriesToOpen = message;
+	fMenuBuilt = false;
+
+	BSlowMenu::AttachedToWindow();
+}
+
+
+void
+OpenWithMenu::TargetModelChanged()
+{
+}
+
+
+void
+OpenWithMenu::SelectionChanged()
+{
+	// TODO asynchronous rebuild
+		
+	if (Superitem() != NULL) {
+		int32 count = fController->PoseView()->SelectionList()->CountItems();
+		Superitem()->SetEnabled(count > 0);
+	}
+}
 
 
 bool
@@ -1122,10 +1148,9 @@ OpenWithMenu::DoneBuildingItemList()
 		Model *model = modelProxy->fModel;
 		BMessage *message = new BMessage(fEntriesToOpen);
 		message->AddRef("handler", model->EntryRef());
-		BContainerWindow *window = dynamic_cast<BContainerWindow *>(fParentWindow);
-		if (window)
-			message->AddData("nodeRefsToClose", B_RAW_TYPE, window->TargetModel()->NodeRef(),
-				sizeof (node_ref));
+		message->AddData("nodeRefsToClose", B_RAW_TYPE,
+			fController->PoseView()->TargetModel()->NodeRef(),
+			sizeof(node_ref));
 
 		BString result;
 		if (unique) {
@@ -1167,10 +1192,7 @@ OpenWithMenu::DoneBuildingItemList()
 	}
 
 	// target the menu
-	if (target)
-		SetTargetForItems(target);
-	else
-		SetTargetForItems(fMessenger);
+	SetTargetForItems(be_app);
 
 	if (!CountItems()) {
 		BMenuItem* item = new BMenuItem(B_TRANSLATE("no supporting apps"), 0);

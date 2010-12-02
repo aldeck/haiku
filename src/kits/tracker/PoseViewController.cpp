@@ -23,6 +23,7 @@
 #include "DefaultControls.h"
 #include "IconMenuItem.h"
 #include "Navigator.h"
+#include "OpenWithWindow.h" // only needed for openwithmenu
 #include "PoseView.h"
 #include "DesktopPoseView.h"
 #include "PublicCommands.h"
@@ -37,6 +38,9 @@
 #define B_TRANSLATE_CONTEXT "libtracker"
 
 
+// Note: actually, PoseviewController is the user interface manager, it should be renamed
+// accordingly, PoseviewControlManager or Poseview(default)UserInterface
+
 PoseViewController::PoseViewController()
 	:
 	fMenuBar(NULL),
@@ -46,6 +50,7 @@ PoseViewController::PoseViewController()
 	fMoveToMenu(NULL),
 	fCopyToMenu(NULL),
 	fCreateLinkMenu(NULL),
+	fOpenWithMenu(NULL),
 	fNavigator(NULL),
 	fTitleView(NULL),
 	fPoseView(NULL),
@@ -133,6 +138,11 @@ PoseViewController::CreateMoveCopyMenus()
 	menu = new DefaultMoveMenu(B_TRANSLATE("Create link"), kCreateLink, this);
 	fPoseView->AddListener(menu);
 	fCreateLinkMenu = menu;
+	
+	OpenWithMenu* openWithMenu = new OpenWithMenu(
+		B_TRANSLATE("Open with" B_UTF8_ELLIPSIS), this);	
+	fPoseView->AddListener(openWithMenu);
+	fOpenWithMenu = openWithMenu;
 }
 
 
@@ -159,28 +169,60 @@ ReparentMenu(BMenu* menu, BMenu* newParent, uint32 newIndex)
 
 
 void
-PoseViewController::ReparentMoveCopyMenus(BMenu* newParent)
+PoseViewController::ReparentSharedMenus(BMenu* newParent)
 {
+	// Insert the 'Move to' 'Copy to' and 'Create link' menus
+	// just below the 'Move to trash' item
+	
 	int32 index = 0;
  	if (newParent != NULL) {
 	 	BMenuItem* trash = newParent->FindItem(kMoveToTrash);
 	 	if (trash)
 	 		index = newParent->IndexOf(trash) + 2;
+	 	else {
+	 		printf("PoseViewController::ReparentSharedMenus cant find 'Move to trash' item!\n");
+	 		newParent = NULL; // will detach the menu
+	 	}
  	}
+ 	
 
 	if (!ReparentMenu(fMoveToMenu, newParent, index++)
 		|| !ReparentMenu(fCopyToMenu, newParent, index++)
 		|| !ReparentMenu(fCreateLinkMenu, newParent, index)) {
-		printf("PoseViewController::ReparentMoveCopyMenus Error reparenting movecopy menus!\n");
+		printf("PoseViewController::ReparentSharedMenus Error reparenting 'Move To/Copy To' menus!\n");
 	}
 
-	// This is need if we want to FindItem by command later
+	// This is needed because we want to FindItem by command later
+	// TODO: do this kind of work in a JustInstalled hook
 	if (fMoveToMenu != NULL && fMoveToMenu->Superitem() != NULL)
 		fMoveToMenu->Superitem()->SetMessage(new BMessage(kMoveSelectionTo));
 	if (fCopyToMenu != NULL && fCopyToMenu->Superitem() != NULL)
 		fCopyToMenu->Superitem()->SetMessage(new BMessage(kCopySelectionTo));
 	if (fCreateLinkMenu != NULL && fCreateLinkMenu->Superitem() != NULL)
 		fCreateLinkMenu->Superitem()->SetMessage(new BMessage(kCreateLink));
+		
+	// Insert 'Open With...' menu just below the 'Open' item.
+	
+	index = 0;
+ 	if (newParent != NULL) {
+	 	BMenuItem* openItem = newParent->FindItem(kOpenSelection);
+	 	if (openItem)
+	 		index = newParent->IndexOf(openItem) + 1;
+	 	else {
+	 		printf("PoseViewController::ReparentSharedMenus cant find 'Open' item!\n");
+	 		newParent = NULL; // will detach the menu
+	 	}
+ 	}
+ 	
+ 	if (!ReparentMenu(fOpenWithMenu, newParent, index))
+		printf("PoseViewController::ReparentSharedMenus Error reparenting 'Open with' menu!\n");
+	else if (fOpenWithMenu != NULL && fOpenWithMenu->Superitem() != NULL) {
+		// TODO put the code below in a JustInstalled hook
+		fOpenWithMenu->Superitem()->SetTarget(fPoseView);
+		fOpenWithMenu->Superitem()->SetShortcut('O', B_COMMAND_KEY | B_CONTROL_KEY);
+		int32 count = PoseView()->SelectionList()->CountItems();
+		fOpenWithMenu->Superitem()->SetEnabled(count > 0);
+	}
 }
 
 

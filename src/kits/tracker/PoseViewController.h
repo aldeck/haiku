@@ -46,7 +46,7 @@ public:
 									// TODO: Just get the model out of fPoseView
 			void				CreateMenus();	// temporary helper method
 			void				CreateMoveCopyMenus();	// temporary helper method
-			void				ReparentMoveCopyMenus(BMenu* newParent);
+			void				ReparentSharedMenus(BMenu* newParent);
 
 	virtual	void				SetControlVisible(BView* control, bool visible);
 			void				ShowAttributeMenu();
@@ -89,6 +89,7 @@ protected:
 			BMenu*				fMoveToMenu;
 			BMenu*				fCopyToMenu;
 			BMenu*				fCreateLinkMenu;
+			BMenu*				fOpenWithMenu;
 
 			BNavigator* 		fNavigator;
 			BTitleView* 		fTitleView;

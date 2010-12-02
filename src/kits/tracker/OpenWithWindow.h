@@ -41,6 +41,7 @@ All rights reserved.
 #include "EntryIterator.h"
 #include "NodeWalker.h"
 #include "PoseView.h"
+#include "PoseViewListener.h"
 #include "Query.h"
 #include "SlowMenu.h"
 #include "Utilities.h"
@@ -48,6 +49,7 @@ All rights reserved.
 namespace BPrivate {
 
 class OpenWithPoseView;
+class PoseViewController;
 
 // OpenWithContainerWindow supports the Open With feature
 
@@ -256,12 +258,15 @@ class RelationCachingModelProxy {
 		mutable int32 fRelation;
 };
 
-class OpenWithMenu : public BSlowMenu {
-	public:
-		OpenWithMenu(const char *label, const BMessage *entriesToOpen,
-			BWindow *parentWindow, BHandler *target);
-		OpenWithMenu(const char *label, const BMessage *entriesToOpen,
-			BWindow *parentWindow, const BMessenger &target);
+class OpenWithMenu : public BSlowMenu, public PoseViewListener {
+public:
+								OpenWithMenu(const char* label, PoseViewController* controller);
+			
+	virtual	void				AttachedToWindow();
+	virtual	void				TargetModelChanged();
+	virtual	void				SelectionChanged();
+	virtual	void				MimeTypesChanged() {};
+	virtual	void				ColumnsChanged() {};
 
 	private:
 		friend int SortByRelationAndName(const RelationCachingModelProxy *,
@@ -273,15 +278,13 @@ class OpenWithMenu : public BSlowMenu {
 		virtual void ClearMenuBuildingState();
 
 		BMessage fEntriesToOpen;
-		BHandler *target;
-		BMessenger fMessenger;
 
 		// menu building state
 		SearchForSignatureEntryList *fIterator;
 		entry_ref fPreferredRef;
 		BObjectList<RelationCachingModelProxy> *fSupportingAppList;
 		bool fHaveCommonPreferredApp;
-		BWindow *fParentWindow;
+		PoseViewController* fController;
 
 		typedef BSlowMenu _inherited;
 };

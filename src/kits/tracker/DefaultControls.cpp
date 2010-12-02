@@ -121,7 +121,7 @@ DefaultFileMenu::AttachedToWindow()
 		&& !model->IsInTrash()
 		&& !model->IsPrintersDir()) {
 
-		fController->ReparentMoveCopyMenus(this);
+		fController->ReparentSharedMenus(this);
 			// Steal the shared submenus
 
 		// TODO: review the context menu case
@@ -161,7 +161,7 @@ DefaultFileMenu::TargetModelChanged()
 	if (!IsHidden())
 		Hide();
 
-	fController->ReparentMoveCopyMenus(NULL);
+	fController->ReparentSharedMenus(NULL);
 		// detach shared menus, so they are not deleted with RemoveItems below
 
 	RemoveItems(0, CountItems(), true);
