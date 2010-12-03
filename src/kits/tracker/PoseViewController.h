@@ -65,12 +65,12 @@ public:
 			void				SlowOperationEnded();
 			void				AddPosesCompleted();
 
-			BMenuBar*	 		MenuBar()		{ return fMenuBar; };
 			// TODO: Not sure we need to expose everything, there's no use for it
 			// anymore with the listener mechanism
-			BMenu*				AttributeMenu() { return fAttributesMenu; };
-			BMenu*	 			WindowMenu()	{ return fWindowMenu; };
-			BMenu*				FileMenu()		{ return fFileMenu; };
+			BMenuBar*	 		MenuBar()		{ return fMenuBar; };
+			BMenu*				FileMenu()		{ return fFileMenu; }; 
+				// still needed by containerwindow to dynamically change the
+				// kMoveToTrash item's label 
 			BNavigator* 		Navigator()		{ return fNavigator; };
 			BTitleView* 		TitleView()		{ return fTitleView; };
 			BPoseView*	 		PoseView()		{ return fPoseView; };

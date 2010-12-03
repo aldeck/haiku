@@ -117,7 +117,7 @@ BQueryContainerWindow::_Init(const BMessage* message)
 	CheckScreenIntersect();
 		// check window frame TODO: should be done in restorestate
 	Controller()->TitleView()->Reset();
-		// TODO check for a more robust way for the titleview to get updates
+
 	Show();
 }
 

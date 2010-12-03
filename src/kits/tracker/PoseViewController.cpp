@@ -221,6 +221,7 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 		fOpenWithMenu->Superitem()->SetShortcut('O', B_COMMAND_KEY | B_CONTROL_KEY);
 		int32 count = PoseView()->SelectionList()->CountItems();
 		fOpenWithMenu->Superitem()->SetEnabled(count > 0);
+		fOpenWithMenu->Superitem()->SetMessage(new BMessage(kOpenSelectionWith));
 	}
 }
 

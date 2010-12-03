@@ -389,17 +389,12 @@ OpenWithContainerWindow::_Init(const BMessage *message)
 		RestoreState(*message);
 	else
 		RestoreState();
-		
-	//Controller()->CreateMenus();
-	//AddContextMenus();
-	//AddCommonShortcuts();
 	
 	CheckScreenIntersect();
 		// check window frame TODO: should be done in restorestate	
 	
 	Controller()->TitleView()->Reset();
-		// TODO check for a more robust way for the titleview to get updates
-	
+
 	// set the window title
 	if (CountRefs(fEntriesToOpen) == 1) {
 		// if opening just one file, use it in the title
