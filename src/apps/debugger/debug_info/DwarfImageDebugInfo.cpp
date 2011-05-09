@@ -99,6 +99,11 @@ struct DwarfImageDebugInfo::BasicTargetInterface : DwarfTargetInterface {
 		return reg != NULL && reg->IsCalleePreserved();
 	}
 
+	virtual status_t InitRegisterRules(CfaContext& context) const
+	{
+		return fArchitecture->InitRegisterRules(context);
+	}
+
 	virtual bool ReadMemory(target_addr_t address, void* buffer,
 		size_t size) const
 	{
@@ -215,7 +220,11 @@ DwarfImageDebugInfo::DwarfImageDebugInfo(const ImageInfo& imageInfo,
 	fTypeCache(typeCache),
 	fFile(file),
 	fTextSegment(NULL),
-	fRelocationDelta(0)
+	fRelocationDelta(0),
+	fTextSectionStart(0),
+	fTextSectionEnd(0),
+	fPLTSectionStart(0),
+	fPLTSectionEnd(0)
 {
 	fFile->AcquireReference();
 	fTypeCache->AcquireReference();
@@ -241,6 +250,18 @@ DwarfImageDebugInfo::Init()
 		return B_ENTRY_NOT_FOUND;
 
 	fRelocationDelta = fImageInfo.TextBase() - fTextSegment->LoadAddress();
+
+	ElfSection* section = fFile->GetElfFile()->FindSection(".text");
+	if (section != NULL) {
+		fTextSectionStart = section->LoadAddress() + fRelocationDelta;
+		fTextSectionEnd = fTextSectionStart + section->Size();
+	}
+
+	section = fFile->GetElfFile()->FindSection(".plt");
+	if (section != NULL) {
+		fPLTSectionStart = section->LoadAddress() + fRelocationDelta;
+		fPLTSectionEnd = fPLTSectionStart + section->Size();
+	}
 
 	return B_OK;
 }
@@ -306,7 +327,7 @@ DwarfImageDebugInfo::GetFunctions(BObjectList<FunctionDebugInfo>& functions)
 					return B_NO_MEMORY;
 						// TODO: Clean up already added functions!
 			}
-			Reference<TargetAddressRangeList> rangeListReference(rangeList,
+			BReference<TargetAddressRangeList> rangeListReference(rangeList,
 				true);
 
 			// get the source location
@@ -322,7 +343,7 @@ DwarfImageDebugInfo::GetFunctions(BObjectList<FunctionDebugInfo>& functions)
 				file = fFileManager->GetSourceFile(directoryPath,
 					fileName);
 			}
-			Reference<LocatableFile> fileReference(file, true);
+			BReference<LocatableFile> fileReference(file, true);
 
 			// create and add the functions
 			DwarfFunctionDebugInfo* function
@@ -372,7 +393,7 @@ DwarfImageDebugInfo::GetType(GlobalTypeCache* cache,
 	status_t error = fArchitecture->GetDwarfRegisterMaps(NULL, &fromDwarfMap);
 	if (error != B_OK)
 		return error;
-	Reference<RegisterMap> fromDwarfMapReference(fromDwarfMap, true);
+	BReference<RegisterMap> fromDwarfMapReference(fromDwarfMap, true);
 
 	// create the target interface
 	BasicTargetInterface inputInterface(registers, registerCount, fromDwarfMap,
@@ -382,7 +403,7 @@ DwarfImageDebugInfo::GetType(GlobalTypeCache* cache,
 	for (int32 i = 0; CompilationUnit* unit = fFile->CompilationUnitAt(i);
 		i++) {
 		DwarfTypeContext* typeContext = NULL;
-		Reference<DwarfTypeContext> typeContextReference;
+		BReference<DwarfTypeContext> typeContextReference;
 
 		// iterate through all types of the compilation unit
 		for (DebugInfoEntryList::ConstIterator it
@@ -424,6 +445,19 @@ DwarfImageDebugInfo::GetType(GlobalTypeCache* cache,
 }
 
 
+AddressSectionType
+DwarfImageDebugInfo::GetAddressSectionType(target_addr_t address)
+{
+	if (address >= fTextSectionStart && address < fTextSectionEnd)
+		return ADDRESS_SECTION_TYPE_FUNCTION;
+
+ 	if (address >= fPLTSectionStart && address < fPLTSectionEnd)
+		return ADDRESS_SECTION_TYPE_PLT;
+
+	return ADDRESS_SECTION_TYPE_UNKNOWN;
+}
+
+
 status_t
 DwarfImageDebugInfo::CreateFrame(Image* image,
 	FunctionInstance* functionInstance, CpuState* cpuState,
@@ -434,8 +468,14 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 	if (function == NULL)
 		return B_BAD_VALUE;
 
-	TRACE_CFI("DwarfImageDebugInfo::CreateFrame(): subprogram DIE: %p\n",
-		function->SubprogramEntry());
+	FunctionID* functionID = functionInstance->GetFunctionID();
+	if (functionID == NULL)
+		return B_NO_MEMORY;
+	BReference<FunctionID> functionIDReference(functionID, true);
+
+	TRACE_CFI("DwarfImageDebugInfo::CreateFrame(): subprogram DIE: %p, "
+		"function: %s\n", function->SubprogramEntry(),
+		functionID->FunctionName().String());
 
 	int32 registerCount = fArchitecture->CountRegisters();
 	const Register* registers = fArchitecture->Registers();
@@ -447,15 +487,15 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 		&fromDwarfMap);
 	if (error != B_OK)
 		return error;
-	Reference<RegisterMap> toDwarfMapReference(toDwarfMap, true);
-	Reference<RegisterMap> fromDwarfMapReference(fromDwarfMap, true);
+	BReference<RegisterMap> toDwarfMapReference(toDwarfMap, true);
+	BReference<RegisterMap> fromDwarfMapReference(fromDwarfMap, true);
 
 	// create a clean CPU state for the previous frame
 	CpuState* previousCpuState;
 	error = fArchitecture->CreateCpuState(previousCpuState);
 	if (error != B_OK)
 		return error;
-	Reference<CpuState> previousCpuStateReference(previousCpuState, true);
+	BReference<CpuState> previousCpuStateReference(previousCpuState, true);
 
 	// create the target interfaces
 	UnwindTargetInterface* inputInterface
@@ -463,7 +503,7 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 			fromDwarfMap, toDwarfMap, cpuState, fArchitecture, fTeamMemory);
 	if (inputInterface == NULL)
 		return B_NO_MEMORY;
-	Reference<UnwindTargetInterface> inputInterfaceReference(inputInterface,
+	BReference<UnwindTargetInterface> inputInterfaceReference(inputInterface,
 		true);
 
 	UnwindTargetInterface* outputInterface
@@ -472,7 +512,7 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 			fTeamMemory);
 	if (outputInterface == NULL)
 		return B_NO_MEMORY;
-	Reference<UnwindTargetInterface> outputInterfaceReference(outputInterface,
+	BReference<UnwindTargetInterface> outputInterfaceReference(outputInterface,
 		true);
 
 	// do the unwinding
@@ -508,7 +548,7 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 			inputInterface, fromDwarfMap);
 	if (stackFrameDebugInfo == NULL)
 		return B_NO_MEMORY;
-	Reference<DwarfStackFrameDebugInfo> stackFrameDebugInfoReference(
+	BReference<DwarfStackFrameDebugInfo> stackFrameDebugInfoReference(
 		stackFrameDebugInfo, true);
 
 	error = stackFrameDebugInfo->Init();
@@ -521,7 +561,7 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 		stackFrameDebugInfo);
 	if (frame == NULL)
 		return B_NO_MEMORY;
-	Reference<StackFrame> frameReference(frame, true);
+	BReference<StackFrame> frameReference(frame, true);
 
 	error = frame->Init();
 	if (error != B_OK)
@@ -530,11 +570,6 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 	frame->SetReturnAddress(previousCpuState->InstructionPointer());
 		// Note, this is correct, since we actually retrieved the return
 		// address. Our caller will fix the IP for us.
-
-	FunctionID* functionID = functionInstance->GetFunctionID();
-	if (functionID == NULL)
-		return B_NO_MEMORY;
-	Reference<FunctionID> functionIDReference(functionID, true);
 
 	// create function parameter objects
 	for (DebugInfoEntryList::ConstIterator it = subprogramEntry->Parameters()
@@ -554,7 +589,7 @@ DwarfImageDebugInfo::CreateFrame(Image* image,
 				parameter) != B_OK) {
 			continue;
 		}
-		Reference<Variable> parameterReference(parameter, true);
+		BReference<Variable> parameterReference(parameter, true);
 
 		if (!frame->AddParameter(parameter))
 			return B_NO_MEMORY;
@@ -919,7 +954,7 @@ DwarfImageDebugInfo::_CreateLocalVariables(CompilationUnit* unit,
 				!= B_OK) {
 			continue;
 		}
-		Reference<Variable> variableReference(variable, true);
+		BReference<Variable> variableReference(variable, true);
 
 		if (!frame->AddLocalVariable(variable))
 			return B_NO_MEMORY;
@@ -950,7 +985,7 @@ DwarfImageDebugInfo::_CreateLocalVariables(CompilationUnit* unit,
 				TRACE_LOCALS("    failed to get ranges\n");
 				continue;
 			}
-			Reference<TargetAddressRangeList> rangeListReference(rangeList,
+			BReference<TargetAddressRangeList> rangeListReference(rangeList,
 				true);
 
 			if (!rangeList->Contains(instructionPointer)) {

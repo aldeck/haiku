@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2009 Haiku Inc. All rights reserved.
+ * Copyright 2004-2011 Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -10,18 +10,20 @@
  * 		Fredrik Modéen
  *		Hugo Santos
  *		Philippe Saint-Pierre
+ *		Alexander von Gluck, kallisti5@unixzen.com
  */
 
 
 #include "InterfacesAddOn.h"
 #include "InterfacesListView.h"
-#include "NetworkWindow.h"
+#include "InterfaceWindow.h"
 
 #include <stdio.h>
 
-#include <ScrollView.h>
 #include <Alert.h>
-
+#include <GroupLayout.h>
+#include <GroupLayoutBuilder.h>
+#include <ScrollView.h>
 
 
 NetworkSetupAddOn*
@@ -56,50 +58,53 @@ InterfacesAddOn::Name()
 }
 
 
+status_t
+InterfacesAddOn::Save()
+{
+	printf("I am saved!\n");
+	return B_OK;
+}
+
+
 BView*
 InterfacesAddOn::CreateView(BRect *bounds)
 {
-	float w, h;
-	BRect r = *bounds;
-	
-#define H_MARGIN	10
-#define V_MARGIN	10
-#define SMALL_MARGIN	3
-	
-	if (r.Width() < 100 || r.Height() < 100)
-		r.Set(0, 0, 100, 100);
-		
-	ResizeTo(r.Width(), r.Height());
+	BRect intViewRect = *bounds;
 
-	BRect rlv = r;
-	rlv.bottom -= 72;
-	rlv.InsetBy(2, 2);
-	rlv.right -= B_V_SCROLL_BAR_WIDTH;
-	fListview = new InterfacesListView(rlv, "interfaces", B_FOLLOW_ALL_SIDES);
+	// Construct the ListView
+	fListview = new InterfacesListView(intViewRect,
+		"interfaces", B_FOLLOW_ALL_SIDES);
 	fListview->SetSelectionMessage(new BMessage(INTERFACE_SELECTED_MSG));
-	fListview->SetInvocationMessage(new BMessage(CONFIGURE_INTERFACE_MSG));	
-	AddChild(new BScrollView(NULL, fListview, B_FOLLOW_ALL_SIDES, B_WILL_DRAW 
-			| B_FRAME_EVENTS, false, true));
-	
-	r.top = r.bottom - 60;
-	fConfigure = new BButton(r, "configure", "Configure" B_UTF8_ELLIPSIS, 
-		new BMessage(CONFIGURE_INTERFACE_MSG), B_FOLLOW_BOTTOM | B_FOLLOW_LEFT);
-		
-	fConfigure->GetPreferredSize(&w, &h);
-	fConfigure->ResizeToPreferred();
+	fListview->SetInvocationMessage(new BMessage(CONFIGURE_INTERFACE_MSG));
+
+	BScrollView* scrollView = new BScrollView(NULL, fListview,
+		B_FOLLOW_ALL_SIDES, B_WILL_DRAW | B_FRAME_EVENTS, false, true);
+
+	// Construct the BButtons
+	fConfigure = new BButton(intViewRect, "configure",
+		"Configure" B_UTF8_ELLIPSIS, new BMessage(CONFIGURE_INTERFACE_MSG));
+
 	fConfigure->SetEnabled(false);
-	AddChild(fConfigure);
 
-	r.left += w + SMALL_MARGIN;
+	fOnOff = new BButton(intViewRect, "onoff", "Disable",
+		new BMessage(ONOFF_INTERFACE_MSG));
 
-	fOnOff = new BButton(r, "onoff", "Disable", new BMessage(ONOFF_INTERFACE_MSG),
-					B_FOLLOW_BOTTOM | B_FOLLOW_LEFT);
-	fOnOff->GetPreferredSize(&w, &h);
-	fOnOff->ResizeToPreferred();
-	fOnOff->Hide();
-	AddChild(fOnOff);
+	fOnOff->SetEnabled(false);
 
-	*bounds = Bounds();	
+	// Build the layout
+	SetLayout(new BGroupLayout(B_VERTICAL));
+
+	AddChild(BGroupLayoutBuilder(B_VERTICAL, 10)
+		.Add(scrollView)
+		.AddGroup(B_HORIZONTAL, 5)
+			.Add(fConfigure)
+			.Add(fOnOff)
+			.AddGlue()
+		.End()
+		.SetInsets(10, 10, 10, 10)
+	);
+
+	*bounds = Bounds();
 	return this;
 }
 
@@ -110,7 +115,6 @@ InterfacesAddOn::AttachedToWindow()
 	fListview->SetTarget(this);
 	fConfigure->SetTarget(this);
 	fOnOff->SetTarget(this);
-
 }
 
 
@@ -119,38 +123,37 @@ InterfacesAddOn::MessageReceived(BMessage* msg)
 {
 	int nr = fListview->CurrentSelection();
 	InterfaceListItem *item = NULL;
-	if(nr != -1) {		
+	if (nr != -1) {
 		item = dynamic_cast<InterfaceListItem*>(fListview->ItemAt(nr));
 	}
 
 	switch (msg->what) {
 	case INTERFACE_SELECTED_MSG: {
-		fConfigure->SetEnabled(item != NULL);
 		fOnOff->SetEnabled(item != NULL);
-		if (item == NULL) {
-			fOnOff->Hide();
+		fConfigure->SetEnabled(item != NULL);
+		if (!item)
 			break;
-		}
-		fOnOff->SetLabel(item->Enabled() ? "Disable" : "Enable");
-		fOnOff->Show();		
+		fConfigure->SetEnabled(!item->IsDisabled());
+		fOnOff->SetLabel(item->IsDisabled() ? "Enable" : "Disable");
 		break;
 	}
-		
+
 	case CONFIGURE_INTERFACE_MSG: {
 		if (!item)
 			break;
 
-		NetworkWindow* nw = new NetworkWindow(item->GetSetting());
-		nw->Show();
+		InterfaceWindow* sw = new InterfaceWindow(item->GetSettings());
+		sw->Show();
 		break;
 	}
-		
+
 	case ONOFF_INTERFACE_MSG:
 		if (!item)
 			break;
-		
-		item->SetEnabled(!item->Enabled());
-		fOnOff->SetLabel(item->Enabled() ? "Disable" : "Enable");
+
+		item->SetDisabled(!item->IsDisabled());
+		fOnOff->SetLabel(item->IsDisabled() ? "Enable" : "Disable");
+		fConfigure->SetEnabled(!item->IsDisabled());
 		fListview->Invalidate();
 		break;
 

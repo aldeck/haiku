@@ -32,6 +32,7 @@
 #else
 #	define TRACE(x...) ;
 #endif
+#define ERROR(x...) dprintf("\33[34mext2:\33[0m " x)
 
 
 #define EXT2_IO_SIZE	65536
@@ -118,7 +119,7 @@ static status_t
 ext2_mount(fs_volume* _volume, const char* device, uint32 flags,
 	const char* args, ino_t* _rootID)
 {
-	Volume* volume = new Volume(_volume);
+	Volume* volume = new(std::nothrow) Volume(_volume);
 	if (volume == NULL)
 		return B_NO_MEMORY;
 
@@ -131,7 +132,7 @@ ext2_mount(fs_volume* _volume, const char* device, uint32 flags,
 
 	status_t status = volume->Mount(device, flags);
 	if (status != B_OK) {
-		TRACE("Failed mounting the volume. Error: %s\n", strerror(status));
+		ERROR("Failed mounting the volume. Error: %s\n", strerror(status));
 		delete volume;
 		return status;
 	}
@@ -159,7 +160,7 @@ ext2_read_fs_info(fs_volume* _volume, struct fs_info* info)
 	Volume* volume = (Volume*)_volume->private_volume;
 
 	// File system flags
-	info->flags = B_FS_IS_PERSISTENT
+	info->flags = B_FS_IS_PERSISTENT | B_FS_HAS_ATTR
 		| (volume->IsReadOnly() ? B_FS_IS_READONLY : 0);
 	info->io_size = EXT2_IO_SIZE;
 	info->block_size = volume->BlockSize();
@@ -173,6 +174,28 @@ ext2_read_fs_info(fs_volume* _volume, struct fs_info* info)
 	strlcpy(info->fsh_name, "ext2", sizeof(info->fsh_name));
 
 	return B_OK;
+}
+
+
+static status_t
+ext2_write_fs_info(fs_volume* _volume, const struct fs_info* info, uint32 mask)
+{
+	Volume* volume = (Volume*)_volume->private_volume;
+
+	if (volume->IsReadOnly())
+		return B_READ_ONLY_DEVICE;
+
+	MutexLocker locker(volume->Lock());
+
+	status_t status = B_BAD_VALUE;
+
+	if (mask & FS_WRITE_FSINFO_NAME) {
+		Transaction transaction(volume->GetJournal());
+		volume->SetName(info->volume_name);
+		status = volume->WriteSuperBlock(transaction);
+		transaction.Done();
+	}
+	return status;
 }
 
 
@@ -194,16 +217,16 @@ ext2_get_vnode(fs_volume* _volume, ino_t id, fs_vnode* _node, int* _type,
 	Volume* volume = (Volume*)_volume->private_volume;
 
 	if (id < 2 || id > volume->NumInodes()) {
-		dprintf("ext2: invalid inode id %lld requested!\n", id);
+		ERROR("invalid inode id %lld requested!\n", id);
 		return B_BAD_VALUE;
 	}
 
-	Inode* inode = new Inode(volume, id);
+	Inode* inode = new(std::nothrow) Inode(volume, id);
 	if (inode == NULL)
 		return B_NO_MEMORY;
 
 	status_t status = inode->InitCheck();
-	if (status < B_OK)
+	if (status != B_OK)
 		delete inode;
 
 	if (status == B_OK) {
@@ -211,7 +234,8 @@ ext2_get_vnode(fs_volume* _volume, ino_t id, fs_vnode* _node, int* _type,
 		_node->ops = &gExt2VnodeOps;
 		*_type = inode->Mode();
 		*_flags = 0;
-	}
+	} else
+		ERROR("get_vnode: InitCheck() failed. Error: %s\n", strerror(status));
 
 	return status;
 }
@@ -405,11 +429,16 @@ ext2_get_file_map(fs_volume* _volume, fs_vnode* _node, off_t offset,
 	size_t index = 0, max = *_count;
 
 	while (true) {
-		off_t block;
+		fsblock_t block;
 		uint32 count = 1;
 		status_t status = inode->FindBlock(offset, block, &count);
 		if (status != B_OK)
 			return status;
+
+		if (block > volume->NumBlocks()) {
+			panic("ext2_get_file_map() found block %lld for offset %lld\n",
+				block, offset);
+		}
 
 		off_t blockOffset = block << volume->BlockShift();
 		uint32 blockLength = volume->BlockSize() * count;
@@ -504,7 +533,7 @@ ext2_ioctl(fs_volume* _volume, fs_vnode* _node, void* _cookie, uint32 cmd,
 			uint32 blocksPerGroup = volume->BlocksPerGroup();
 			uint32 blockSize  = volume->BlockSize();
 			uint32 firstBlock = volume->FirstDataBlock();
-			off_t start = 0;
+			fsblock_t start = 0;
 			uint32 group = 0;
 			uint32 length;
 
@@ -953,7 +982,7 @@ ext2_rename(fs_volume* _volume, fs_vnode* _oldDir, const char* oldName,
 			if (status != B_OK)
 				return B_IO_ERROR;
 
-			off_t blockNum;
+			fsblock_t blockNum;
 			status = parent->FindBlock(0, blockNum);
 			if (status != B_OK)
 				return status;
@@ -1622,7 +1651,7 @@ ext2_remove_attr(fs_volume* _volume, fs_vnode* vnode,
 fs_volume_ops gExt2VolumeOps = {
 	&ext2_unmount,
 	&ext2_read_fs_info,
-	NULL,	// write_fs_info()
+	&ext2_write_fs_info,
 	&ext2_sync,
 	&ext2_get_vnode,
 };
@@ -1710,7 +1739,8 @@ static file_system_module_info sExt2FileSystem = {
 
 	"ext2",						// short_name
 	"Ext2 File System",			// pretty_name
-	B_DISK_SYSTEM_SUPPORTS_WRITING,						// DDM flags
+	B_DISK_SYSTEM_SUPPORTS_WRITING
+		| B_DISK_SYSTEM_SUPPORTS_CONTENT_NAME,	// DDM flags
 
 	// scanning
 	ext2_identify_partition,

@@ -17,6 +17,7 @@
 #include "GPBand.h"
 #include "GPJobConfiguration.h"
 #include "OutputStream.h"
+#include "Rectangle.h"
 
 
 class GPJob
@@ -34,12 +35,14 @@ public:
 
 	status_t	PrintPage(list<GPBand*>& bands);
 
+	void		GetErrorMessage(BString& message);
+
 private:
-	BRect	GetPrintRectangle(list<GPBand*>& bands);
-	GPBand*	FindBand(int line);
-	void	FillRow(GPBand* band, unsigned char* data, size_t size,
+	RectInt32	GetPrintRectangle(list<GPBand*>& bands);
+	GPBand*		FindBand(int line);
+	void		FillRow(GPBand* band, unsigned char* data, size_t size,
 		int line);
-	void	FillWhite(unsigned char* data, size_t size);
+	void		FillWhite(unsigned char* data, size_t size);
 
 	void				Init();
 	void				Reset();
@@ -68,13 +71,14 @@ private:
 	OutputStream*		fOutputStream;
 	GPJobConfiguration*	fConfiguration;
 
-	bool					fFirstPage;
+	bool					fHasPages;
 	stp_image_t				fImage;
 	stp_vars_t*				fVariables;
 	const stp_printer_t*	fPrinter;
-	BRect					fPrintRect;
+	RectInt32				fPrintRect;
 	list<GPBand*>*			fBands;
 	GPBand*					fCachedBand;
-	status_t				fWriteError;
+	status_t				fStatus;
+	BString					fErrorMessage;
 };
 #endif

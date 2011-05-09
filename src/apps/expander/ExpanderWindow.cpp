@@ -585,8 +585,8 @@ ExpanderWindow::StartExpanding()
 
 	BEntry entry(&fSourceRef);
 	BPath path(&entry);
-	BString text(B_TRANSLATE("Expanding file "));
-	text.Append(path.Leaf());
+	BString text(B_TRANSLATE("Expanding '%s'"));
+	text.ReplaceFirst("%s", path.Leaf());
 	fStatusView->SetText(text.String());
 
 	fExpandingThread = new ExpanderThread(&message, new BMessenger(this));
@@ -721,8 +721,8 @@ ExpanderWindow::StartListing()
 
 	BEntry entry(&fSourceRef);
 	BPath path(&entry);
-	BString text(B_TRANSLATE("Creating listing for "));
-	text.Append(path.Leaf());
+	BString text(B_TRANSLATE("Creating listing for '%s'"));
+	text.ReplaceFirst("%s", path.Leaf());
 	fStatusView->SetText(text.String());
 	fListingText->SetText("");
 

@@ -10,6 +10,9 @@
 #include <string.h>
 
 #include <Alert.h>
+#include <Catalog.h>
+#include <fs_attr.h>
+#include <Locale.h>
 #include <MediaFile.h>
 #include <MediaTrack.h>
 #include <Mime.h>
@@ -20,7 +23,10 @@
 #include "MediaConverterWindow.h"
 #include "MediaEncoderWindow.h"
 #include "MessageConstants.h"
-#include "Strings.h"
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "MediaConverter"
 
 
 const char APP_SIGNATURE[] = "application/x-vnd.Haiku-MediaConverter";
@@ -105,8 +111,10 @@ MediaConverterApp::RefsReceived(BMessage* msg)
 	// from Open dialog or drag & drop
 
 	while (msg->FindRef("refs", i++, &ref) == B_OK) {
+
 		uint32 flags = 0; // B_MEDIA_FILE_NO_READ_AHEAD
 		BMediaFile* file = new(std::nothrow) BMediaFile(&ref, flags);
+
 		if (file == NULL || file->InitCheck() != B_OK) {
 			errorFiles << ref.name << "\n";
 			errors++;
@@ -122,11 +130,24 @@ MediaConverterApp::RefsReceived(BMessage* msg)
 
 	if (errors) {
 		BString alertText;
-		alertText << errors << ((errors > 1) ? FILES : FILE)
-				<< NOTRECOGNIZE << "\n";
-		alertText << errorFiles;
-		BAlert* alert = new BAlert(ERROR_LOAD_STRING, alertText.String(),
-			CONTINUE_STRING	, NULL, NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT);
+		if (errors > 1) {
+			alertText = B_TRANSLATE(
+				"%amountOfFiles files were not recognized"
+				" as supported media files:");
+			BString amount;
+			amount << errors;
+			alertText.ReplaceAll("%amountOfFiles", amount);
+		} else {
+			alertText = B_TRANSLATE(
+				"The file was not recognized as a supported media file:");
+		}
+
+		alertText << "\n" << errorFiles;
+		BAlert* alert = new BAlert((errors > 1) ? 
+			B_TRANSLATE("Error loading files") : 
+			B_TRANSLATE("Error loading a file"), 
+			alertText.String(),	B_TRANSLATE("Continue")	, NULL, NULL, 
+			B_WIDTH_AS_USUAL, B_STOP_ALERT);
 		alert->Go();
 	}
 }
@@ -174,7 +195,6 @@ MediaConverterApp::SetStatusMessage(const char* message)
 
 
 // #pragma mark -
-
 
 BEntry
 MediaConverterApp::_CreateOutputFile(BDirectory directory,
@@ -266,14 +286,14 @@ MediaConverterApp::_RunConvert()
 					outEntry.GetRef(&outRef);
 					outFile = new BMediaFile(&outRef, fileFormat);
 
-					name.Prepend(" '");
-					name.Prepend(OUTPUT_FILE_STRING1);
-					name.Append("' ");
-					name.Append(OUTPUT_FILE_STRING2);
+					BString tmp(
+						B_TRANSLATE("Output file '%filename' created"));
+					tmp.ReplaceAll("%filename", name);
+					name = tmp;
 				} else {
-					name.Prepend(" '");
-					name.Prepend(OUTPUT_FILE_STRING3);
-					name.Append("'");
+					BString tmp(B_TRANSLATE("Error creating '%filename'"));
+					tmp.ReplaceAll("%filename", name);
+					name = tmp;
 				}
 
 				if (fWin->Lock()) {
@@ -293,8 +313,9 @@ MediaConverterApp::_RunConvert()
 						fWin->RemoveSourceFile(srcIndex);
 					} else {
 						srcIndex++;
-						BString error(CONVERT_ERROR_STRING);
-  						error << " '" << inRef.name << "'";
+						BString error(
+							B_TRANSLATE("Error converting '%filename'"));
+  						error.ReplaceAll("%filename", inRef.name);
 						fWin->SetStatusMessage(error.String());
 					}
 					fWin->Unlock();
@@ -369,7 +390,8 @@ MediaConverterApp::_ConvertFile(BMediaFile* inFile, BMediaFile* outFile,
 			if (outAudTrack != NULL) {
 				if (outAudTrack->SetQuality(audioQuality / 100.0f) != B_OK
 					&& fWin->Lock()) {
-					fWin->SetAudioQualityLabel(AUDIO_SUPPORT_STRING);
+					fWin->SetAudioQualityLabel(
+						B_TRANSLATE("Audio quality not supported"));
 					fWin->Unlock();
 				}
 			}
@@ -433,10 +455,12 @@ MediaConverterApp::_ConvertFile(BMediaFile* inFile, BMediaFile* outFile,
 					delete encoderView;
 					encoderView = NULL;
 
-					videoQualitySupport = VIDEO_PARAMFORM_STRING;
+					videoQualitySupport = 
+						B_TRANSLATE("Video using parameters form settings");
 				} else {
 					if (outVidTrack->SetQuality(videoQuality / 100.0f) >= B_OK)
-						videoQualitySupport = VIDEO_SUPPORT_STRING;
+						videoQualitySupport = 
+							B_TRANSLATE("Video quality not supported");
 				}
 				if (videoQualitySupport && fWin->Lock()) {
 					fWin->SetVideoQualityLabel(videoQualitySupport);
@@ -456,7 +480,8 @@ MediaConverterApp::_ConvertFile(BMediaFile* inFile, BMediaFile* outFile,
 
 	if (fCancel) {
 		// don't have any video or audio tracks here, or cancelled
-		printf("MediaConverterApp::_ConvertFile() - user canceld before transcoding\n");
+		printf("MediaConverterApp::_ConvertFile()"
+				" - user canceled before transcoding\n");
 		ret = B_CANCELED;
 	}
 
@@ -504,29 +529,33 @@ MediaConverterApp::_ConvertFile(BMediaFile* inFile, BMediaFile* outFile,
 					&mh)) != B_OK) {
 				fprintf(stderr, "Error reading video frame %Ld: %s\n", i,
 						strerror(ret));
-				status.SetTo(ERROR_READ_VIDEO_STRING);
-				status << i;
+				snprintf(status.LockBuffer(128), 128,
+						B_TRANSLATE("Error read video frame %Ld"), i);
+				status.UnlockBuffer();
 				SetStatusMessage(status.String());
 
 				break;
 			}
-//printf("writing frame %lld\n", i);
+
 			if ((ret = outVidTrack->WriteFrames(videoBuffer, framesRead,
 					mh.u.encoded_video.field_flags)) != B_OK) {
 				fprintf(stderr, "Error writing video frame %Ld: %s\n", i,
 						strerror(ret));
-				status.SetTo(ERROR_WRITE_VIDEO_STRING);
-				status << i;
+				snprintf(status.LockBuffer(128), 128,
+						B_TRANSLATE("Error writing video frame %Ld"), i);
+				status.UnlockBuffer();
 				SetStatusMessage(status.String());
+
 				break;
 			}
 			completePercent = (float)(i - start) / (float)(end - start) * 100;
 			currPercent = (int16)floor(completePercent);
 			if (currPercent > lastPercent) {
 				lastPercent = currPercent;
-				status.SetTo(WRITE_VIDEO_STRING);
-				status.Append(" ");
-				status << currPercent << "% " << COMPLETE_STRING;
+				snprintf(status.LockBuffer(128), 128,
+					B_TRANSLATE("Writing video track: %Ld %% complete"),
+					currPercent);
+				status.UnlockBuffer();
 				SetStatusMessage(status.String());
 
 			}
@@ -559,28 +588,32 @@ MediaConverterApp::_ConvertFile(BMediaFile* inFile, BMediaFile* outFile,
 			if ((ret = inAudTrack->ReadFrames(audioBuffer, &framesRead,
 				&mh)) != B_OK) {
 				fprintf(stderr, "Error reading audio frames: %s\n", strerror(ret));
-				status.SetTo(ERROR_READ_AUDIO_STRING);
-				status << i;
+				snprintf(status.LockBuffer(128), 128,
+					B_TRANSLATE("Error read audio frame %Ld"), i);
+				status.UnlockBuffer();
 				SetStatusMessage(status.String());
+
 				break;
 			}
-//printf("writing audio frames %lld\n", i);
+
 			if ((ret = outAudTrack->WriteFrames(audioBuffer,
 				framesRead)) != B_OK) {
-				fprintf(stderr, "Error writing audio frames: %s\n",
-					strerror(ret));
-				status.SetTo(ERROR_WRITE_AUDIO_STRING);
-				status << i;
+				fprintf(stderr, "Error writing audio frames: %s\n",	strerror(ret));
+				snprintf(status.LockBuffer(128), 128,
+					B_TRANSLATE("Error writing audio frame %Ld"), i);
+				status.UnlockBuffer();
 				SetStatusMessage(status.String());
+
 				break;
 			}
 			completePercent = (float)(i - start) / (float)(end - start) * 100;
 			currPercent = (int16)floor(completePercent);
 			if (currPercent > lastPercent) {
 				lastPercent = currPercent;
-				status.SetTo(WRITE_AUDIO_STRING);
-				status.Append(" ");
-				status << currPercent << "% " << COMPLETE_STRING;
+				snprintf(status.LockBuffer(128), 128,
+					B_TRANSLATE("Writing audio track: %Ld %% complete"),
+					currPercent);
+				status.UnlockBuffer();
 				SetStatusMessage(status.String());
 			}
 		}

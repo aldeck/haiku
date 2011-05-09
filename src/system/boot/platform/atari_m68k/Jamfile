@@ -19,14 +19,6 @@ UsePrivateHeaders [ FDirName storage ] ;
 
 #SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src add-ons accelerants common ] ;
 
-local genericPlatformSources =
-	text_menu.cpp
-	video_blit.cpp
-	video_splash.cpp
-	video_rle.cpp
-;
-
-
 KernelMergeObject boot_platform_atari_m68k_shell.o :
 	shell.S
 	: -Wa,--pcrel
@@ -58,13 +50,12 @@ KernelMergeObject boot_platform_atari_m68k_other.o :
 	video.cpp
 	#apm.cpp
 
-	$(genericPlatformSources)
-
 	# VESA/DDC EDID
 	#decode_edid.c
 	#dump_edid.c
 
 	: -fno-pic #-Wa,--pcrel
+	: boot_platform_generic.a
 ;
 
 

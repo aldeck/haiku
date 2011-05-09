@@ -11,21 +11,53 @@
 
 #include <List.h>
 #include <OS.h>
+#include <Size.h>
 #include <String.h>
 #include <SupportDefs.h>
 
 #include "Constraint.h"
-#include "OperatorType.h"
-#include "OptimizationType.h"
-#include "PenaltyFunction.h"
-#include "ResultType.h"
+#include "LinearProgrammingTypes.h"
 #include "Summand.h"
 #include "Variable.h"
 
-#include "lp_lib.h"
-
 
 namespace LinearProgramming {
+
+
+class LinearSpec;
+
+
+const BSize kMinSize(0, 0);
+const BSize kMaxSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED);
+
+
+class SolverInterface {
+public:
+								SolverInterface(LinearSpec* linSpec);
+
+	virtual						~SolverInterface() {}
+
+	virtual ResultType			Solve() = 0;
+
+	virtual	bool				VariableAdded(Variable* variable) = 0;
+	virtual	bool				VariableRemoved(Variable* variable) = 0;
+	virtual	bool				VariableRangeChanged(Variable* variable) = 0;
+
+	virtual	bool				ConstraintAdded(Constraint* constraint) = 0;
+	virtual	bool				ConstraintRemoved(Constraint* constraint) = 0;
+	virtual	bool				LeftSideChanged(Constraint* constraint) = 0;
+	virtual	bool				RightSideChanged(Constraint* constraint) = 0;
+	virtual	bool				OperatorChanged(Constraint* constraint) = 0;
+
+	virtual bool				SaveModel(const char* fileName) = 0;
+
+	virtual	BSize				MinSize(Variable* width, Variable* height) = 0;
+	virtual	BSize				MaxSize(Variable* width, Variable* height) = 0;
+
+protected:
+			LinearSpec*			fLinearSpec; 
+};
+
 
 /*!
  * Specification of a linear programming problem.
@@ -40,8 +72,12 @@ public:
 			bool				RemoveVariable(Variable* variable,
 									bool deleteVariable = true);
 			int32				IndexOf(const Variable* variable) const;
-			bool				SetRange(Variable* variable, double min,
-									double max);
+			int32				GlobalIndexOf(const Variable* variable) const;
+			bool				UpdateRange(Variable* variable);
+
+			bool				AddConstraint(Constraint* constraint);
+			bool				RemoveConstraint(Constraint* constraint,
+									bool deleteConstraint = true);
 
 			Constraint*			AddConstraint(SummandList* summands,
 									OperatorType op, double rightSide);
@@ -82,49 +118,44 @@ public:
 									OperatorType op, double rightSide,
 									double penaltyNeg, double penaltyPos);
 
-			PenaltyFunction*	AddPenaltyFunction(Variable* var, BList* xs,
-									BList* gs);
-
-			SummandList*		ObjectiveFunction();
-			//! Caller takes ownership of the Summand's and the SummandList.
-			SummandList*		SwapObjectiveFunction(
-									SummandList* objFunction);
-			void				SetObjectiveFunction(SummandList* objFunction);
-			void				UpdateObjectiveFunction();
+			BSize				MinSize(Variable* width, Variable* height);
+			BSize				MaxSize(Variable* width, Variable* height);
 
 			ResultType			Solve();
-			void				Save(const char* fileName);
+			bool				Save(const char* fileName);
 
 			int32				CountColumns() const;
-			OptimizationType	Optimization() const;
-			void				SetOptimization(OptimizationType value);
 
 			ResultType			Result() const;
-			double				ObjectiveValue() const;
-			double				SolvingTime() const;
+			bigtime_t			SolvingTime() const;
 
 			operator BString() const;
 			void				GetString(BString& string) const;
 
 	const	ConstraintList&		Constraints() const;
+	const	VariableList&		UsedVariables() const;
+	const	VariableList&		AllVariables() const;
 
+protected:
+	friend class Constraint;
+ 			bool				UpdateLeftSide(Constraint* constraint);
+			bool				UpdateRightSide(Constraint* constraint);
+			bool				UpdateOperator(Constraint* constraint);
 private:
-			ResultType			Presolve();
-			void				RemovePresolved();
+			/*! Check if all entries != NULL otherwise delete the list and its
+			entries. */
+			bool				_CheckSummandList(SummandList* list);
+			Constraint*			_AddConstraint(SummandList* leftSide,
+									OperatorType op, double rightSide,
+									double penaltyNeg, double penaltyPos);
 
-			lprec*				fLpPresolved;
-			OptimizationType	fOptimization;
-			lprec*				fLP;
-			SummandList*		fObjFunction;
 			VariableList		fVariables;
+			VariableList		fUsedVariables;
 			ConstraintList		fConstraints;
 			ResultType			fResult;
-			double 				fObjectiveValue;
-			double 				fSolvingTime;
+			bigtime_t 			fSolvingTime;
 
-public:
-	friend class		Constraint;
-
+			SolverInterface*	fSolver;
 };
 
 }	// namespace LinearProgramming

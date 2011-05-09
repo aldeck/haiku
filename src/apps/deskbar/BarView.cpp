@@ -130,10 +130,10 @@ void
 TBarView::Draw(BRect)
 {
 	BRect bounds(Bounds());
-	
+
 	rgb_color hilite = tint_color(ViewColor(), B_DARKEN_1_TINT);
 	rgb_color light = tint_color(ViewColor(), B_LIGHTEN_2_TINT);
-	
+
 	SetHighColor(hilite);
 	if (AcrossTop()) 
 		StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
@@ -433,11 +433,17 @@ TBarView::ChangeState(int32 state, bool vertical, bool left, bool top)
 {
 	bool vertSwap = (fVertical != vertical);
 	bool leftSwap = (fLeft != left);
+	bool stateChanged = (fState != state);
 
 	fState = state;
 	fVertical = vertical;
 	fLeft = left;
 	fTop = top;
+
+	// Send a message to the preferences window to let it know to enable
+	// or disabled preference items
+	if (stateChanged || vertSwap)
+		be_app->PostMessage(kStateChanged);
 
 	BRect screenFrame = (BScreen(Window())).Frame();
 

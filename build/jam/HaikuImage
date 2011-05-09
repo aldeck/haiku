@@ -27,7 +27,7 @@ if $(HAIKU_ATA_STACK) = 1 {
 	IDE_ONLY = "" ;
 }
 
-SYSTEM_BIN = "[" addattr alert arp base64 basename bash bc beep bootman bzip2
+SYSTEM_BIN = "[" addattr alert arp base64 basename bash bc beep bzip2
 	cal cat catattr checkfs checkitout chgrp chmod chop chown chroot cksum clear
 	clockconfig cmp collectcatkeys comm compress copyattr CortexAddOnHost cp
 	csplit ctags cut date dc dd desklink df diff diff3 dircolors dirname
@@ -52,7 +52,7 @@ SYSTEM_BIN = "[" addattr alert arp base64 basename bash bc beep bootman bzip2
 	rc readlink ReadOnlyBootPrompt reindex release renice rlog rm rmattr
 	rmindex rmdir roster route
 	safemode screen_blanker screenmode screenshot sdiff setdecor settype
-	setversion setvolume setwep seq sha1sum shar shred shuf shutdown sleep sort
+	setversion setvolume seq sha1sum shar shred shuf shutdown sleep sort
 	spamdbm
 	split stat strace stty su sum sync sysinfo
 	tac tail tcpdump tcptester tee telnet telnetd test timeout top touch
@@ -63,19 +63,21 @@ SYSTEM_BIN = "[" addattr alert arp base64 basename bash bc beep bootman bzip2
 	zdiff zforce zgrep zip zipcloak <bin>zipgrep zipnote zipsplit zmore znew
 ;
 
-SYSTEM_APPS = AboutSystem ActivityMonitor CharacterMap CodyCam DeskCalc Devices
-	DiskProbe DiskUsage DriveSetup CDPlayer Expander Icon-O-Matic Installer
-	LaunchBox Magnify Mail MediaConverter MediaPlayer MidiPlayer NetworkStatus
-	PackageInstaller People PoorMan PowerStatus ProcessController Screenshot
-	ShowImage SoundRecorder StyledEdit Terminal TextSearch TV	Workspaces
+SYSTEM_APPS = AboutSystem ActivityMonitor $(X86_ONLY)BootManager CharacterMap
+	CodyCam DeskCalc Devices DiskProbe DiskUsage DriveSetup CDPlayer Expander
+	Icon-O-Matic Installer LaunchBox Magnify Mail MediaConverter MediaPlayer
+	MidiPlayer NetworkStatus PackageInstaller People PoorMan PowerStatus
+	ProcessController Screenshot ShowImage SoundRecorder StyledEdit Terminal
+	TextSearch TV Workspaces
 ;
 SYSTEM_PREFERENCES = Appearance Backgrounds CPUFrequency DataTranslations
 	<preference>Deskbar E-mail FileTypes Fonts Keyboard Keymap Locale Media
-	Mouse Network Notifications OpenGL Printers Screen ScreenSaver Shortcuts Sounds Time
-	Touchpad <preference>Tracker VirtualMemory
+	Mouse Network Notifications OpenGL Printers Screen ScreenSaver Shortcuts
+	Sounds Time Touchpad <preference>Tracker VirtualMemory
 ;
 SYSTEM_DEMOS = BSnow Chart Clock Cortex FontDemo GLTeapot
-	$(HAIKU_INCLUDE_TRADEMARKS)Haiku3d Mandelbrot Pairs Playground Pulse Sudoku
+	$(HAIKU_INCLUDE_TRADEMARKS)Haiku3d Mandelbrot OverlayImage Pairs Playground
+	Pulse Sudoku
 ;
 SYSTEM_LIBS =
 	libbe.so libbsd.so libbnetapi.so
@@ -94,6 +96,7 @@ SYSTEM_LIBS =
 	$(HAIKU_SHARED_LIBSTDC++) $(HAIKU_SHARED_LIBSUPC++)
 ;
 PRIVATE_SYSTEM_LIBS =
+	libalm.so
 	libfluidsynth.so
 	libilmimf.so
 	liblpsolve55.so
@@ -152,10 +155,10 @@ SYSTEM_ADD_ONS_PRINT =
 SYSTEM_ADD_ONS_PRINT_TRANSPORT = HP\ JetDirect IPP LPR Parallel\ Port
 	Print\ To\ File Serial\ Port USB\ Port
 ;
-SYSTEM_ADD_ONS_SCREENSAVERS = DebugNow Flurry
-	$(HAIKU_INCLUDE_TRADEMARKS)Haiku Icons IFS Spider Message ;
-SYSTEM_ADD_ONS_DRIVERS_AUDIO = auich auvia echo3g emuxki hda ;
-SYSTEM_ADD_ONS_DRIVERS_AUDIO_OLD = ; #cmedia sis7018 usb_audio ;
+SYSTEM_ADD_ONS_SCREENSAVERS = Butterfly DebugNow Flurry
+	$(HAIKU_INCLUDE_TRADEMARKS)Haiku Icons IFS Leaves Message Spider ;
+SYSTEM_ADD_ONS_DRIVERS_AUDIO = auich auvia echo3g emuxki hda sis7018 ;
+SYSTEM_ADD_ONS_DRIVERS_AUDIO_OLD = ; #cmedia usb_audio ;
 SYSTEM_ADD_ONS_DRIVERS_GRAPHICS = $(X86_ONLY)radeon $(X86_ONLY)nvidia
 	$(X86_ONLY)neomagic $(X86_ONLY)matrox $(X86_ONLY)intel_extreme
 	$(X86_ONLY)s3 $(X86_ONLY)vesa #$(X86_ONLY)via #$(X86_ONLY)vmware
@@ -181,8 +184,8 @@ SYSTEM_ADD_ONS_DRIVERS_NET = $(X86_ONLY)3com $(X86_ONLY)atheros813x
 SYSTEM_ADD_ONS_BUS_MANAGERS =  $(ATA_ONLY)ata pci $(X86_ONLY)ps2 $(X86_ONLY)isa
 	$(IDE_ONLY)ide scsi config_manager agp_gart usb firewire $(X86_ONLY)acpi
 ;
-SYSTEM_ADD_ONS_FILE_SYSTEMS = bfs cdda ext2 fat iso9660 nfs attribute_overlay
-	write_overlay ntfs reiserfs udf googlefs ;
+SYSTEM_ADD_ONS_FILE_SYSTEMS = bfs btrfs cdda ext2 fat iso9660 nfs
+	attribute_overlay write_overlay ntfs reiserfs udf googlefs ;
 
 # wifi firmware
 for driver in $(SYSTEM_ADD_ONS_DRIVERS_NET) {
@@ -225,7 +228,7 @@ AddFilesToHaikuImage system add-ons kernel busses usb
 	: <usb>uhci <usb>ohci <usb>ehci ;
 AddFilesToHaikuImage system add-ons kernel console : vga_text ;
 AddFilesToHaikuImage system add-ons kernel debugger
-	: <kdebug>demangle $(X86_ONLY)<kdebug>disasm <kdebug>hangman
+	: <kdebug>demangle $(X86_ONLY)<kdebug>disasm
 	  <kdebug>invalidate_on_exit <kdebug>usb_keyboard <kdebug>run_on_exit ;
 AddFilesToHaikuImage system add-ons kernel file_systems
 	: $(SYSTEM_ADD_ONS_FILE_SYSTEMS) ;
@@ -341,14 +344,13 @@ AddSymlinkToHaikuImage home Desktop : /boot/home : Home ;
 AddDirectoryToHaikuImage home mail draft ;
 AddDirectoryToHaikuImage home mail in ;
 AddDirectoryToHaikuImage home mail out ;
-AddSymlinkToHaikuImage home config settings Mail : ../../../mail/in : mailbox ;
 
 # Deskbar Application links
 AddDirectoryToHaikuImage home config be Applications ;
 DESKBAR_APPLICATIONS = ActivityMonitor CharacterMap CodyCam CDPlayer DeskCalc
 	Devices DiskProbe DriveSetup DiskUsage Expander Icon-O-Matic Installer
-	Magnify	Mail MediaConverter MediaPlayer MidiPlayer People PoorMan Screenshot
-	SoundRecorder StyledEdit Terminal TV
+	Magnify	Mail MediaConverter MediaPlayer MidiPlayer People PoorMan
+	Screenshot SoundRecorder StyledEdit Terminal TV
 ;
 local linkTarget ;
 for linkTarget in $(DESKBAR_APPLICATIONS) {
@@ -522,10 +524,8 @@ AddFilesToHaikuHybridImage system add-ons locale catalogs
 AddFilesToHaikuImage system add-ons mail_daemon inbound_protocols : POP3 IMAP ;
 AddFilesToHaikuImage system add-ons mail_daemon outbound_protocols : SMTP ;
 AddFilesToHaikuImage system add-ons mail_daemon inbound_filters
-	: Match\ Header Spam\ Filter R5\ Daemon\ Filter ;
+	: MatchHeader SpamFilter NewMailNotification ;
 AddFilesToHaikuImage system add-ons mail_daemon outbound_filters : Fortune ;
-AddFilesToHaikuImage system add-ons mail_daemon system_filters
-	: Inbox New\ mail\ notification Outbox Message\ Parser ;
 AddFilesToHaikuImage system add-ons media : $(SYSTEM_ADD_ONS_MEDIA) ;
 AddFilesToHaikuImage system add-ons media plugins
 	: $(SYSTEM_ADD_ONS_MEDIA_PLUGINS) ;
@@ -609,6 +609,11 @@ CopyDirectoryToHaikuImage system data
 CopyDirectoryToHaikuImage common data
 	: [ FDirName $(HAIKU_TOP) src libs print libgutenprint src xml ]
 	: gutenprint : -x .svn -x *.c -x Makefile.am -x Makefile.in ;
+
+# dvb channel settings
+CopyDirectoryToHaikuImage home config settings Media
+	: [ FDirName $(HAIKU_TOP) data settings media dvb ]
+	: dvb : -x .svn -x Jamfile ;
 
 # licenses
 CopyDirectoryToHaikuImage system data
@@ -738,7 +743,7 @@ UserBuildConfigRulePreImage	;
 HAIKU_IMAGE_NAME ?= $(HAIKU_DEFAULT_IMAGE_NAME) ;
 HAIKU_IMAGE_DIR ?= $(HAIKU_DEFAULT_IMAGE_DIR) ;
 HAIKU_IMAGE = $(HAIKU_IMAGE_NAME) ;
-HAIKU_IMAGE_SIZE ?= $(HAIKU_DEFAULT_IMAGE_SIZE) ; # 220 MB
+HAIKU_IMAGE_SIZE ?= $(HAIKU_DEFAULT_IMAGE_SIZE) ; # 230 MB
 HAIKU_IMAGE_LABEL ?= $(HAIKU_DEFAULT_IMAGE_LABEL) ;
 MakeLocate $(HAIKU_IMAGE) : $(HAIKU_IMAGE_DIR) ;
 

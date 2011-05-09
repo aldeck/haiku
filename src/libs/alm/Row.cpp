@@ -9,12 +9,14 @@
 #include "Row.h"
 
 #include "ALMLayout.h"
-#include "OperatorType.h"
 #include "Tab.h"
 
 #include <SupportDefs.h>
 
-	
+
+using namespace LinearProgramming;
+
+
 /**
  * The top boundary of the row.
  */
@@ -159,8 +161,8 @@ Constraint*
 Row::HasSameHeightAs(Row* row)
 {
 	Constraint* constraint = fLS->AddConstraint(
-		-1.0, Top(), 1.0, Bottom(), 1.0, row->Top(), -1.0, row->Bottom(),
-		OperatorType(EQ), 0.0);
+		-1.0, Top(), 1.0, Bottom(), 1.0, row->Top(), -1.0, row->Bottom(), kEQ,
+		0.0);
 	fConstraints.AddItem(constraint);
 	return constraint;
 }

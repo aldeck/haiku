@@ -1,0 +1,46 @@
+1	swedish	x-vnd.Haiku-PowerStatus	51899741
+About	PowerStatus		om
+About…	PowerStatus		Om...
+Battery charging	PowerStatus		Laddar batteri
+Battery discharging	PowerStatus		Laddar ur batteriet
+Battery info	PowerStatus		Batteriinformation
+Battery info…	PowerStatus		Batteriinformation...
+Battery unused	PowerStatus		Batteri oanvänt
+Capacity granularity 1: 	PowerStatus		Kapacitetskornighet 1:
+Capacity granularity 2: 	PowerStatus		Kapacitetskornighet 2:
+Capacity: 	PowerStatus		Kapacitet:
+Current rate: 	PowerStatus		Nuvarande värde:
+Design capacity low warning: 	PowerStatus		Varning för låg tillverkningskapacitet:
+Design capacity warning: 	PowerStatus		Varning för låg tillverkningskapacitet:
+Design capacity: 	PowerStatus		Tillverkningskapacitet:
+Design voltage: 	PowerStatus		Tillverkningsspänning:
+Empty battery slot	PowerStatus		Tomt batterifack
+Extended battery info	PowerStatus		Ytterligare batteriinformation
+Install in Deskbar	PowerStatus		Installera i Deskbar
+Last full charge: 	PowerStatus		Senast fulladdad:
+Model number: 	PowerStatus		Modellnummer:
+OEM info: 	PowerStatus		OEM information:
+OK	PowerStatus		OK
+Power status box	PowerStatus		Batteristatus
+PowerStatus	PowerStatus		Batteristatus
+PowerStatus\nwritten by Axel Dörfler, Clemens Zeidler\nCopyright 2006, Haiku, Inc.\n	PowerStatus		Batteristatus\nskrivet av Axel Dörfler, Clemens Zeidler\nCopyright 2006, Haiku, Inc.\n
+Quit	PowerStatus		Avsluta
+Run in window	PowerStatus		Kör i fönster
+Serial number: 	PowerStatus		Serienummer:
+Show percent	PowerStatus		Visa procent
+Show status icon	PowerStatus		Visa statusikon
+Show text label	PowerStatus		Visa textetikett
+Show time	PowerStatus		Visa tid
+Technology: 	PowerStatus		Teknik:
+Type: 	PowerStatus		Typ:
+You can run PowerStatus in a window or install it in the Deskbar.	PowerStatus		Du kan köra Batteristatus i ett fönster eller i Deskbar.
+charging	PowerStatus		laddar
+discharging	PowerStatus		laddar ur
+mA	PowerStatus		mA
+mAh	PowerStatus		mAh
+mV	PowerStatus		mV
+mW	PowerStatus		mW
+mWh	PowerStatus		mWh
+no battery	PowerStatus		inget batteri
+non-rechargeable	PowerStatus		Ej uppladdningsbar
+rechargeable	PowerStatus		uppladdningsbart

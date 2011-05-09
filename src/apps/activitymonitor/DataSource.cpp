@@ -9,10 +9,14 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include <Catalog.h>
 #include <OS.h>
 #include <String.h>
 
 #include "SystemInfo.h"
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "DataSource"
 
 
 const DataSource* kSources[] = {
@@ -286,7 +290,7 @@ void
 MemoryDataSource::Print(BString& text, int64 value) const
 {
 	char buffer[32];
-	snprintf(buffer, sizeof(buffer), "%.1f MB", value / 1048576.0);
+	snprintf(buffer, sizeof(buffer), B_TRANSLATE("%.1f MB"), value / 1048576.0);
 
 	text = buffer;
 }
@@ -295,7 +299,7 @@ MemoryDataSource::Print(BString& text, int64 value) const
 const char*
 MemoryDataSource::Unit() const
 {
-	return "MB";
+	return B_TRANSLATE("MB");
 }
 
 
@@ -329,14 +333,14 @@ UsedMemoryDataSource::NextValue(SystemInfo& info)
 const char*
 UsedMemoryDataSource::Label() const
 {
-	return "Used memory";
+	return B_TRANSLATE("Used memory");
 }
 
 
 const char*
 UsedMemoryDataSource::ShortLabel() const
 {
-	return "Memory";
+	return B_TRANSLATE("Memory");
 }
 
 
@@ -378,14 +382,14 @@ CachedMemoryDataSource::NextValue(SystemInfo& info)
 const char*
 CachedMemoryDataSource::Label() const
 {
-	return "Cached memory";
+	return B_TRANSLATE("Cached memory");
 }
 
 
 const char*
 CachedMemoryDataSource::ShortLabel() const
 {
-	return "Cache";
+	return B_TRANSLATE("Cache");
 }
 
 
@@ -430,14 +434,14 @@ SwapSpaceDataSource::NextValue(SystemInfo& info)
 const char*
 SwapSpaceDataSource::Label() const
 {
-	return "Swap space";
+	return B_TRANSLATE("Swap space");
 }
 
 
 const char*
 SwapSpaceDataSource::ShortLabel() const
 {
-	return "Swap";
+	return B_TRANSLATE("Swap");
 }
 
 
@@ -485,14 +489,14 @@ BlockCacheDataSource::NextValue(SystemInfo& info)
 const char*
 BlockCacheDataSource::Label() const
 {
-	return "Block cache memory";
+	return B_TRANSLATE("Block cache memory");
 }
 
 
 const char*
 BlockCacheDataSource::ShortLabel() const
 {
-	return "Block cache";
+	return B_TRANSLATE("Block cache");
 }
 
 
@@ -532,14 +536,14 @@ SemaphoresDataSource::NextValue(SystemInfo& info)
 const char*
 SemaphoresDataSource::Label() const
 {
-	return "Semaphores";
+	return B_TRANSLATE("Semaphores");
 }
 
 
 const char*
 SemaphoresDataSource::ShortLabel() const
 {
-	return "Sems";
+	return B_TRANSLATE("Sems");
 }
 
 
@@ -586,7 +590,7 @@ PortsDataSource::NextValue(SystemInfo& info)
 const char*
 PortsDataSource::Label() const
 {
-	return "Ports";
+	return B_TRANSLATE("Ports");
 }
 
 
@@ -633,7 +637,7 @@ ThreadsDataSource::NextValue(SystemInfo& info)
 const char*
 ThreadsDataSource::Label() const
 {
-	return "Threads";
+	return B_TRANSLATE("Threads");
 }
 
 
@@ -680,7 +684,7 @@ TeamsDataSource::NextValue(SystemInfo& info)
 const char*
 TeamsDataSource::Label() const
 {
-	return "Teams";
+	return B_TRANSLATE("Teams");
 }
 
 
@@ -727,14 +731,14 @@ RunningAppsDataSource::NextValue(SystemInfo& info)
 const char*
 RunningAppsDataSource::Label() const
 {
-	return "Running applications";
+	return B_TRANSLATE("Running applications");
 }
 
 
 const char*
 RunningAppsDataSource::ShortLabel() const
 {
-	return "Apps";
+	return B_TRANSLATE("Apps");
 }
 
 
@@ -839,7 +843,7 @@ CPUUsageDataSource::ShortLabel() const
 const char*
 CPUUsageDataSource::Name() const
 {
-	return "CPU usage";
+	return B_TRANSLATE("CPU usage");
 }
 
 
@@ -868,12 +872,12 @@ void
 CPUUsageDataSource::_SetCPU(int32 cpu)
 {
 	fCPU = cpu;
-	fLabel = "CPU";
+	fLabel = B_TRANSLATE("CPU");
 	if (SystemInfo().CPUCount() > 1)
 		fLabel << " " << cpu + 1;
-
 	fShortLabel = fLabel;
-	fLabel << " usage";
+	
+	fLabel << " " << B_TRANSLATE("usage");
 
 	const rgb_color kColors[B_MAX_CPU_COUNT] = {
 		// TODO: find some better defaults...
@@ -967,21 +971,21 @@ CPUCombinedUsageDataSource::NextValue(SystemInfo& info)
 const char*
 CPUCombinedUsageDataSource::Label() const
 {
-	return "CPU usage";
+	return B_TRANSLATE("CPU usage");
 }
 
 
 const char*
 CPUCombinedUsageDataSource::ShortLabel() const
 {
-	return "CPU";
+	return B_TRANSLATE("CPU");
 }
 
 
 const char*
 CPUCombinedUsageDataSource::Name() const
 {
-	return "CPU usage (combined)";
+	return B_TRANSLATE("CPU usage (combined)");
 }
 
 
@@ -1041,7 +1045,8 @@ void
 PageFaultsDataSource::Print(BString& text, int64 value) const
 {
 	char buffer[32];
-	snprintf(buffer, sizeof(buffer), "%.1f faults/s", value / 1024.0);
+	snprintf(buffer, sizeof(buffer), B_TRANSLATE("%.1f faults/s"),
+		value / 1024.0);
 
 	text = buffer;
 }
@@ -1065,21 +1070,21 @@ PageFaultsDataSource::NextValue(SystemInfo& info)
 const char*
 PageFaultsDataSource::Label() const
 {
-	return "Page faults";
+	return B_TRANSLATE("Page faults");
 }
 
 
 const char*
 PageFaultsDataSource::ShortLabel() const
 {
-	return "P-faults";
+	return B_TRANSLATE("P-faults");
 }
 
 
 const char*
 PageFaultsDataSource::Name() const
 {
-	return "Page faults";
+	return B_TRANSLATE("Page faults");
 }
 
 
@@ -1142,7 +1147,7 @@ void
 NetworkUsageDataSource::Print(BString& text, int64 value) const
 {
 	char buffer[32];
-	snprintf(buffer, sizeof(buffer), "%.1f KB/s", value / 1024.0);
+	snprintf(buffer, sizeof(buffer), B_TRANSLATE("%.1f KB/s"), value / 1024.0);
 
 	text = buffer;
 }
@@ -1166,21 +1171,22 @@ NetworkUsageDataSource::NextValue(SystemInfo& info)
 const char*
 NetworkUsageDataSource::Label() const
 {
-	return fIn ? "Receiving" : "Sending";
+	return fIn ? B_TRANSLATE("Receiving") : B_TRANSLATE("Sending");
 }
 
 
 const char*
 NetworkUsageDataSource::ShortLabel() const
 {
-	return fIn ? "RX" : "TX";
+	return fIn ? B_TRANSLATE_COMMENT("RX", "Shorter version for Receiving.") : 
+		B_TRANSLATE_COMMENT("TX", "Shorter version for Sending");
 }
 
 
 const char*
 NetworkUsageDataSource::Name() const
 {
-	return fIn ? "Network receive" : "Network send";
+	return fIn ? B_TRANSLATE("Network receive") : B_TRANSLATE("Network send");
 }
 
 
@@ -1250,7 +1256,8 @@ ClipboardSizeDataSource::NextValue(SystemInfo& info)
 const char*
 ClipboardSizeDataSource::Label() const
 {
-	return fText ? "Text clipboard size" : "Raw clipboard size";
+	return fText ?
+		B_TRANSLATE("Text clipboard size") : B_TRANSLATE("Raw clipboard size");
 }
 
 
@@ -1304,7 +1311,7 @@ MediaNodesDataSource::NextValue(SystemInfo& info)
 const char*
 MediaNodesDataSource::Label() const
 {
-	return "Media nodes";
+	return B_TRANSLATE("Media nodes");
 }
 
 

@@ -14,7 +14,6 @@
 
 #include "Device.h"
 
-
 struct Attribute;
 
 enum {
@@ -40,7 +39,7 @@ private:
 
 class PropertyList : public BColumnListView {
 public:
-					PropertyList(const char* name = "Properties");
+					PropertyList(const char* name);
 	virtual			~PropertyList();
 			void	RemoveAll();
 			void	AddAttributes(const Attributes& attributes);
@@ -49,3 +48,4 @@ protected:
 };
 
 #endif /* PROPERTYLIST_H*/
+

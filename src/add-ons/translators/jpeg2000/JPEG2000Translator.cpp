@@ -35,10 +35,15 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "jpc_cs.h"
 #include "TranslatorWindow.h"
 
+#include <syslog.h>
+
 #include <GroupLayoutBuilder.h>
 #include <TabView.h>
 #include <TextView.h>
 
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "JPEG2000Translator"
 
 // Set these accordingly
 #define JP2_ACRONYM "JP2"
@@ -50,47 +55,46 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define B_TRANSLATOR_BITMAP_MIME_STRING "image/x-be-bitmap"
 #define B_TRANSLATOR_BITMAP_DESCRIPTION "Be Bitmap Format (JPEG2000Translator)"
 
-const char gTranslatorName[] = "JPEG2000 images";
-const char gTranslatorInfo[] = "©2002-2003, Shard\n"
+static int32 sTranslatorVersion = B_TRANSLATION_MAKE_VERSION(1, 0, 0);
+
+static const char* sTranslatorName = B_TRANSLATE("JPEG2000 images");
+static const char* sTranslatorInfo = B_TRANSLATE("©2002-2003, Shard\n"
 	"©2005-2006, Haiku\n"
 	"\n"
 	"Based on JasPer library:\n"
 	"© 1999-2000, Image Power, Inc. and\n"
 	"the University of British Columbia, Canada.\n"
 	"© 2001-2003 Michael David Adams.\n"
-	"          http://www.ece.uvic.ca/~mdadams/jasper/\n"
+	"\thttp://www.ece.uvic.ca/~mdadams/jasper/\n"
 	"\n"
 	"ImageMagick's jp2 codec was used as \"tutorial\".\n"
-	"          http://www.imagemagick.org/\n";
+	"\thttp://www.imagemagick.org/\n");
 
-int32 gTranslatorVersion = B_TRANSLATION_MAKE_VERSION(1, 0, 0);
-
-translation_format gInputFormats[] = {
+static const translation_format sInputFormats[] = {
 	{ JP2_FORMAT, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		JP2_MIME_STRING, JP2_DESCRIPTION },
 	{ B_TRANSLATOR_BITMAP, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		B_TRANSLATOR_BITMAP_MIME_STRING, B_TRANSLATOR_BITMAP_DESCRIPTION },
 };
-const int gInputFormatCount =
-	sizeof(gInputFormats) / sizeof(translation_format);
 
-translation_format gOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	{ JP2_FORMAT, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		JP2_MIME_STRING, JP2_DESCRIPTION },
 	{ B_TRANSLATOR_BITMAP, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		B_TRANSLATOR_BITMAP_MIME_STRING, B_TRANSLATOR_BITMAP_DESCRIPTION },
 };
-const int gOutputFormatCount =
-	 sizeof(gOutputFormats) / sizeof(translation_format);
 
 
-TranSetting gSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{JP2_SET_QUALITY, TRAN_SETTING_INT32, 25},
 	{JP2_SET_JPC, TRAN_SETTING_BOOL, false},
 	{JP2_SET_GRAY1_AS_B_RGB24, TRAN_SETTING_BOOL, false},
 	{JP2_SET_GRAY8_AS_B_RGB32, TRAN_SETTING_BOOL, true}
 };
-const int gSettingsCount = sizeof(gSettings) / sizeof(TranSetting) ;
+
+const uint32 kNumInputFormats = sizeof(sInputFormats) / sizeof(translation_format);
+const uint32 kNumOutputFormats = sizeof(sOutputFormats) / sizeof(translation_format);
+const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting);
 
 
 namespace conversion{
@@ -492,7 +496,7 @@ static jas_stream_ops_t positionIOops = {
 };
 
 
-static jas_stream_t* 
+static jas_stream_t*
 jas_stream_positionIOopen(BPositionIO *positionIO)
 {
 	jas_stream_t* stream;
@@ -555,7 +559,8 @@ TranslatorReadView::TranslatorReadView(const char* name,
 	BView(name, 0, new BGroupLayout(B_VERTICAL)),
 	fSettings(settings)
 {
-	fGrayAsRGB32 = new BCheckBox("grayasrgb32", VIEW_LABEL_GRAYASRGB32,
+	fGrayAsRGB32 = new BCheckBox("grayasrgb32",
+		B_TRANSLATE("Read greyscale images as RGB32"),
 		new BMessage(VIEW_MSG_SET_GRAYASRGB32));
 	if (fSettings->SetGetBool(JP2_SET_GRAY8_AS_B_RGB32))
 		fGrayAsRGB32->SetValue(B_CONTROL_ON);
@@ -612,23 +617,25 @@ TranslatorWriteView::TranslatorWriteView(const char* name,
 	BView(name, 0, new BGroupLayout(B_VERTICAL)),
 	fSettings(settings)
 {
-	fQualitySlider = new SSlider("quality", VIEW_LABEL_QUALITY,
+	fQualitySlider = new SSlider("quality", B_TRANSLATE("Output quality"),
 		new BMessage(VIEW_MSG_SET_QUALITY), 0, 100);
 	fQualitySlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
 	fQualitySlider->SetHashMarkCount(10);
-	fQualitySlider->SetLimitLabels("Low", "High");
+	fQualitySlider->SetLimitLabels(B_TRANSLATE("Low"), B_TRANSLATE("High"));
 	fQualitySlider->SetValue(fSettings->SetGetInt32(JP2_SET_QUALITY));
 
-	fGrayAsRGB24 = new BCheckBox("gray1asrgb24", VIEW_LABEL_GRAY1ASRGB24,
+	fGrayAsRGB24 = new BCheckBox("gray1asrgb24",
+		B_TRANSLATE("Write black-and-white images as RGB24"),
 		new BMessage(VIEW_MSG_SET_GRAY1ASRGB24));
 	if (fSettings->SetGetBool(JP2_SET_GRAY1_AS_B_RGB24))
 		fGrayAsRGB24->SetValue(B_CONTROL_ON);
 
-	fCodeStreamOnly = new BCheckBox("codestreamonly", VIEW_LABEL_JPC,
+	fCodeStreamOnly = new BCheckBox("codestreamonly",
+		B_TRANSLATE("Output only codestream (.jpc)"),
 		new BMessage(VIEW_MSG_SET_JPC));
 	if (fSettings->SetGetBool(JP2_SET_JPC))
 		fCodeStreamOnly->SetValue(B_CONTROL_ON);
-	
+
 	float padding = 10.0f;
 	AddChild(BGroupLayoutBuilder(B_VERTICAL, padding)
 		.Add(fQualitySlider)
@@ -703,22 +710,24 @@ TranslatorAboutView::TranslatorAboutView(const char* name)
 	BView(name, 0, new BGroupLayout(B_VERTICAL))
 {
 	BAlignment labelAlignment = BAlignment(B_ALIGN_LEFT, B_ALIGN_TOP);
-	BStringView* title = new BStringView("Title", gTranslatorName);
+	BStringView* title = new BStringView("Title", sTranslatorName);
 	title->SetFont(be_bold_font);
 	title->SetExplicitAlignment(labelAlignment);
 
 	char versionString[16];
-	sprintf(versionString, "v%d.%d.%d", (int)(gTranslatorVersion >> 8),
-		(int)((gTranslatorVersion >> 4) & 0xf), (int)(gTranslatorVersion & 0xf));
+	sprintf(versionString, "v%d.%d.%d", 
+		static_cast<int>(sTranslatorVersion >> 8), 
+		static_cast<int>((sTranslatorVersion >> 4) & 0xf),
+		static_cast<int>(sTranslatorVersion & 0xf));
 
 	BStringView* version = new BStringView("Version", versionString);
 	version->SetExplicitAlignment(labelAlignment);
 
-	BTextView* infoView = new BTextView("info");	
-	infoView->SetText(gTranslatorInfo);
+	BTextView* infoView = new BTextView("info");
+	infoView->SetText(sTranslatorInfo);
 	infoView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 	infoView->MakeEditable(false);
-	
+
 	float padding = 10.0f;
 	AddChild(BGroupLayoutBuilder(B_VERTICAL, padding)
 		.Add(BGroupLayoutBuilder(B_HORIZONTAL, padding)
@@ -739,9 +748,11 @@ TranslatorView::TranslatorView(const char* name, TranslatorSettings* settings)
 	:
 	BTabView(name)
 {
-	AddTab(new TranslatorWriteView("Write", settings->Acquire()));
-	AddTab(new TranslatorReadView("Read", settings->Acquire()));
-	AddTab(new TranslatorAboutView("About"));
+	AddTab(new TranslatorWriteView(B_TRANSLATE("Write"), 
+		settings->Acquire()));
+	AddTab(new TranslatorReadView(B_TRANSLATE("Read"), 
+		settings->Acquire()));
+	AddTab(new TranslatorAboutView(B_TRANSLATE("About")));
 
 	settings->Release();
 
@@ -763,11 +774,12 @@ JP2Translator::NewConfigView(TranslatorSettings* settings)
 
 
 JP2Translator::JP2Translator()
-	:
-	BaseTranslator(gTranslatorName, gTranslatorInfo, gTranslatorVersion,
-		gInputFormats, gInputFormatCount,
-		gOutputFormats, gOutputFormatCount, JP2_SETTINGS_FILE,
-		gSettings, gSettingsCount, B_TRANSLATOR_BITMAP, JP2_FORMAT)
+	: BaseTranslator(sTranslatorName, sTranslatorInfo, sTranslatorVersion,
+		sInputFormats, kNumInputFormats,
+		sOutputFormats, kNumOutputFormats,
+		JP2_SETTINGS_FILE,
+		sDefaultSettings, kNumDefaultSettings,
+		B_TRANSLATOR_BITMAP, JP2_FORMAT)
 {
 }
 
@@ -985,7 +997,7 @@ JP2Translator::Compress(BPositionIO* in, BPositionIO* out)
 			break;
 
 		default:
-			fprintf(stderr, "Unknown color space.\n");
+			syslog(LOG_ERR, "Unknown color space.\n");
 			return B_ERROR;
 	}
 
@@ -1048,7 +1060,7 @@ JP2Translator::Compress(BPositionIO* in, BPositionIO* out)
 		(float)fSettings->SetGetInt32(JP2_SET_QUALITY) / 100.0);
 
 	if (jas_image_encode(image, outs, jas_image_strtofmt(
-			fSettings->SetGetBool(JP2_SET_JPC) ? 
+			fSettings->SetGetBool(JP2_SET_JPC) ?
 				(char*)"jpc" : (char*)"jp2"), opts)) {
 		return Error(outs, image, pixels,
 			out_color_components, in_scanline, err);
@@ -1106,7 +1118,8 @@ JP2Translator::Decompress(BPositionIO* in, BPositionIO* out)
 				out_color_space = B_RGBA32;
 				converter = read_rgba32;
 			} else {
-				fprintf(stderr, "Other than RGB with 3 or 4 color components not implemented.\n");
+				syslog(LOG_ERR, "Other than RGB with 3 or 4 color "
+					"components not implemented.\n");
 				return Error(ins, image, NULL, 0, NULL, B_ERROR);
 			}
 			break;
@@ -1122,12 +1135,12 @@ JP2Translator::Decompress(BPositionIO* in, BPositionIO* out)
 			}
 			break;
 		case JAS_IMAGE_CS_YCBCR:
-			fprintf(stderr, "Color space YCBCR not implemented yet.\n");
+			syslog(LOG_ERR, "Color space YCBCR not implemented yet.\n");
 			return Error(ins, image, NULL, 0, NULL, B_ERROR);
 			break;
 		case JAS_IMAGE_CS_UNKNOWN:
 		default:
-			fprintf(stderr, "Color space unkown. \n");
+			syslog(LOG_ERR, "Color space unknown. \n");
 			return Error(ins, image, NULL, 0, NULL, B_ERROR);
 			break;
 	}
@@ -1233,8 +1246,15 @@ JP2Translator::PopulateInfoFromFormat(translator_info* info,
 			info->group = formats[i].group;
 			info->quality = formats[i].quality;
 			info->capability = formats[i].capability;
-			strcpy(info->name, formats[i].name);
-			strcpy(info->MIME,  formats[i].MIME);
+			if (strncmp(formats[i].name, 
+				"Be Bitmap Format (JPEG2000Translator)", 
+				sizeof("Be Bitmap Format (JPEG2000Translator)")) == 0) 
+				strncpy(info->name, 
+					B_TRANSLATE("Be Bitmap Format (JPEG2000Translator)"), 
+					sizeof(info->name));
+			else
+				strncpy(info->name, formats[i].name, sizeof(info->name));			
+			strncpy(info->MIME,  formats[i].MIME, sizeof(info->MIME));
 			return B_OK;
 		}
 	}
@@ -1287,7 +1307,7 @@ main()
 {
 	BApplication app("application/x-vnd.Haiku-JPEG2000Translator");
 	JP2Translator* translator = new JP2Translator();
-	if (LaunchTranslatorWindow(translator, gTranslatorName) == B_OK)
+	if (LaunchTranslatorWindow(translator, sTranslatorName) == B_OK)
 		app.Run();
 
 	return 0;

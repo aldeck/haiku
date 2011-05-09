@@ -6,7 +6,7 @@ SubDirSysHdrs [ FDirName $(SUBDIR) libjasper ] ;
 
 SubDirHdrs [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;
 	#for BaseTranslator.h and friends
-
+	
 # Exclude unwanted formats
 CCFLAGS += -DEXCLUDE_MIF_SUPPORT
 	-DEXCLUDE_PNM_SUPPORT
@@ -62,6 +62,8 @@ local jasper_files =
 
 ObjectCcFlags [ FGristFiles $(jasper_files:S=$(SUFOBJ)) ] : -w ;
 
+AddResources JPEG2000Translator : JPEG2000Translator.rdef ;
+
 Translator JPEG2000Translator :
 
 	# JPEG2000Translator
@@ -72,6 +74,13 @@ Translator JPEG2000Translator :
 	: be translation libtranslatorsutils.a $(TARGET_LIBSUPC++)
 	$(HAIKU_LOCALE_LIBS)
 	: true
+;
+
+DoCatalogs JPEG2000Translator :
+	x-vnd.Haiku-JPEG2000Translator
+	:
+	JPEG2000Translator.h
+	JPEG2000Translator.cpp
 ;
 
 Package haiku-translationkit-cvs :

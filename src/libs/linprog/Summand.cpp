@@ -57,12 +57,19 @@ Summand::SetVar(Variable* var)
 }
 
 
+int32
+Summand::VariableIndex()
+{
+	return fVar->Index();
+}
+
+
 /**
  * Destructor.
  */
 Summand::~Summand()
 {
-  fVar->fUsingSummands.RemoveItem(this);
+
 }
 
 
@@ -74,5 +81,4 @@ Summand::Summand(double coeff, Variable* var)
 	fCoeff = coeff;
 	fVar = var;
 	fUsedInPenaltyFunction = false;
-	fVar->fUsingSummands.AddItem(this);
 }

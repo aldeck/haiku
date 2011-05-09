@@ -60,6 +60,7 @@ enum {
 	RP_COPY_RECT_NO_CLIPPING,
 	RP_INVERT_RECT,
 	RP_DRAW_BITMAP,
+	RP_DRAW_BITMAP_RECTS,
 
 	RP_STROKE_ARC = 80,
 	RP_STROKE_BEZIER,
@@ -132,6 +133,7 @@ public:
 
 		void					Start(uint16 code);
 		status_t				Flush();
+		void					Cancel();
 
 		status_t				NextMessage(uint16& code);
 		uint16					Code() { return fCode; }
@@ -145,7 +147,8 @@ public:
 		void					AddGradient(const BGradient& gradient);
 
 #ifndef CLIENT_COMPILE
-		void					AddBitmap(const ServerBitmap& bitmap);
+		void					AddBitmap(const ServerBitmap& bitmap,
+									bool minimal = false);
 		void					AddFont(const ServerFont& font);
 		void					AddPattern(const Pattern& pattern);
 		void					AddDrawState(const DrawState& drawState);
@@ -168,7 +171,10 @@ public:
 									// sets viewstate and returns pattern
 
 		status_t				ReadString(char** _string, size_t& length);
-		status_t				ReadBitmap(BBitmap** _bitmap);
+		status_t				ReadBitmap(BBitmap** _bitmap,
+									bool minimal = false,
+									color_space colorSpace = B_RGB32,
+									uint32 flags = 0);
 		status_t				ReadGradient(BGradient** _gradient);
 		status_t				ReadArrayLine(BPoint& startPoint,
 									BPoint& endPoint, rgb_color& color);

@@ -241,7 +241,7 @@ BPrintJob::BeginJob()
 
 	// TODO: fSpoolFileName should store the name only (not path which can be
 	// 1024 bytes long)
-	strncpy(fSpoolFileName, path.Path(), sizeof(fSpoolFileName));
+	strlcpy(fSpoolFileName, path.Path(), sizeof(fSpoolFileName));
 	fSpoolFile = new BFile(fSpoolFileName, B_READ_WRITE | B_CREATE_FILE);
 
 	if (fSpoolFile->InitCheck() != B_OK) {
@@ -527,16 +527,18 @@ BPrintJob::_RecurseView(BView* view, BPoint origin, BPicture* picture,
 		view->SetHighColor(highColor);
 	}
 
-	view->fIsPrinting = true;
-	view->Draw(rect);
-	view->fIsPrinting = false;
+	if ((view->Flags() & B_WILL_DRAW) != 0) {
+		view->fIsPrinting = true;
+		view->Draw(rect);
+		view->fIsPrinting = false;
+	}
 
 	view->PopState();
 	view->EndPicture();
 
 	BView* child = view->ChildAt(0);
 	while (child != NULL) {
-		if ((child->Flags() & B_WILL_DRAW) && !child->IsHidden()) {
+		if (!child->IsHidden()) {
 			BPoint leftTop(view->Bounds().LeftTop() + child->Frame().LeftTop());
 			BRect printRect(rect.OffsetToCopy(rect.LeftTop() - leftTop)
 				& child->Bounds());

@@ -40,17 +40,10 @@ public:
 									BRect frame, window_look look,
 									uint32 flags);
 
-			void 				HighlightTab(bool active, BRegion* dirty);
-			void 				HighlightBorders(bool active, BRegion* dirty);
-			bool				IsTabHighlighted() const
-									{ return fTabHighlighted; }
-			bool				IsBordersHighlighted() const
-									{ return fBordersHighlighted; }
-
 			/*! Indicates that window is stacked */
 			void				SetStackedMode(bool stacked, BRegion* dirty);
 			bool				StackedMode() const
-									{ return fStackedMode; };
+									{ return fStackedMode; }
 
 			/*! Set the tab length if the decorator is in stacked mode and if
 				the tab is the last one in the tab bar. */
@@ -72,9 +65,6 @@ protected:
 									 uint8 highlight, ComponentColors _colors);
 
 private:
-			bool				fTabHighlighted;
-			bool				fBordersHighlighted;
-
 			bool				fStackedMode;
 			bool				fStackedDrawZoom;
 			float				fStackedTabLength;

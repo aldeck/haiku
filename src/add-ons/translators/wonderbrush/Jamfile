@@ -8,6 +8,8 @@ SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src add-ons translators wonderbrush sup
 UseLibraryHeaders zlib ;
 SubDirHdrs [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;
 
+AddResources WonderBrushTranslator : WonderBrushTranslator.rdef ;
+
 Translator WonderBrushTranslator :
 	Canvas.cpp
 	Layer.cpp
@@ -24,6 +26,15 @@ Translator WonderBrushTranslator :
 	: be translation z libtranslatorsutils.a $(TARGET_LIBSUPC++)
 	$(HAIKU_LOCALE_LIBS)
 	: true
+;
+
+DoCatalogs WonderBrushTranslator :
+	x-vnd.Haiku-WonderBrushTranslator
+	:
+	Layer.cpp
+	WonderBrushMain.cpp
+	WonderBrushTranslator.cpp
+	WonderBrushView.cpp
 ;
 
 Package haiku-translationkit-cvs :

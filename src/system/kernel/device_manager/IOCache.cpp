@@ -1,5 +1,5 @@
 /*
- * Copyright 2010, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2010-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -163,7 +163,7 @@ IOCache::ScheduleRequest(IORequest* request)
 	status_t error;
 	IOBuffer* buffer = request->Buffer();
 	if (buffer->IsVirtual()) {
-		error = buffer->LockMemory(request->Team(), request->IsWrite());
+		error = buffer->LockMemory(request->TeamID(), request->IsWrite());
 		if (error != B_OK) {
 			request->SetStatusAndNotify(error);
 			return error;
@@ -178,7 +178,7 @@ IOCache::ScheduleRequest(IORequest* request)
 
 	// unlock memory
 	if (buffer->IsVirtual())
-		buffer->UnlockMemory(request->Team(), request->IsWrite());
+		buffer->UnlockMemory(request->TeamID(), request->IsWrite());
 
 	// set status and notify
 	if (error == B_OK) {
@@ -343,7 +343,7 @@ IOCache::_TransferRequestLine(IORequest* request, off_t lineOffset,
 				pageOffset++) {
 			page_num_t index = pageOffset - firstPageOffset;
 			if (fPages[index] == NULL) {
-				fPages[index] = vm_page_allocate_page( &reservation,
+				fPages[index] = vm_page_allocate_page(&reservation,
 					PAGE_STATE_UNUSED);
 				DEBUG_PAGE_ACCESS_END(fPages[index]);
 			} else {
@@ -381,7 +381,14 @@ IOCache::_TransferRequestLine(IORequest* request, off_t lineOffset,
 				missingPages, false, isVIP);
 			if (error != B_OK) {
 				_DiscardPages(firstMissing - firstPageOffset, missingPages);
-				return error;
+
+				dprintf("IOCache: falling back to uncached transfer, offset %"
+					B_PRIiOFF ", length %" B_PRIuSIZE "\n", requestOffset,
+					requestLength);
+
+				// Try again using an uncached transfer
+				return _TransferRequestLineUncached(request, lineOffset,
+					requestOffset, requestLength);
 			}
 		}
 	}
@@ -392,29 +399,29 @@ IOCache::_TransferRequestLine(IORequest* request, off_t lineOffset,
 			requestOffset, requestLength, true);
 		_CachePages(0, linePageCount);
 		return error;
-	} else {
-		// copy data from request
-		status_t error = _CopyPages(request, requestOffset - lineOffset,
-			requestOffset, requestLength, false);
-		if (error != B_OK) {
-			_DiscardPages(0, linePageCount);
-			return error;
-		}
+	}
 
-		// write the pages to disk
-		page_num_t firstPage = (requestOffset - lineOffset) / B_PAGE_SIZE;
-		page_num_t endPage = (requestOffset + requestLength - lineOffset
-			+ B_PAGE_SIZE - 1) / B_PAGE_SIZE;
-		error = _TransferPages(firstPage, endPage - firstPage, true, isVIP);
-
-		if (error != B_OK) {
-			_DiscardPages(firstPage, endPage - firstPage);
-			return error;
-		}
-
-		_CachePages(0, linePageCount);
+	// copy data from request
+	status_t error = _CopyPages(request, requestOffset - lineOffset,
+		requestOffset, requestLength, false);
+	if (error != B_OK) {
+		_DiscardPages(0, linePageCount);
 		return error;
 	}
+
+	// write the pages to disk
+	page_num_t firstPage = (requestOffset - lineOffset) / B_PAGE_SIZE;
+	page_num_t endPage = (requestOffset + requestLength - lineOffset
+		+ B_PAGE_SIZE - 1) / B_PAGE_SIZE;
+	error = _TransferPages(firstPage, endPage - firstPage, true, isVIP);
+
+	if (error != B_OK) {
+		_DiscardPages(firstPage, endPage - firstPage);
+		return error;
+	}
+
+	_CachePages(0, linePageCount);
+	return error;
 }
 
 

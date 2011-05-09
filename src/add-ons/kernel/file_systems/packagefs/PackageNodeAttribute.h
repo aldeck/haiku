@@ -8,8 +8,10 @@
 
 #include <util/DoublyLinkedList.h>
 
-#include "PackageData.h"
+#include <package/hpkg/PackageData.h>
 
+
+using BPackageKit::BHPKG::BPackageData;
 
 class PackageNode;
 
@@ -18,19 +20,19 @@ class PackageNodeAttribute
 	: public DoublyLinkedListLinkImpl<PackageNodeAttribute> {
 public:
 								PackageNodeAttribute(PackageNode* parent,
-									uint32 type, const PackageData& data);
+									uint32 type, const BPackageData& data);
 								~PackageNodeAttribute();
 
 			PackageNode*		Parent() const	{ return fParent; }
 			const char*			Name() const	{ return fName; }
 			uint32				Type() const	{ return fType; }
-			const PackageData&	Data() const	{ return fData; }
+			const BPackageData&	Data() const	{ return fData; }
 
 			status_t			Init(const char* name);
 
 
 protected:
-			PackageData			fData;
+			BPackageData		fData;
 			PackageNode*		fParent;
 			char*				fName;
 			uint32				fType;

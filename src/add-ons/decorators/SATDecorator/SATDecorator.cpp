@@ -29,15 +29,17 @@
 static const float kResizeKnobSize = 18.0;
 
 static const rgb_color kHighlightFrameColors[6] = {
-	{ 152, 0, 0, 255 },
-	{ 240, 0, 0, 255 },
-	{ 224, 0, 0, 255 },
-	{ 208, 0, 0, 255 },
-	{ 152, 0, 0, 255 },
-	{ 108, 0, 0, 255 }
+	{ 52, 52, 52, 255 },
+	{ 140, 140, 140, 255 },
+	{ 124, 124, 124, 255 },
+	{ 108, 108, 108, 255 },
+	{ 52, 52, 52, 255 },
+	{ 8, 8, 8, 255 }
 };
 
-static const rgb_color kHighlightTabColor	= { 255, 0, 0, 255 };
+static const rgb_color kTabColor = {255, 203, 0, 255};
+static const rgb_color kHighlightTabColor = tint_color(kTabColor,
+	B_DARKEN_2_TINT);
 static const rgb_color kHighlightTabColorLight = tint_color(kHighlightTabColor,
 	(B_LIGHTEN_MAX_TINT + B_LIGHTEN_2_TINT) / 2);
 static const rgb_color kHighlightTabColorBevel = tint_color(kHighlightTabColor,
@@ -84,45 +86,10 @@ SATDecorator::SATDecorator(DesktopSettings& settings, BRect frame,
 	:
 	DefaultDecorator(settings, frame, look, flags),
 
-	fTabHighlighted(false),
-	fBordersHighlighted(false),
-
 	fStackedMode(false),
 	fStackedTabLength(0)
 {
 	fStackedDrawZoom = IsFocus();
-}
-
-
-void
-SATDecorator::HighlightTab(bool active, BRegion* dirty)
-{
-	if (active == fTabHighlighted)
-		return;
-
-	uint8 highlight = active ? HIGHLIGHT_STACK_AND_TILE : 0;
-	SetRegionHighlight(REGION_TAB, highlight, dirty);
-	SetRegionHighlight(REGION_CLOSE_BUTTON, highlight, dirty);
-	SetRegionHighlight(REGION_ZOOM_BUTTON, highlight, dirty);
-
-	fTabHighlighted = active;
-}
-
-
-void
-SATDecorator::HighlightBorders(bool active, BRegion* dirty)
-{
-	if (active == fBordersHighlighted)
-		return;
-
-	uint8 highlight = active ? HIGHLIGHT_STACK_AND_TILE : 0;
-	SetRegionHighlight(REGION_LEFT_BORDER, highlight, dirty);
-	SetRegionHighlight(REGION_RIGHT_BORDER, highlight, dirty);
-	SetRegionHighlight(REGION_TOP_BORDER, highlight, dirty);
-	SetRegionHighlight(REGION_BOTTOM_BORDER, highlight, dirty);
-	SetRegionHighlight(REGION_RIGHT_BOTTOM_CORNER, highlight, dirty);
-
-	fBordersHighlighted = active;
 }
 
 

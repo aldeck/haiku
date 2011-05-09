@@ -128,7 +128,8 @@ ConfigWindow::ConfigWindow(config_setup_kind kind, Printer* defaultPrinter,
 	BWindow(ConfigWindow::GetWindowFrame(),
 		B_TRANSLATE("Page setup"),
 		B_TITLED_WINDOW,
-		B_NOT_RESIZABLE | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS),
+		B_NOT_RESIZABLE | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS
+		| B_CLOSE_ON_ESCAPE),
 	fKind(kind),
 	fDefaultPrinter(defaultPrinter),
 	fSettings(settings),
@@ -523,23 +524,23 @@ ConfigWindow::UpdateUI()
 					== B_OK && copies > 1) {
 					if (printRange) {
 						job = B_TRANSLATE("Page %1 to %2, %3 copies");
-						sprintf(number, "%d", (int)first);
+						snprintf(number, sizeof(number), "%d", (int)first);
 						job.ReplaceFirst("%1", number);
-						sprintf(number, "%d", (int)last);
+						snprintf(number, sizeof(number), "%d", (int)last);
 						job.ReplaceFirst("%2", number);
-						sprintf(number, "%d", (int)copies);
+						snprintf(number, sizeof(number), "%d", (int)copies);
 						job.ReplaceFirst("%3", number);
 					} else {
 						job = B_TRANSLATE("All pages, %1 copies");
-						sprintf(number, "%d", (int)copies);
+						snprintf(number, sizeof(number), "%d", (int)copies);
 						job.ReplaceFirst("%1", number);
 					}
 				} else {
 					if (printRange) {
 						job = B_TRANSLATE("Page %1 to %2");
-						sprintf(number, "%d", (int)first);
+						snprintf(number, sizeof(number), "%d", (int)first);
 						job.ReplaceFirst("%1", number);
-						sprintf(number, "%d", (int)last);
+						snprintf(number, sizeof(number), "%d", (int)last);
 						job.ReplaceFirst("%2", number);
 					} else
 						job = B_TRANSLATE("All pages");

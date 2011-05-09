@@ -22,6 +22,7 @@
 #include <Locale.h>
 #include <MenuField.h>
 #include <MenuItem.h>
+#include <MimeType.h>
 #include <NodeInfo.h>
 #include <Path.h>
 
@@ -320,16 +321,17 @@ AddPrinterDialog::_FillMenu(BMenu* menu, const char* path, uint32 what)
 
 			char type[B_MIME_TYPE_LENGTH + 1];
 			info.GetType(type);
-			if (strcmp(type, B_APP_MIME_TYPE) != 0)
-				continue;
+			BMimeType entryType(type);
+			// filter non executable entries (like "transport" subfolder...)
+			if (entryType == B_APP_MIME_TYPE) {
+				BPath transportPath;
+				if (entry.GetPath(&transportPath) != B_OK)
+					continue;
 
-			BPath path;
-			if (entry.GetPath(&path) != B_OK)
-				continue;
-
-			BMessage* msg = new BMessage(what);
-			msg->AddString("name", path.Leaf());
-			menu->AddItem(new BMenuItem(path.Leaf(), msg));
+				BMessage* msg = new BMessage(what);
+				msg->AddString("name", transportPath.Leaf());
+				menu->AddItem(new BMenuItem(transportPath.Leaf(), msg));
+			}
 		}
 	}
 }

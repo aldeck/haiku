@@ -1,0 +1,91 @@
+1	czech	x-vnd.Haiku-FileTypes	2398558428
+%1 application type	Application Type Window		%1 typ aplikace
+%s file type	FileType Window		%s typ souboru
+(from application)	FileTypes Window		(z aplikace)
+Abort	Application Types Window		Přerušit
+About FileTypes…	FileTypes Window		O FileTypes...
+Add	Extension Window		Přidat
+Add group	New File Type Window		Přidat skupinu
+Add icon…	Icon View		Přidat ikonu...
+Add…	Application Type Window		Přidat...
+Add…	FileTypes Window		Přidat...
+Alpha	Application Type Window		Alfa
+Application type	Application Type Window		Typ aplikace
+Application types…	FileTypes Window		Typy aplikací...
+Args only	Application Type Window		Pouze argumenty
+Attribute	Attribute Window		Atribut
+Beta	Application Types Window		Beta
+Cancel	Attribute Window		Zrušit
+Choose type	Type List Window		Vybrat typ
+Could not change attributes	Attribute Window		Nemohu změnit atributy
+Could not open file	FileType Window		Nemohu otevřít soubor
+Could not retrieve application signature	Preferred App Menu		Nemohu získat podpis aplikace
+Could not retrieve preferred application of this file	Preferred App Menu		Nemohu zjistit preferovanou aplikaci pro tento soubor
+Could not set preferred application	FileTypes Window		Nemohu nastavit preferovanou aplikaci
+Description:	Application Types Window		Popis:
+Description:	FileTypes Window		Popis:
+Development	Application Type Window		Vývoj
+Development	Application Types Window		Vývoj
+Do you want to save the changes?	Application Type Window		Chcete uložit změny?
+Done	Attribute Window		Hotovo
+Done	Extension Window		Hotovo
+Done	Type List Window		Hotovo
+Editable	Attribute Window	If Tracker allows to edit this attribute.	Měnitelný
+Edit…	Application Types Window		Upravit...
+Extensions:	FileTypes Window		Rozšíření:
+Extra attributes	FileTypes Window		Extra atributy
+File	Application Type Window		Soubor
+File	FileTypes Window		Soubor
+File type	FileType Window		Typ souboru
+FileTypes	FileTypes		FileTypes
+FileTypes	FileTypes Window		FileTypes
+FileTypes request	FileTypes		FileTypes požadují
+FileTypes request	Preferred App Menu		Požadavek FileTypes
+Final	Application Types Window		Finální
+Gamma	Application Types Window		Gamma
+Golden master	Application Types Window		Golden master
+Group name:	New File Type Window		Jméno skupiny:
+Group:	New File Type Window		Skupina:
+Icon	Application Type Window		Ikona
+Icon	FileType Window		Ikona
+Information	Application Types Window		Informace
+Internal name:	New File Type Window		Interní jméno
+Launch	Application Types Window		Spustit
+Multiple files from \"%s\" file type	FileType Window		Více souborů typu \"%s\"
+Multiple launch	Application Type Window		Vícenásobné spuštění
+Name:	Application Types Window		Jméno:
+New file type	New File Type Window		Nový typ souboru
+OK	FileTypes		OK
+Open file	FileTypes		Otevřít soubor
+Open…	FileTypes Window		Otevřít...
+Preferred application	FileType Window		Preferovaná aplikace
+Progress	Application Types Window		Průběh
+Quit	FileTypes Window		Zavřít
+Quit, don't save	Application Type Window		Zavřít, neukládat
+Recognition rule is not valid:\n\n	FileTypes Window		Pravidlo rozpoznávání je neplatné:\n\n
+Remove	Application Type Window		Odstranit
+Remove icon	Icon View		Ostranit ikonu
+Removing a file type cannot be reverted.\nAre you sure you want to remove it?	FileTypes Window		Odstranění typu souboru není možné vzít zpět.\nOpravdu jej chcete ostranit?
+Removing uninstalled application types	Application Types Window		Odstraňování odinstalovaných typů aplikací
+Rule:	FileTypes Window		Pravidlo:
+Same as…	FileType Window	The same APPLICATION as\xE2\x80\xA6	Stejná jako...
+Same as…	FileType Window	The same TYPE as\xE2\x80\xA6	Stejný jako...
+Save	Application Type Window		Uložit
+Select preferred application	FileType Window		Vybrat preferovanou aplikaci
+Select same preferred application as	FileType Window		Vybrat stejnou preferovanou aplikaci jako
+Select same preferred application as	FileTypes Window		Vybrat stejnou preferovanou aplikaci jako
+Select same type as	FileType Window		Vybrat stejný typ jako
+Select…	FileType Window		Vybrat...
+Select…	FileTypes Window		Vybrat...
+Show icons in list	FileTypes Window		Zobrazit ikony v seznamu
+Show recognition rule	FileTypes Window		Zobrazit pravidlo rozpoznávání
+Signature:	Application Type Window		Podpis:
+Single launch	Application Type Window		Jedinné spuštění
+Special:	Attribute Window		Speciální:
+Supported types	Application Type Window		Podporované typy
+The application \"%s\" does not support this file type.\nAre you sure you want to set it anyway?	Preferred App Menu		Aplikace \"%s\" nepodporuje tento typ souboru.\nOpravdu jej chcete přesto nastavit?
+Type name:	FileTypes Window		Jméno typu:
+Type:	Attribute Window		Typ:
+Version:	Application Type Window		Verze:
+[Multiple files] file types	FileType Window		Typy [Více souborů] 
+\twritten by Axel Dörfler\n\tCopyright 2006-2007, Haiku.\n	FileTypes		\tnapsal Axel Dörfler\n\tCopyright 2006-2007, Haiku.\n

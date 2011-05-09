@@ -28,7 +28,7 @@ if $(HAIKU_ADD_ALTERNATIVE_GCC_LIBS) = 1
 
 
 local baseURL = http://haiku-files.org/files/optional-packages ;
-local baseSourceURL = http://haiku-files.org/files/releases/r1alpha2/sources ;
+local baseSourceURL = http://haiku-files.org/files/sources ;
 
 
 # AllegroLibs
@@ -261,8 +261,8 @@ if [ IsOptionalHaikuImagePackageAdded SDLLibs ] {
 		Echo "No optional package SDLLibs available for $(TARGET_ARCH)" ;
 	} else if $(HAIKU_GCC_VERSION[1]) >= 4 {
 		InstallOptionalHaikuImagePackage
-			libsdl-1.2-hg-x86-gcc4-2010-10-30.zip
-			: $(baseURL)/lib/libsdl-1.2-hg-x86-gcc4-2010-10-30.zip ;
+			libsdl-1.2-hg-x86-gcc4-2010-12-23.zip
+			: $(baseURL)/lib/libsdl-1.2-hg-x86-gcc4-2010-12-23.zip ;
 		InstallOptionalHaikuImagePackage
 			guilib-1.2.1-x86-gcc4-2010-10-30.zip
 			: $(baseURL)/lib/guilib-1.2.1-x86-gcc4-2010-10-30.zip ;
@@ -283,7 +283,7 @@ if [ IsOptionalHaikuImagePackageAdded SDLLibs ] {
 			: $(baseURL)/lib/sdl-sound-1.0.3-x86-gcc4-2010-10-30.zip ;
 		InstallOptionalHaikuImagePackage
 			sdl-rtf-0.1.0-x86-gcc4-2010-10-30.zip
-			: $(baseURL)/lib/sdl-rtf-0.1.0-x86-gcc4-2010-10-30.zip ;
+			: $(baseURL)/lib/sdl-rtf-0.1.0-x86-gcc4-2010-12-26.zip ;
 		InstallOptionalHaikuImagePackage
 			sdl-ttf-2.0.10-x86-gcc4-2010-10-30.zip
 			: $(baseURL)/lib/sdl-ttf-2.0.10-x86-gcc4-2010-10-30.zip ;
@@ -295,11 +295,11 @@ if [ IsOptionalHaikuImagePackageAdded SDLLibs ] {
 			: $(baseURL)/lib/smjpeg-0.2.1-x86-gcc4-2010-10-30.zip ;
 		InstallOptionalHaikuImagePackage
 			smpeg-0.4.5-x86-gcc4-2010-10-29.zip
-			: $(baseURL)/lib/smpeg-0.4.5-x86-gcc4-2010-10-29.zip ;
+			: $(baseURL)/lib/smpeg-0.4.5-x86-gcc4-2010-10-30.zip ;
 	} else {
 		InstallOptionalHaikuImagePackage
-			libsdl-1.2-hg-x86-gcc2-2010-10-29.zip
-			: $(baseURL)/lib/libsdl-1.2-hg-x86-gcc2-2010-10-29.zip ;
+			libsdl-1.2-hg-x86-gcc2-2010-12-23.zip
+			: $(baseURL)/lib/libsdl-1.2-hg-x86-gcc2-2010-12-23.zip ;
 		InstallOptionalHaikuImagePackage
 			guilib-1.2.1-x86-gcc2-2010-10-29.zip
 			: $(baseURL)/lib/guilib-1.2.1-x86-gcc2-2010-10-29.zip ;
@@ -343,8 +343,8 @@ if [ IsOptionalHaikuImagePackageAdded XiphLibs ] {
 		Echo "No optional package XiphLibs available for $(TARGET_ARCH)" ;
 	} else if $(HAIKU_GCC_VERSION[1]) >= 4 {
 		InstallOptionalHaikuImagePackage
-			flac-1.2.1-x86-gcc4-2010-10-30.zip
-			: $(baseURL)/lib/flac-1.2.1-x86-gcc4-2010-10-30.zip ;
+			flac-1.2.1-x86-gcc4-2010-10-31.zip
+			: $(baseURL)/lib/flac-1.2.1-x86-gcc4-2010-10-31.zip ;
 		InstallOptionalHaikuImagePackage
 			libao-1.0.0-x86-gcc4-2010-10-30.zip
 			: $(baseURL)/lib/libao-1.0.0-x86-gcc4-2010-10-30.zip ;
@@ -361,8 +361,8 @@ if [ IsOptionalHaikuImagePackageAdded XiphLibs ] {
 			speex-1.2-git-x86-gcc4-2010-10-30.zip
 			: $(baseURL)/lib/speex-1.2-git-x86-gcc4-2010-10-30.zip ;
 		InstallOptionalHaikuImagePackage
-			vorbis-tools-1.4.0-x86-gcc4-2010-10-30.zip
-			: $(baseURL)/lib/vorbis-tools-1.4.0-x86-gcc4-2010-10-30.zip ;
+			vorbis-tools-1.4.0-x86-gcc4-2010-12-30.zip
+			: $(baseURL)/lib/vorbis-tools-1.4.0-x86-gcc4-2010-12-30.zip ;
 	} else {
 		InstallOptionalHaikuImagePackage
 			flac-1.2.1-x86-gcc2-2010-10-29.zip

@@ -126,19 +126,17 @@ void DeskbarView::AttachedToWindow()
 }
 
 
-bool DeskbarView::_EntryInTrash(const entry_ref* entry)
+bool DeskbarView::_EntryInTrash(const entry_ref* ref)
 {
-	BPath trashPath;
-	BPath entryPath(entry);
-	BVolume volume(entry->device);
-	if (volume.InitCheck() == B_OK) {
-		find_directory(B_TRASH_DIRECTORY, &trashPath, false, &volume);
-		if (strncmp(entryPath.Path(), trashPath.Path(), 
-			strlen(trashPath.Path())) == 0)
-			return true;
-	}
-	
-	return false;
+	BEntry entry(ref);
+	BVolume volume(ref->device);
+	BPath path;
+	if (volume.InitCheck() != B_OK
+		|| find_directory(B_TRASH_DIRECTORY, &path, false, &volume) != B_OK)
+		return false;
+
+	BDirectory trash(path.Path());
+	return trash.Contains(&entry);
 }
 
 
@@ -156,8 +154,8 @@ void DeskbarView::_RefreshMailQuery()
 		BQuery *newMailQuery = new BQuery;
 		newMailQuery->SetTarget(this);
 		newMailQuery->SetVolume(&volume);
-		newMailQuery->PushAttr(B_MAIL_ATTR_STATUS);
-		newMailQuery->PushString("New");
+		newMailQuery->PushAttr(B_MAIL_ATTR_READ);
+		newMailQuery->PushInt32(B_UNREAD);
 		newMailQuery->PushOp(B_EQ);
 		newMailQuery->PushAttr("BEOS:TYPE");
 		newMailQuery->PushString("text/x-email");
@@ -224,10 +222,10 @@ DeskbarView::MessageReceived(BMessage* message)
 		case MD_CHECK_SEND_NOW:
 			// also happens in DeskbarView::MouseUp() with
 			// B_TERTIARY_MOUSE_BUTTON pressed
-			BMailDaemon::CheckMail(true);
+			BMailDaemon::CheckAndSendQueuedMail();
 			break;
 		case MD_CHECK_FOR_MAILS:
-			BMailDaemon::CheckMail(false,message->FindString("account"));
+			BMailDaemon::CheckMail(message->FindInt32("account"));
 			break;
 		case MD_SEND_MAILS:
 			BMailDaemon::SendQueuedMail();
@@ -252,7 +250,7 @@ DeskbarView::MessageReceived(BMessage* message)
 			int32 what;
 			dev_t device;
 			ino_t directory;
-			const char *name;			
+			const char *name;
 			entry_ref ref;
 			message->FindInt32("opcode", &what);
 			message->FindInt32("device", &device);
@@ -361,13 +359,21 @@ void
 DeskbarView::MouseUp(BPoint pos)
 {
 	if (fLastButtons & B_PRIMARY_MOUSE_BUTTON) {
-		if (OpenWithTracker(B_USER_SETTINGS_DIRECTORY, "Mail/mailbox") != B_OK
-			&& OpenWithTracker(B_USER_DIRECTORY, "mail/in") != B_OK)
-			OpenWithTracker(B_USER_DIRECTORY, "mail");
+		if (OpenWithTracker(B_USER_SETTINGS_DIRECTORY, "Mail/mailbox")
+			!= B_OK) {
+			entry_ref ref;
+			_GetNewQueryRef(ref);
+
+			BMessenger trackerMessenger(kTrackerSignature);
+			BMessage message(B_REFS_RECEIVED);
+			message.AddRef("refs", &ref);
+
+			trackerMessenger.SendMessage(&message);
+		}
 	}
 
 	if (fLastButtons & B_TERTIARY_MOUSE_BUTTON)
-		BMailDaemon::CheckMail(true);
+		BMailDaemon::CheckMail();
 }
 
 
@@ -439,9 +445,12 @@ DeskbarView::_CreateNewMailQuery(BEntry& query)
 	if (file.InitCheck() != B_OK)
 		return;
 
-	BString string("((" B_MAIL_ATTR_STATUS "==\"[nN][eE][wW]\")&&((BEOS:TYPE=="
+	BString string("((" B_MAIL_ATTR_READ "<2)&&((BEOS:TYPE=="
 		"\"text/x-email\")||(BEOS:TYPE==\"text/x-partial-email\")))");
 	file.WriteAttrString("_trk/qrystr", &string);
+	file.WriteAttrString("_trk/qryinitstr", &string);
+	int32 mode = 'Fbyq';
+	file.WriteAttr("_trk/qryinitmode", B_INT32_TYPE, 0, &mode, sizeof(int32));
 	string = "E-mail";
 	file.WriteAttrString("_trk/qryinitmime", &string);
 	BNodeInfo(&file).SetType("application/x-vnd.Be-query");
@@ -537,13 +546,7 @@ DeskbarView::_BuildMenu()
 				<< (fNewMessages != 1 ? "s" : B_EMPTY_STRING),
 			string << fNewMessages << " 通の未読メッセージ");
 
-		find_directory(B_USER_SETTINGS_DIRECTORY, &path);
-		path.Append("Mail/New E-mail");
-
-		BEntry query(path.Path());
-		if (!query.Exists())
-			_CreateNewMailQuery(query);
-		query.GetRef(&ref);
+		_GetNewQueryRef(ref);
 
 		item = new BMenuItem(navMenu = new BNavMenu(string.String(),
 			B_REFS_RECEIVED, BMessenger(kTrackerSignature)),
@@ -558,32 +561,30 @@ DeskbarView::_BuildMenu()
 		item->SetEnabled(false);
 	}
 
-	BList list;
-	GetInboundMailChains(&list);
-
+	BMailAccounts accounts;
 	if (modifiers() & B_SHIFT_KEY) {
-		BMenu *chainMenu = new BMenu(
+		BMenu *accountMenu = new BMenu(
 			MDR_DIALECT_CHOICE ("Check for mails only","R) メール受信のみ"));
 		BFont font;
 		menu->GetFont(&font);
-		chainMenu->SetFont(&font);
+		accountMenu->SetFont(&font);
 
-		for (int32 i = 0; i < list.CountItems(); i++) {
-			BMailChain* chain = (BMailChain*)list.ItemAt(i);
+		for (int32 i = 0; i < accounts.CountAccounts(); i++) {
+			BMailAccountSettings* account = accounts.AccountAt(i);
 
 			BMessage* message = new BMessage(MD_CHECK_FOR_MAILS);
-			message->AddString("account", chain->Name());
+			message->AddInt32("account", account->AccountID());
 
-			chainMenu->AddItem(new BMenuItem(chain->Name(), message));
-			delete chain;
+			accountMenu->AddItem(new BMenuItem(account->Name(), message));
 		}
-		if (list.IsEmpty()) {
+		if (accounts.CountAccounts() == 0) {
 			item = new BMenuItem("<no accounts>", NULL);
 			item->SetEnabled(false);
-			chainMenu->AddItem(item);
+			accountMenu->AddItem(item);
 		}
-		chainMenu->SetTargetForItems(this);
-		menu->AddItem(new BMenuItem(chainMenu, new BMessage(MD_CHECK_FOR_MAILS)));
+		accountMenu->SetTargetForItems(this);
+		menu->AddItem(new BMenuItem(accountMenu,
+			new BMessage(MD_CHECK_FOR_MAILS)));
 
 		// Not used:
 		// menu->AddItem(new BMenuItem(MDR_DIALECT_CHOICE (
@@ -595,7 +596,7 @@ DeskbarView::_BuildMenu()
 		menu->AddItem(item = new BMenuItem(
 			MDR_DIALECT_CHOICE ("Check for mail now", "C) メールチェック"),
 			new BMessage(MD_CHECK_SEND_NOW)));
-		if (list.IsEmpty())
+		if (accounts.CountAccounts() == 0)
 			item->SetEnabled(false);
 	}
 
@@ -622,4 +623,17 @@ DeskbarView::_BuildMenu()
 		}
 	}
 	return menu;
+}
+
+
+status_t
+DeskbarView::_GetNewQueryRef(entry_ref& ref)
+{
+	BPath path;
+	find_directory(B_USER_SETTINGS_DIRECTORY, &path);
+	path.Append("Mail/New E-mail");
+	BEntry query(path.Path());
+	if (!query.Exists())
+		_CreateNewMailQuery(query);
+	return query.GetRef(&ref);
 }

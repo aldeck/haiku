@@ -1,5 +1,5 @@
 /*
- * Copyright 2009, Haiku, Inc.
+ * Copyright 2009-2010, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -20,6 +20,7 @@
 #include <Region.h>
 #include <Shape.h>
 #include <Window.h>
+#include <utf8_functions.h>
 
 #include <new>
 #include <stdio.h>
@@ -772,6 +773,35 @@ RemoteView::_DrawThread()
 				break;
 			}
 
+			case RP_DRAW_BITMAP_RECTS:
+			{
+				color_space colorSpace;
+				int32 rectCount;
+				uint32 flags, options;
+
+				message.Read(options);
+				message.Read(colorSpace);
+				message.Read(flags);
+				message.Read(rectCount);
+				for (int32 i = 0; i < rectCount; i++) {
+					BBitmap *bitmap;
+					BRect viewRect;
+
+					message.Read(viewRect);
+					if (message.ReadBitmap(&bitmap, true, colorSpace,
+							flags) != B_OK || bitmap == NULL) {
+						continue;
+					}
+
+					offscreen->DrawBitmap(bitmap, bitmap->Bounds(), viewRect,
+						options);
+					invalidRegion.Include(viewRect);
+					delete bitmap;
+				}
+
+				break;
+			}
+
 			case RP_STROKE_ARC:
 			case RP_FILL_ARC:
 			case RP_FILL_ARC_GRADIENT:
@@ -977,8 +1007,16 @@ RemoteView::_DrawThread()
 					archive.AddPoint("pts", point);
 				}
 
-				// the shape is in absolute coordinates
-				offscreen->MovePenTo(0, 0);
+				BPoint offset;
+				message.Read(offset);
+
+				float scale;
+				if (message.Read(scale) != B_OK)
+					continue;
+
+				offscreen->PushState();
+				offscreen->MovePenTo(offset);
+				offscreen->SetScale(scale);
 
 				BShape shape(&archive);
 				if (code == RP_STROKE_SHAPE) {
@@ -988,13 +1026,16 @@ RemoteView::_DrawThread()
 					offscreen->FillShape(&shape, pattern);
 				else {
 					BGradient *gradient;
-					if (message.ReadGradient(&gradient) != B_OK)
+					if (message.ReadGradient(&gradient) != B_OK) {
+						offscreen->PopState();
 						continue;
+					}
 
 					offscreen->FillShape(&shape, *gradient);
 					delete gradient;
 				}
 
+				offscreen->PopState();
 				invalidRegion.Include(bounds);
 				break;
 			}
@@ -1199,6 +1240,46 @@ RemoteView::_DrawThread()
 				break;
 			}
 
+			case RP_DRAW_STRING_WITH_OFFSETS:
+			{
+				size_t length;
+				char *string;
+				message.ReadString(&string, length);
+				int32 count = UTF8CountChars(string, length);
+
+				BPoint offsets[count];
+				if (message.ReadList(offsets, count) != B_OK) {
+					free(string);
+					continue;
+				}
+
+				offscreen->DrawString(string, offsets, count);
+
+				free(string);
+				reply.Start(RP_DRAW_STRING_RESULT);
+				reply.Add(token);
+				reply.Add(offscreen->PenLocation());
+				reply.Flush();
+
+				BFont font;
+				offscreen->GetFont(&font);
+
+				BRect boxes[count];
+				font.GetBoundingBoxesAsGlyphs(string, count, B_SCREEN_METRIC,
+					boxes);
+
+				font_height height;
+				offscreen->GetFontHeight(&height);
+
+				for (int32 i = 0; i < count; i++) {
+					// TODO: validate
+					boxes[i].OffsetBy(offsets[i] + BPoint(0, -height.ascent));
+					invalidRegion.Include(boxes[i]);
+				}
+
+				break;
+			}
+
 			case RP_READ_BITMAP:
 			{
 				BRect bounds;
@@ -1229,7 +1310,7 @@ RemoteView::_DrawThread()
 		if (syncDrawing) {
 			offscreen->Sync();
 			Invalidate(&invalidRegion);
-		}			
+		}
 	}
 }
 

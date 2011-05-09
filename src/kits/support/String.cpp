@@ -424,6 +424,25 @@ BString::AdoptChars(BString& string, int32 charCount)
 }
 
 
+BString&
+BString::SetToArguments(const char *format, ...)
+{
+	va_list arg;
+	va_start(arg, format);
+	int32 bytes = vsnprintf(LockBuffer(0), 0, format, arg);
+	va_end(arg);
+	UnlockBuffer(0);
+	
+	va_list arg2;
+	va_start(arg2, format);
+	bytes = vsnprintf(LockBuffer(bytes), bytes + 1, format, arg2);
+	va_end(arg2);
+	UnlockBuffer(bytes);
+
+	return *this;
+}
+
+
 //	#pragma mark - Substring copying
 
 
@@ -1787,10 +1806,12 @@ BString::LockBuffer(int32 maxLength)
 	if (maxLength > length)
 		length = maxLength;
 
-	if (_MakeWritable(length, true) == B_OK) {
-		_ReferenceCount() = -1;
-			// mark unshareable
-	}
+	if (_MakeWritable(length, true) != B_OK)
+		return NULL;
+
+	_ReferenceCount() = -1;
+		// mark unshareable
+
 	return fPrivateData;
 }
 

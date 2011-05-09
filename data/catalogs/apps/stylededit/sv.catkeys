@@ -1,58 +1,80 @@
-1	swedish	x-vnd.Haiku-StyledEdit	1633540788
-OK	LoadAlert		Okej
+1	swedish	x-vnd.Haiku-StyledEdit	3614078026
 ???	LoadAlert		???
-Left	Menus		Vänster
-Revert to the last version of \"%s\"? 	RevertToSavedAlert		Återgå till den senast använda versionen av \"%s\"? 
-Search backwards	FindandReplaceWindow		Sök baklänges
-Size	Menus		Storlek
-Save	QuitAlert		Spara
-Redo typing	Menus		Skriv om
-Replace same	Menus		Ersätt samma
+Align	Menus		Justera
+Black	Menus		Svart
+Blue	Menus		Blå
+Bold	Menus		Fet stil
 Can't Undo	Menus		Kan inte ångra
-Save	Menus		Spara
-Replace with:	FindandReplaceWindow		Ersätt med:
+Cancel	FindandReplaceWindow		Avbryt
+Cancel	QuitAlert		Avbryt
+Cancel	RevertToSavedAlert		Avbryt
+Cancel	SaveAlert		Avbryt
 Cannot revert, file not found: \"%s\".	RevertToSavedAlert		Kan inte återgå, filen hittades inte: \"%s\".
 Case-sensitive	FindandReplaceWindow		Skiftlägeskänslig
-Green	Menus		Grön
-Revert to saved…	Menus		Återgå till sparat…
-Yellow	Menus		Gul
-Replace in all windows	FindandReplaceWindow		Ersätt i alla fönster
-Wrap lines	Menus		Svep in linjer
-Cancel	RevertToSavedAlert		Avbryt
-Document	Menus		Dokument
-Save changes to the document \"%s\"? 	QuitAlert		Spara ändringar till dokumentet \"%s\"? 
-Font	Menus		Font
-Replace all	FindandReplaceWindow		Ersätt alla
-Default	Open_and_SaveAsPanel		Standard
-Cancel	FindandReplaceWindow		Avbryt
-Error loading \"%s\":\n\tUnsupported format	LoadAlert		Fel vid inläsning \"%s\":\n\tIcke understött format
-OK	RevertToSavedAlert		Okej
-Don't save	QuitAlert		Spara inte
-Align	Menus		Justera
-Color	Menus		Färg
-Red	Menus		Röd
-Open…	Menus		Öppna…
 Center	Menus		Mitten
-Blue	Menus		Blå
+Characters:	Statistics		Tecken:
+Clear	Menus		Rensa
+Close	Menus		Stäng
+Color	Menus		Färg
+Copy	Menus		Kopiera
+Cut	Menus		Klipp ut
 Cyan	Menus		Cyan
+Default	Open_and_SaveAsPanel		Standard
+Document	Menus		Dokument
+Document statistics	Statistics		Dokumentstatistik
+Don't save	QuitAlert		Spara inte
+Don't save	SaveAlert		Spara inte
+Edit	Menus		Redigera
+Encoding	Open_and_SaveAsPanel		Kodning
+Error loading \"%s\":\n\t%s	LoadAlert		Fel vid inläsning \"%s\":\n\t%s
+Error loading \"%s\":\n\tUnsupported format	LoadAlert		Fel vid inläsning \"%s\":\n\tIcke understött format
+Error saving \"%s\":\n%s	SaveAlert		Kunde inte spara \"%s\":\n%s
+File	Menus		Arkiv
+Find	FindandReplaceWindow		Sök
+Find again	Menus		Sök igen
+Find selection	Menus		Hitta markerad text
+Find:	FindandReplaceWindow		Sök:
+Find…	Menus		Sök…
+Font	Menus		Font
+Green	Menus		Grön
+Italic	Menus		Kursiv
+Left	Menus		Vänster
+Lines:	Statistics		Rader:
 Magenta	Menus		Magenta
 New	Menus		Ny
-Find selection	Menus		Hitta val
-Find:	FindandReplaceWindow		Hitta:
-Error saving \"%s\":\n%s	SaveAlert		Kunde inte spara \"%s\":\n%s
-Replace	FindandReplaceWindow		Ersätt
-Undo typing	Menus		Ångra inmatning
-Find again	Menus		Sök igen
-Cancel	QuitAlert		Avbryt
-Find…	Menus		Hitta…
-Error loading \"%s\":\n\t%s	LoadAlert		Fel vid inläsning \"%s\":\n\t%s
-Black	Menus		Svart
-Untitled 	StyledEditWindow		Odöpt 
+OK	LoadAlert		Okej
+OK	RevertToSavedAlert		Okej
 OK	SaveAlert		Okej
-Find	FindandReplaceWindow		Hitta
-Encoding	Open_and_SaveAsPanel		Kodning
+OK	Statistics		OK
+Open…	Menus		Öppna…
+Page setup…	Menus		Sidinställningar...
+Paste	Menus		Klistra in
+Print…	Menus		Skriv ut...
+Quit	Menus		Avsluta
+Red	Menus		Röd
+Redo typing	QuitAlert		Gör om inmatning
+Replace	FindandReplaceWindow		Ersätt
+Replace all	FindandReplaceWindow		Ersätt alla
+Replace in all windows	FindandReplaceWindow		Ersätt i alla fönster
+Replace same	Menus		Ersätt samma
+Replace with:	FindandReplaceWindow		Ersätt med:
 Replace…	Menus		Ersätt…
+Revert to saved…	Menus		Återgå till sparat…
+Revert to the last version of \"%s\"? 	RevertToSavedAlert		Återgå till den senast använda versionen av \"%s\"? 
 Right	Menus		Höger
-Cancel	SaveAlert		Avbryt
+Save	Menus		Spara
+Save	QuitAlert		Spara
 Save	SaveAlert		Spara
-Don't save	SaveAlert		Spara inte
+Save as…	Menus		Spara som...
+Save changes to the document \"%s\"? 	QuitAlert		Spara ändringar till dokumentet \"%s\"? 
+Search backwards	FindandReplaceWindow		Sök baklänges
+Select all	Menus		Markera allt
+Size	Menus		Storlek
+Statistics…	Menus		Statistik...
+This file is marked Read-Only. Save changes to the document \"%s\"? 	SaveAlert		Denna fil är markerad som endast läsbar. Vill du spara ändringarna till dokumentet \"%s\"?
+Undo typing	QuitAlert		Ångra inmatning
+Untitled 	StyledEditWindow		Odöpt 
+Words:	Statistics		Ord:
+Wrap lines	Menus		Bryt rader
+Wrap-around search	FindandReplaceWindow		Fortsätt sökning vid andra änden
+Yellow	Menus		Gul

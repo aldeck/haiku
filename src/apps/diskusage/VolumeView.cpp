@@ -8,6 +8,7 @@
  */
 
 
+#include <Catalog.h>
 #include <Box.h>
 #include <Button.h>
 #include <StringView.h>
@@ -16,12 +17,15 @@
 
 #include <LayoutBuilder.h>
 
-#include "Common.h"
+#include "DiskUsage.h"
 #include "MainWindow.h"
 #include "PieView.h"
 #include "StatusView.h"
 
 #include "VolumeView.h"
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "Volume View"
 
 const float kMinWinSize = 275.0;
 
@@ -58,18 +62,17 @@ void
 VolumeView::SetPath(BPath path)
 {
 	fPieView->SetPath(path);
-	fStatusView->SetBtnLabel(kStrRescan);
+	fStatusView->SetBtnLabel(B_TRANSLATE("Rescan"));
 }
 
 
 void
 VolumeView::MessageReceived(BMessage* msg)
 {
-	msg->PrintToStream();
 	switch(msg->what) {
 		case kBtnRescan:
 			fPieView->MessageReceived(msg);
-			fStatusView->SetBtnLabel(kStrRescan);
+			fStatusView->SetBtnLabel(B_TRANSLATE("Rescan"));
 			break;
 
 		default:

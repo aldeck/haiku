@@ -199,23 +199,31 @@ BFormattingConventions::BFormattingConventions(const char* id)
 BFormattingConventions::BFormattingConventions(
 	const BFormattingConventions& other)
 	:
-	fCachedDateFormats(other.fCachedDateFormats),
-	fCachedTimeFormats(other.fCachedTimeFormats),
 	fCachedNumericFormat(other.fCachedNumericFormat),
 	fCachedMonetaryFormat(other.fCachedMonetaryFormat),
 	fCachedUse24HourClock(other.fCachedUse24HourClock),
-	fExplicitDateFormats(other.fExplicitDateFormats),
-	fExplicitTimeFormats(other.fExplicitTimeFormats),
 	fExplicitNumericFormat(other.fExplicitNumericFormat),
 	fExplicitMonetaryFormat(other.fExplicitMonetaryFormat),
 	fExplicitUse24HourClock(other.fExplicitUse24HourClock),
 	fUseStringsFromPreferredLanguage(other.fUseStringsFromPreferredLanguage),
 	fICULocale(new ICU_VERSION::Locale(*other.fICULocale))
 {
+	for (int s = 0; s < B_DATE_FORMAT_STYLE_COUNT; ++s)
+		fCachedDateFormats[s] = other.fCachedDateFormats[s];
+	for (int s = 0; s < B_TIME_FORMAT_STYLE_COUNT; ++s)
+		fCachedTimeFormats[s] = other.fCachedTimeFormats[s];
+	for (int s = 0; s < B_DATE_FORMAT_STYLE_COUNT; ++s)
+		fExplicitDateFormats[s] = other.fExplicitDateFormats[s];
+	for (int s = 0; s < B_TIME_FORMAT_STYLE_COUNT; ++s)
+		fExplicitTimeFormats[s] = other.fExplicitTimeFormats[s];
 }
 
 
 BFormattingConventions::BFormattingConventions(const BMessage* archive)
+	:
+	fCachedUse24HourClock(CLOCK_HOURS_UNSET),
+	fExplicitUse24HourClock(CLOCK_HOURS_UNSET),
+	fUseStringsFromPreferredLanguage(false)
 {
 	BString conventionsID;
 	status_t status = archive->FindString("conventions", &conventionsID);

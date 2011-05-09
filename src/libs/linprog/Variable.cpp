@@ -37,6 +37,13 @@ Variable::Index() const
 }
 
 
+int32
+Variable::GlobalIndex() const
+{
+	return fLS->GlobalIndexOf(this);
+}
+
+
 /**
  * Gets the current linear specification.
  *
@@ -135,7 +142,7 @@ Variable::SetRange(double min, double max)
 
 	fMin = min;
 	fMax = max;
-	fLS->SetRange(this, fMin, fMax);
+	fLS->UpdateRange(this);
 }
 
 
@@ -196,7 +203,7 @@ Variable::IsEqual(Variable* var)
 	if (!fIsValid)
 		return NULL;
 
-	return fLS->AddConstraint(1.0, this, -1.0, var, OperatorType(EQ), 0.0);
+	return fLS->AddConstraint(1.0, this, -1.0, var, kEQ, 0.0);
 }
 
 
@@ -212,7 +219,7 @@ Variable::IsSmallerOrEqual(Variable* var)
 	if (!fIsValid)
 		return NULL;
 
-	return fLS->AddConstraint(1.0, this, -1.0, var, OperatorType(LE), 0.0);
+	return fLS->AddConstraint(1.0, this, -1.0, var, kLE, 0.0);
 }
 
 
@@ -228,7 +235,7 @@ Variable::IsGreaterOrEqual(Variable* var)
 	if (!fIsValid)
 		return NULL;
 
-	return fLS->AddConstraint(-1.0, var, 1.0, this, OperatorType(GE), 0.0);
+	return fLS->AddConstraint(-1.0, var, 1.0, this, kGE, 0.0);
 }
 
 
@@ -238,7 +245,7 @@ Variable::IsEqual(Variable* var, double penaltyNeg, double penaltyPos)
 	if (!fIsValid)
 		return NULL;
 
-	return fLS->AddConstraint(1.0, this, -1.0, var, OperatorType(EQ), 0.0,
+	return fLS->AddConstraint(1.0, this, -1.0, var, kEQ, 0.0,
 		penaltyNeg, penaltyPos);
 }
 
@@ -249,8 +256,8 @@ Variable::IsSmallerOrEqual(Variable* var, double penaltyNeg, double penaltyPos)
 	if (!fIsValid)
 		return NULL;
 
-	return fLS->AddConstraint(1.0, this, -1.0, var, OperatorType(LE), 0.0,
-		penaltyNeg, penaltyPos);
+	return fLS->AddConstraint(1.0, this, -1.0, var, kLE, 0.0, penaltyNeg,
+		penaltyPos);
 }
 
 
@@ -260,8 +267,8 @@ Variable::IsGreaterOrEqual(Variable* var, double penaltyNeg, double penaltyPos)
 	if (!fIsValid)
 		return NULL;
 
-	return fLS->AddConstraint(-1.0, var, 1.0, this, OperatorType(GE), 0.0,
-		penaltyNeg, penaltyPos);
+	return fLS->AddConstraint(-1.0, var, 1.0, this, kGE, 0.0, penaltyNeg,
+		penaltyPos);
 }
 
 
@@ -281,29 +288,7 @@ Variable::Invalidate()
 		return;
 
 	fIsValid = false;
-	
 	fLS->RemoveVariable(this, false);
-
-	// invalidate all constraints that use this variable
-	ConstraintList markedForInvalidation;
-	const ConstraintList& constraints = fLS->Constraints();
-	for (int i = 0; i < constraints.CountItems(); i++) {
-		Constraint* constraint = constraints.ItemAt(i);
-
-		if (!constraint->IsValid())
-			continue;
-
-		SummandList* summands = constraint->LeftSide();
-		for (int j = 0; j < summands->CountItems(); j++) {
-			Summand* summand = summands->ItemAt(j);
-			if (summand->Var() == this) {
-				markedForInvalidation.AddItem(constraint);
-				break;
-			}
-		}
-	}
-	for (int i = 0; i < markedForInvalidation.CountItems(); i++)
-		markedForInvalidation.ItemAt(i)->Invalidate();
 }
 
 
@@ -314,12 +299,29 @@ Variable::Variable(LinearSpec* ls)
 	:
 	fLS(ls),
 	fValue(NAN),
-	fMin(0),
-	fMax(DBL_MAX),
+	fMin(-20000),
+	fMax(20000),
 	fLabel(NULL),
-	fIsValid(false)
+	fIsValid(false),
+	fReferenceCount(0)
 {
 
+}
+
+
+int32
+Variable::AddReference()
+{
+	fReferenceCount++;
+	return fReferenceCount;
+}
+
+
+int32
+Variable::RemoveReference()
+{
+	fReferenceCount--;
+	return fReferenceCount;
 }
 
 

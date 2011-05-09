@@ -25,7 +25,8 @@ enum mail_reply_to_mode {
 class BEmailMessage : public BMailContainer {
 	public:
 		BEmailMessage(BPositionIO *mail_file = NULL, bool own = false, uint32 defaultCharSet = B_MAIL_NULL_CONVERSION);
-		BEmailMessage(entry_ref *ref, uint32 defaultCharSet = B_MAIL_NULL_CONVERSION);
+		BEmailMessage(const entry_ref *ref,
+			uint32 defaultCharSet = B_MAIL_NULL_CONVERSION);
 		virtual ~BEmailMessage();
 
 		status_t InitCheck() const;
@@ -60,10 +61,9 @@ class BEmailMessage : public BMailContainer {
 
 		void SendViaAccountFrom(BEmailMessage *message);
 		void SendViaAccount(const char *account_name);
-		void SendViaAccount(int32 chain_id);
+		void SendViaAccount(int32 account);
 		int32 Account() const;
-		status_t GetAccountName(char *account,int32 maxLength) const;
-		status_t GetAccountName(BString *account) const;
+		status_t GetAccountName(BString& accountName) const;
 
 		virtual status_t AddComponent(BMailComponent *component);
 		virtual status_t RemoveComponent(BMailComponent *component);
@@ -99,7 +99,7 @@ class BEmailMessage : public BMailContainer {
 		BPositionIO *fData;
 
 		status_t _status;
-		int32 _chain_id;
+		int32 _account_id;
 		char *_bcc;
 
 		int32 _num_components;

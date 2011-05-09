@@ -7,6 +7,7 @@
  *		Andrew Bachmann
  *		Philippe Saint-Pierre
  *		Jonas Sundström
+ *		Ryan Leavengood
  */
 
 
@@ -311,6 +312,12 @@ StyledEditWindow::MessageReceived(BMessage* message)
 				BMenuItem* item = static_cast<BMenuItem*>(ptr);
 				fontFamily = item->Label();
 			}
+
+			BFont font;
+			font.SetFamilyAndStyle(fontFamily, fontStyle);
+			fItalicItem->SetMarked((font.Face() & B_ITALIC_FACE) != 0);
+			fBoldItem->SetMarked((font.Face() & B_BOLD_FACE) != 0);
+
 			_SetFontStyle(fontFamily, fontStyle);
 			break;
 		}
@@ -329,7 +336,47 @@ StyledEditWindow::MessageReceived(BMessage* message)
 						fontFamily = super_item->Label();
 				}
 			}
+
+			BFont font;
+			font.SetFamilyAndStyle(fontFamily, fontStyle);
+			fItalicItem->SetMarked((font.Face() & B_ITALIC_FACE) != 0);
+			fBoldItem->SetMarked((font.Face() & B_BOLD_FACE) != 0);
+
 			_SetFontStyle(fontFamily, fontStyle);
+			break;
+		}
+		case kMsgSetItalic:
+		{
+			uint32 sameProperties;
+			BFont font;
+			fTextView->GetFontAndColor(&font, &sameProperties);
+
+			if (fItalicItem->IsMarked())
+				font.SetFace(B_REGULAR_FACE);
+			fItalicItem->SetMarked(!fItalicItem->IsMarked());
+
+			font_family family;
+			font_style style;
+			font.GetFamilyAndStyle(&family, &style);
+
+			_SetFontStyle(family, style);
+			break;
+		}
+		case kMsgSetBold:
+		{
+			uint32 sameProperties;
+			BFont font;
+			fTextView->GetFontAndColor(&font, &sameProperties);
+
+			if (fBoldItem->IsMarked())
+				font.SetFace(B_REGULAR_FACE);
+			fBoldItem->SetMarked(!fBoldItem->IsMarked());
+
+			font_family family;
+			font_style style;
+			font.GetFamilyAndStyle(&family, &style);
+
+			_SetFontStyle(family, style);
 			break;
 		}
 		case FONT_COLOR:
@@ -581,11 +628,13 @@ StyledEditWindow::MenusBeginning()
 		if (menu != NULL) {
 			BMenuItem* item = menu->FindItem(style);
 			fCurrentStyleItem = item;
-			if (fCurrentStyleItem != NULL) {
+			if (fCurrentStyleItem != NULL)
 				item->SetMarked(true);
-			}
 		}
 	}
+
+	fBoldItem->SetMarked((font.Face() & B_BOLD_FACE) != 0);
+	fItalicItem->SetMarked((font.Face() & B_ITALIC_FACE) != 0);
 
 	switch (fTextView->Alignment()) {
 		case B_ALIGN_LEFT:
@@ -692,8 +741,8 @@ StyledEditWindow::SaveAs(BMessage* message)
 {
 	if (fSavePanel == NULL) {
 		entry_ref* directory = NULL;
+		entry_ref dirRef;
 		if (fSaveMessage != NULL) {
-			entry_ref dirRef;
 			if (fSaveMessage->FindRef("directory", &dirRef) == B_OK)
 				directory = &dirRef;
 		}
@@ -999,19 +1048,17 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 		new BMenuItem(B_TRANSLATE("Revert to saved" B_UTF8_ELLIPSIS),
 		new BMessage(MENU_REVERT)));
 	fRevertItem->SetEnabled(false);
-	menu->AddItem(menuItem = new BMenuItem(B_TRANSLATE("Close"),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Close"),
 		new BMessage(MENU_CLOSE), 'W'));
 
 	menu->AddSeparatorItem();
-	menu->AddItem(menuItem = new BMenuItem(
-		B_TRANSLATE("Page setup" B_UTF8_ELLIPSIS),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Page setup" B_UTF8_ELLIPSIS),
 		new BMessage(MENU_PAGESETUP)));
-	menu->AddItem(menuItem = new BMenuItem(
-		B_TRANSLATE("Print" B_UTF8_ELLIPSIS),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Print" B_UTF8_ELLIPSIS),
 		new BMessage(MENU_PRINT), 'P'));
 
 	menu->AddSeparatorItem();
-	menu->AddItem(menuItem = new BMenuItem(B_TRANSLATE("Quit"),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(MENU_QUIT), 'Q'));
 
 	// Add the "Edit"-menu:
@@ -1047,16 +1094,15 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 	menuItem->SetTarget(fTextView);
 
 	menu->AddSeparatorItem();
-	menu->AddItem(menuItem = new BMenuItem(B_TRANSLATE("Find" B_UTF8_ELLIPSIS),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Find" B_UTF8_ELLIPSIS),
 		new BMessage(MENU_FIND), 'F'));
 	menu->AddItem(fFindAgainItem= new BMenuItem(B_TRANSLATE("Find again"),
 		new BMessage(MENU_FIND_AGAIN), 'G'));
 	fFindAgainItem->SetEnabled(false);
 
-	menu->AddItem(menuItem = new BMenuItem(B_TRANSLATE("Find selection"),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Find selection"),
 		new BMessage(MENU_FIND_SELECTION), 'H'));
-	menu->AddItem(menuItem = new BMenuItem(
-		B_TRANSLATE("Replace" B_UTF8_ELLIPSIS),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Replace" B_UTF8_ELLIPSIS),
 		new BMessage(MENU_REPLACE), 'R'));
 	menu->AddItem(fReplaceSameItem = new BMenuItem(B_TRANSLATE("Replace same"),
 		new BMessage(MENU_REPLACE_SAME), 'T'));
@@ -1106,6 +1152,15 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 		YELLOW, new BMessage(FONT_COLOR)));
 	fFontMenu->AddSeparatorItem();
 
+	// "Bold" & "Italic" menu items
+	fFontMenu->AddItem(fBoldItem = new BMenuItem(B_TRANSLATE("Bold"),
+		new BMessage(kMsgSetBold)));
+	fFontMenu->AddItem(fItalicItem = new BMenuItem(B_TRANSLATE("Italic"),
+		new BMessage(kMsgSetItalic)));
+	fBoldItem->SetShortcut('B', 0);
+	fItalicItem->SetShortcut('I', 0);
+	fFontMenu->AddSeparatorItem();
+
 	// Available fonts
 
 	fCurrentFontItem = 0;
@@ -1118,7 +1173,7 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 		if (get_font_family(i, &family) == B_OK) {
 			subMenu = new BMenu(family);
 			subMenu->SetRadioMode(true);
-			fFontMenu->AddItem(menuItem = new BMenuItem(subMenu,
+			fFontMenu->AddItem(new BMenuItem(subMenu,
 				new BMessage(FONT_FAMILY)));
 
 			int32 numStyles = count_font_styles(family);
@@ -1126,7 +1181,7 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 				font_style style;
 				uint32 flags;
 				if (get_font_style(family, j, &style, &flags) == B_OK) {
-					subMenu->AddItem(menuItem = new BMenuItem(style,
+					subMenu->AddItem(new BMenuItem(style,
 						new BMessage(FONT_STYLE)));
 				}
 			}
@@ -1161,8 +1216,7 @@ StyledEditWindow::_InitWindow(uint32 encoding)
 	fWrapItem->SetShortcut('W', B_OPTION_KEY);
 
 	menu->AddSeparatorItem();
-	menu->AddItem(menuItem = new BMenuItem(
-		B_TRANSLATE("Statistics" B_UTF8_ELLIPSIS),
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Statistics" B_UTF8_ELLIPSIS),
 		new BMessage(SHOW_STATISTICS)));
 
 	fSavePanel = NULL;
@@ -1263,7 +1317,7 @@ StyledEditWindow::_LoadFile(entry_ref* ref)
 		BEntry entry(ref, true);
 		char name[B_FILE_NAME_LENGTH];
 		if (entry.GetName(name) != B_OK)
-			strcpy(name, B_TRANSLATE("???"));
+			strlcpy(name, B_TRANSLATE("???"), sizeof(name));
 
 		BString text;
 		if (status == B_BAD_TYPE)
@@ -1522,6 +1576,20 @@ StyledEditWindow::_SetFontStyle(const char* fontFamily, const char* fontStyle)
 	}
 
 	font.SetFamilyAndStyle(fontFamily, fontStyle);
+
+	uint16 face = 0;
+
+	if (!(font.Face() & B_REGULAR_FACE))
+		face = font.Face();
+
+	if (fBoldItem->IsMarked())
+		face |= B_BOLD_FACE;
+
+	if (fItalicItem->IsMarked())
+		face |= B_ITALIC_FACE;
+
+	font.SetFace(face);
+
 	fTextView->SetFontAndColor(&font);
 
 	BMenuItem* superItem;
@@ -1580,7 +1648,7 @@ StyledEditWindow::_UpdateCleanUndoRedoSaveRevert()
 	fRedoCleans = false;
 	fRevertItem->SetEnabled(fSaveMessage != NULL);
 	fSaveItem->SetEnabled(true);
-	fUndoItem->SetLabel(B_TRANSLATE("Can't Undo"));
+	fUndoItem->SetLabel(B_TRANSLATE("Can't undo"));
 	fUndoItem->SetEnabled(false);
 	fCanUndo = false;
 	fCanRedo = false;

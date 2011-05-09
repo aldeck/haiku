@@ -1,5 +1,6 @@
 /*
  * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2010, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -13,7 +14,10 @@
 
 #include <AutoLocker.h>
 #include <commpage_defs.h>
+#include <OS.h>
+#include <system_info.h>
 #include <util/DoublyLinkedList.h>
+#include <util/KMessage.h>
 
 #include "debug_utils.h"
 
@@ -235,7 +239,7 @@ DebuggerInterface::DebuggerInterface(team_id teamID)
 
 DebuggerInterface::~DebuggerInterface()
 {
-	fArchitecture->RemoveReference();
+	fArchitecture->ReleaseReference();
 
 	Close(false);
 
@@ -272,6 +276,12 @@ DebuggerInterface::Init()
 	if (fNubPort < 0)
 		return fNubPort;
 
+	error = start_watching_system(fTeamID, B_WATCH_SYSTEM_THREAD_PROPERTIES,
+		fDebuggerPort, 0);
+	if (error != B_OK)
+		return error;
+// TODO: Stop watching in Close()!
+
 	// create debug context pool
 	fDebugContextPool = new(std::nothrow) DebugContextPool(fTeamID, fNubPort);
 	if (fDebugContextPool == NULL)
@@ -302,33 +312,47 @@ status_t
 DebuggerInterface::GetNextDebugEvent(DebugEvent*& _event)
 {
 	while (true) {
-		debug_debugger_message_data message;
+		char buffer[1024];
 		int32 messageCode;
-		ssize_t size = read_port(fDebuggerPort, &messageCode, &message,
-			sizeof(message));
+		ssize_t size = read_port(fDebuggerPort, &messageCode, buffer,
+			sizeof(buffer));
 		if (size < 0) {
 			if (size == B_INTERRUPTED)
 				continue;
+
 			return size;
 		}
 
-		if (message.origin.team != fTeamID)
-			continue;
+		if (messageCode <= B_DEBUGGER_MESSAGE_HANDED_OVER) {
+			debug_debugger_message_data message;
+			memcpy(&message, buffer, size);
+			if (message.origin.team != fTeamID)
+				continue;
 
-		bool ignore = false;
-		status_t error = _CreateDebugEvent(messageCode, message, ignore,
-			_event);
-		if (error != B_OK)
-			return error;
+			bool ignore = false;
+			status_t error = _CreateDebugEvent(messageCode, message, ignore,
+				_event);
+			if (error != B_OK)
+				return error;
 
-		if (ignore) {
-			if (message.origin.thread >= 0 && message.origin.nub_port >= 0)
-				continue_thread(message.origin.nub_port, message.origin.thread);
-			continue;
+			if (ignore) {
+				if (message.origin.thread >= 0 && message.origin.nub_port >= 0)
+					continue_thread(message.origin.nub_port,
+						message.origin.thread);
+				continue;
+			}
+
+			return B_OK;
 		}
 
-		return B_OK;
+		KMessage message;
+		size = message.SetTo(buffer);
+		if (size != B_OK)
+			return size;
+		return _GetNextSystemWatchEvent(_event, message);
 	}
+
+	return B_OK;
 }
 
 
@@ -575,6 +599,17 @@ DebuggerInterface::ReadMemory(target_addr_t address, void* buffer, size_t size)
 }
 
 
+ssize_t
+DebuggerInterface::WriteMemory(target_addr_t address, void* buffer,
+	size_t size)
+{
+	DebugContextGetter contextGetter(fDebugContextPool);
+
+	return debug_write_memory(contextGetter.Context(),
+		(const void*)(addr_t)address, buffer, size);
+}
+
+
 status_t
 DebuggerInterface::_CreateDebugEvent(int32 messageCode,
 	const debug_debugger_message_data& message, bool& _ignore,
@@ -603,7 +638,7 @@ DebuggerInterface::_CreateDebugEvent(int32 messageCode,
 
 			event = new(std::nothrow) BreakpointHitEvent(message.origin.team,
 				message.origin.thread, state);
-			state->RemoveReference();
+			state->ReleaseReference();
 			break;
 		}
 		case B_DEBUGGER_MESSAGE_WATCHPOINT_HIT:
@@ -617,7 +652,7 @@ DebuggerInterface::_CreateDebugEvent(int32 messageCode,
 
 			event = new(std::nothrow) WatchpointHitEvent(message.origin.team,
 				message.origin.thread, state);
-			state->RemoveReference();
+			state->ReleaseReference();
 			break;
 		}
 		case B_DEBUGGER_MESSAGE_SINGLE_STEP:
@@ -631,7 +666,7 @@ DebuggerInterface::_CreateDebugEvent(int32 messageCode,
 
 			event = new(std::nothrow) SingleStepEvent(message.origin.team,
 				message.origin.thread, state);
-			state->RemoveReference();
+			state->ReleaseReference();
 			break;
 		}
 		case B_DEBUGGER_MESSAGE_EXCEPTION_OCCURRED:
@@ -707,4 +742,49 @@ DebuggerInterface::_CreateDebugEvent(int32 messageCode,
 	_event = event;
 
 	return B_OK;
+}
+
+
+status_t
+DebuggerInterface::_GetNextSystemWatchEvent(DebugEvent*& _event,
+	KMessage& message)
+{
+	status_t error = B_OK;
+	if (message.What() != B_SYSTEM_OBJECT_UPDATE)
+		return B_BAD_DATA;
+
+	int32 opcode = 0;
+	if (message.FindInt32("opcode", &opcode) != B_OK)
+		return B_BAD_DATA;
+
+	DebugEvent* event = NULL;
+	switch (opcode)
+	{
+		case B_THREAD_NAME_CHANGED:
+		{
+			int32 threadID = -1;
+			if (message.FindInt32("thread", &threadID) != B_OK)
+				break;
+
+			thread_info info;
+			error = get_thread_info(threadID, &info);
+			if (error != B_OK)
+				break;
+
+			event = new(std::nothrow) ThreadRenamedEvent(fTeamID,
+				threadID, threadID, info.name);
+			break;
+		}
+
+		default:
+		{
+			error = B_BAD_DATA;
+			break;
+		}
+	}
+
+	if (event != NULL)
+		_event = event;
+
+	return error;
 }

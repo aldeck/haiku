@@ -13,6 +13,7 @@
 #include <AppDefs.h>
 #include <AppFileInfo.h>
 #include <Bitmap.h>
+#include <Catalog.h>
 #include <File.h>
 #include <Node.h>
 #include <NodeInfo.h>
@@ -23,10 +24,12 @@
 #include "PadView.h"
 #include "MainWindow.h"
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "LaunchBox"
 
 static const float kDragStartDist = 10.0;
 static const float kDragBitmapAlphaScale = 0.6;
-static const char* kEmptyHelpString = "You can drag an icon here.";
+static const char* kEmptyHelpString = B_TRANSLATE("You can drag an icon here.");
 
 
 bigtime_t
@@ -39,7 +42,7 @@ LaunchButton::sIgnoreDoubleClick = true;
 LaunchButton::LaunchButton(const char* name, uint32 id, const char* label,
 		BMessage* message, BHandler* target)
 	:
-	IconButton(name, id, label, message, target),
+	BIconButton(name, id, label, message, target),
 	fRef(NULL),
 	fAppSig(NULL),
 	fDescription(""),
@@ -62,7 +65,7 @@ LaunchButton::~LaunchButton()
 void
 LaunchButton::AttachedToWindow()
 {
-	IconButton::AttachedToWindow();
+	BIconButton::AttachedToWindow();
 	_UpdateToolTip();
 }
 
@@ -82,7 +85,7 @@ LaunchButton::Draw(BRect updateRect)
 		ConstrainClippingRegion(&region);
 	}
 	if (IsValid()) {
-		IconButton::Draw(updateRect);
+		BIconButton::Draw(updateRect);
 	} else {
 		rgb_color background = LowColor();
 		rgb_color lightShadow = tint_color(background,
@@ -146,7 +149,7 @@ LaunchButton::MessageReceived(BMessage* message)
 		case B_PASTE:
 		case B_MODIFIERS_CHANGED:
 		default:
-			IconButton::MessageReceived(message);
+			BIconButton::MessageReceived(message);
 			break;
 	}
 }
@@ -174,7 +177,7 @@ LaunchButton::MouseDown(BPoint where)
 		}
 	}
 	if (callInherited)
-		IconButton::MouseDown(where);
+		BIconButton::MouseDown(where);
 }
 
 
@@ -185,7 +188,7 @@ LaunchButton::MouseUp(BPoint where)
 		fAnticipatingDrop = false;
 		Invalidate();
 	}
-	IconButton::MouseUp(where);
+	BIconButton::MouseUp(where);
 }
 
 
@@ -235,11 +238,12 @@ LaunchButton::MouseMoved(BPoint where, uint32 transit,
 				BMessage message(B_SIMPLE_DATA);
 				message.AddPointer("button", this);
 				message.AddRef("refs", fRef);
+				// DragMessage takes ownership of the bitmap.
 				DragMessage(&message, bitmap, B_OP_ALPHA, fDragStart);
 			}
 		}
 	}
-	IconButton::MouseMoved(where, transit, dragMessage);
+	BIconButton::MouseMoved(where, transit, dragMessage);
 }
 
 
@@ -259,11 +263,11 @@ LaunchButton::PreferredSize()
 	float hPadding = max_c(6.0, ceilf(minHeight / 3.0));
 	float vPadding = max_c(6.0, ceilf(minWidth / 3.0));
 
-	if (fLabel.CountChars() > 0) {
+	if (Label().CountChars() > 0) {
 		font_height fh;
 		GetFontHeight(&fh);
 		minHeight += ceilf(fh.ascent + fh.descent) + vPadding;
-		minWidth += StringWidth(fLabel.String()) + vPadding;
+		minWidth += StringWidth(Label().String()) + vPadding;
 	}
 
 	return BSize(minWidth + hPadding, minHeight + vPadding);
@@ -423,4 +427,22 @@ void
 LaunchButton::_NotifySettingsChanged()
 {
 	be_app->PostMessage(MSG_SETTINGS_CHANGED);
+}
+
+
+void
+LaunchButton::_DrawFrame(BRect r, rgb_color col1, rgb_color col2,
+	rgb_color col3, rgb_color col4)
+{
+	BeginLineArray(8);
+		AddLine(BPoint(r.left, r.bottom), BPoint(r.left, r.top), col1);
+		AddLine(BPoint(r.left + 1.0, r.top), BPoint(r.right, r.top), col1);
+		AddLine(BPoint(r.right, r.top + 1.0), BPoint(r.right, r.bottom), col2);
+		AddLine(BPoint(r.right - 1.0, r.bottom), BPoint(r.left + 1.0, r.bottom), col2);
+		r.InsetBy(1.0, 1.0);
+		AddLine(BPoint(r.left, r.bottom), BPoint(r.left, r.top), col3);
+		AddLine(BPoint(r.left + 1.0, r.top), BPoint(r.right, r.top), col3);
+		AddLine(BPoint(r.right, r.top + 1.0), BPoint(r.right, r.bottom), col4);
+		AddLine(BPoint(r.right - 1.0, r.bottom), BPoint(r.left + 1.0, r.bottom), col4);
+	EndLineArray();
 }

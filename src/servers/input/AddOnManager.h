@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2008, Haiku, Inc. All rights reserved.
+ * Copyright 2004-2010, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -25,15 +25,15 @@
 
 using namespace BPrivate;
 
-class AddOnManager : public BLooper {
+class AddOnManager : public AddOnMonitor {
 public:
 								AddOnManager(bool safeMode);
 								~AddOnManager();
 
+	virtual	void 				MessageReceived(BMessage* message);
+
 			void				LoadState();
 			void				SaveState();
-
-			void 				MessageReceived(BMessage* message);
 
 			status_t			StartMonitoringDevice(DeviceAddOn* addOn,
 									const char* device);
@@ -122,9 +122,8 @@ private:
 			PathList			fDevicePaths;
 
 			MonitorHandler*		fHandler;
-			AddOnMonitor*		fAddOnMonitor;
 
-			bool fSafeMode;
+			bool				fSafeMode;
 };
 
 #endif	// ADD_ON_MANAGER_H

@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2010, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2009-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2002-2010, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  *
@@ -3838,7 +3838,7 @@ vm_init_post_modules(kernel_args* args)
 void
 permit_page_faults(void)
 {
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 	if (thread != NULL)
 		atomic_add(&thread->page_faults_allowed, 1);
 }
@@ -3847,7 +3847,7 @@ permit_page_faults(void)
 void
 forbid_page_faults(void)
 {
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 	if (thread != NULL)
 		atomic_add(&thread->page_faults_allowed, -1);
 }
@@ -3908,7 +3908,7 @@ vm_page_fault(addr_t address, addr_t faultAddress, bool isWrite, bool isUser,
 			strerror(status), address, faultAddress, isWrite, isUser,
 			thread_get_current_thread_id());
 		if (!isUser) {
-			struct thread* thread = thread_get_current_thread();
+			Thread* thread = thread_get_current_thread();
 			if (thread != NULL && thread->fault_handler != 0) {
 				// this will cause the arch dependant page fault handler to
 				// modify the IP on the interrupt frame or whatever to return
@@ -3927,7 +3927,7 @@ vm_page_fault(addr_t address, addr_t faultAddress, bool isWrite, bool isUser,
 			// (and tools)
 			VMArea* area = addressSpace->LookupArea(faultAddress);
 
-			struct thread* thread = thread_get_current_thread();
+			Thread* thread = thread_get_current_thread();
 			dprintf("vm_page_fault: thread \"%s\" (%ld) in team \"%s\" (%ld) "
 				"tried to %s address %#lx, ip %#lx (\"%s\" +%#lx)\n",
 				thread->name, thread->id, thread->team->name, thread->team->id,
@@ -4090,13 +4090,8 @@ fault_get_page(PageFaultContext& context)
 
 		lastCache = cache;
 
-		for (;;) {
-			page = cache->LookupPage(context.cacheOffset);
-			if (page == NULL || !page->busy) {
-				// Either there is no page or there is one and it is not busy.
-				break;
-			}
-
+		page = cache->LookupPage(context.cacheOffset);
+		if (page != NULL && page->busy) {
 			// page must be busy -- wait for it to become unbusy
 			context.UnlockAll(cache);
 			cache->ReleaseRefLocked();
@@ -4850,7 +4845,7 @@ vm_debug_copy_page_memory(team_id teamID, void* unsafeMemory, void* buffer,
 	if (IS_KERNEL_ADDRESS(unsafeMemory)) {
 		addressSpace = VMAddressSpace::Kernel();
 	} else if (teamID == B_CURRENT_TEAM) {
-		struct thread* thread = debug_get_debugged_thread();
+		Thread* thread = debug_get_debugged_thread();
 		if (thread == NULL || thread->team == NULL)
 			return B_BAD_ADDRESS;
 

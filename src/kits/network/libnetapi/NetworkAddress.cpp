@@ -1,5 +1,5 @@
 /*
- * Copyright 2010, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2010-2011, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -10,10 +10,51 @@
 #include <NetworkRoster.h>
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <sys/sockio.h>
+
+
+/* The GCC builtin below only exists in > GCC 3.4
+ * Benefits include faster execution time as the builtin
+ * uses a bitcounting cpu instruction if it exists
+ */
+#if __GNUC__ > 3
+#	define addr_bitcount(bitfield) __builtin_popcount(bitfield)
+#else
+static ssize_t
+addr_bitcount(uint32 bitfield)
+{
+	ssize_t result = 0;
+	for (uint8 i = 32; i > 0; i--) {
+		if ((bitfield & (1 << (i - 1))) == 0)
+			break;
+		result++;
+	}
+	return result;
+}
+#endif
+
+
+static uint8
+from_hex(char hex)
+{
+	if (isdigit(hex))
+		return hex - '0';
+
+	return tolower(hex) - 'a' + 10;
+}
+
+
+// #pragma mark -
+
+
+BNetworkAddress::BNetworkAddress()
+{
+	Unset();
+}
 
 
 BNetworkAddress::BNetworkAddress(const char* host, uint16 port, uint32 flags)
@@ -93,19 +134,6 @@ BNetworkAddress::BNetworkAddress(const BNetworkAddress& other)
 }
 
 
-BNetworkAddress::BNetworkAddress(BMessage* archive)
-{
-	// TODO: implement me
-	fStatus = B_NO_INIT;
-}
-
-
-BNetworkAddress::BNetworkAddress()
-{
-	Unset();
-}
-
-
 BNetworkAddress::~BNetworkAddress()
 {
 }
@@ -170,6 +198,12 @@ BNetworkAddress::SetTo(const char* host, const char* service, uint32 flags)
 status_t
 BNetworkAddress::SetTo(int family, const char* host, uint16 port, uint32 flags)
 {
+	if (family == AF_LINK) {
+		if (port != 0)
+			return B_BAD_VALUE;
+		return _ParseLinkAddress(host);
+	}
+
 	BNetworkAddressResolver resolver;
 	status_t status = resolver.SetTo(family, host, port, flags);
 	if (status != B_OK)
@@ -184,6 +218,12 @@ status_t
 BNetworkAddress::SetTo(int family, const char* host, const char* service,
 	uint32 flags)
 {
+	if (family == AF_LINK) {
+		if (service != NULL)
+			return B_BAD_VALUE;
+		return _ParseLinkAddress(host);
+	}
+
 	BNetworkAddressResolver resolver;
 	status_t status = resolver.SetTo(family, host, service, flags);
 	if (status != B_OK)
@@ -313,7 +353,7 @@ BNetworkAddress::SetToBroadcast(int family, uint16 port)
 
 
 status_t
-BNetworkAddress::SetToLocal()
+BNetworkAddress::SetToLocal(int family, uint16 port)
 {
 	// TODO: choose a local address from the network interfaces
 	return fStatus = B_NOT_SUPPORTED;
@@ -321,9 +361,24 @@ BNetworkAddress::SetToLocal()
 
 
 status_t
-BNetworkAddress::SetToLoopback()
+BNetworkAddress::SetToLoopback(int family, uint16 port)
 {
-	return SetTo("localhost");
+	switch (family) {
+		// TODO: choose family depending on availability of IPv6
+		case AF_UNSPEC:
+		case AF_INET:
+			SetTo(htonl(INADDR_LOOPBACK), port);
+			break;
+
+		case AF_INET6:
+			SetTo(in6addr_loopback, port);
+			break;
+
+		default:
+			return fStatus = B_NOT_SUPPORTED;
+	}
+
+	return B_OK;
 }
 
 
@@ -445,42 +500,73 @@ BNetworkAddress::SetPort(uint16 port)
 void
 BNetworkAddress::SetToLinkLevel(uint8* address, size_t length)
 {
-	// TODO: implement me!
+	sockaddr_dl& link = (sockaddr_dl&)fAddress;
+	memset(&link, 0, sizeof(sockaddr_dl));
+
+	link.sdl_family = AF_LINK;
+	link.sdl_alen = length;
+	memcpy(LLADDR(&link), address, length);
+
+	link.sdl_len = sizeof(sockaddr_dl);
+	if (length > sizeof(link.sdl_data))
+		link.sdl_len += length - sizeof(link.sdl_data);
 }
 
 
 void
 BNetworkAddress::SetToLinkLevel(const char* name)
 {
-	// TODO: implement me!
+	sockaddr_dl& link = (sockaddr_dl&)fAddress;
+	memset(&link, 0, sizeof(sockaddr_dl));
+
+	size_t length = strlen(name);
+	if (length > sizeof(fAddress) - sizeof(sockaddr_dl) + sizeof(link.sdl_data))
+		length = sizeof(fAddress) - sizeof(sockaddr_dl) + sizeof(link.sdl_data);
+
+	link.sdl_family = AF_LINK;
+	link.sdl_nlen = length;
+
+	memcpy(link.sdl_data, name, link.sdl_nlen);
+
+	link.sdl_len = sizeof(sockaddr_dl);
+	if (link.sdl_nlen > sizeof(link.sdl_data))
+		link.sdl_len += link.sdl_nlen - sizeof(link.sdl_data);
 }
 
 
 void
 BNetworkAddress::SetToLinkLevel(uint32 index)
 {
-	// TODO: implement me!
+	sockaddr_dl& link = (sockaddr_dl&)fAddress;
+	memset(&link, 0, sizeof(sockaddr_dl));
+
+	link.sdl_family = AF_LINK;
+	link.sdl_len = sizeof(sockaddr_dl);
+	link.sdl_index = index;
 }
 
 
 void
 BNetworkAddress::SetLinkLevelIndex(uint32 index)
 {
-	// TODO: implement me!
+	sockaddr_dl& link = (sockaddr_dl&)fAddress;
+	link.sdl_index = index;
 }
 
 
 void
-BNetworkAddress::SetLinkLevelType(uint32 type)
+BNetworkAddress::SetLinkLevelType(uint8 type)
 {
-	// TODO: implement me!
+	sockaddr_dl& link = (sockaddr_dl&)fAddress;
+	link.sdl_type = type;
 }
 
 
 void
-BNetworkAddress::SetLinkLevelFrameType(uint32 frameType)
+BNetworkAddress::SetLinkLevelFrameType(uint16 frameType)
 {
-	// TODO: implement me!
+	sockaddr_dl& link = (sockaddr_dl&)fAddress;
+	link.sdl_e_type = htons(frameType);
 }
 
 
@@ -713,21 +799,15 @@ BNetworkAddress::PrefixLength() const
 		{
 			sockaddr_in& mask = (sockaddr_in&)fAddress;
 
-			ssize_t result = 0;
 			uint32 hostMask = ntohl(mask.sin_addr.s_addr);
-			for (uint8 i = 32; i > 0; i--) {
-				if ((hostMask & (1 << (i - 1))) == 0)
-					break;
-				result++;
-			}
-
-			return result;
+			return addr_bitcount(hostMask);
 		}
 
 		case AF_INET6:
 		{
 			sockaddr_in6& mask = (sockaddr_in6&)fAddress;
 
+			// TODO : see if we can use the optimized addr_bitcount for this
 			ssize_t result = 0;
 			for (uint8 i = 0; i < sizeof(in6_addr); i++) {
 				for (uint8 j = 0; j < 8; j++) {
@@ -767,17 +847,17 @@ BNetworkAddress::LinkLevelInterface() const
 }
 
 
-uint32
+uint8
 BNetworkAddress::LinkLevelType() const
 {
 	return ((sockaddr_dl&)fAddress).sdl_type;
 }
 
 
-uint32
+uint16
 BNetworkAddress::LinkLevelFrameType() const
 {
-	return ((sockaddr_dl&)fAddress).sdl_e_type;
+	return ntohs(((sockaddr_dl&)fAddress).sdl_e_type);
 }
 
 
@@ -921,24 +1001,6 @@ BNetworkAddress::ServiceName() const
 }
 
 
-status_t
-BNetworkAddress::Archive(BMessage* into, bool deep) const
-{
-	// TODO: implement me!
-	return B_ERROR;
-}
-
-
-/*static*/ BArchivable*
-BNetworkAddress::Instantiate(BMessage* archive)
-{
-	if (archive != NULL)
-		return new BNetworkAddress(archive);
-
-	return NULL;
-}
-
-
 bool
 BNetworkAddress::Equals(const BNetworkAddress& other, bool includePort) const
 {
@@ -973,6 +1035,63 @@ BNetworkAddress::Equals(const BNetworkAddress& other, bool includePort) const
 			return memcmp(&fAddress, &other.fAddress, fAddress.ss_len);
 	}
 }
+
+
+// #pragma mark - BFlattenable implementation
+
+
+bool
+BNetworkAddress::IsFixedSize() const
+{
+	return false;
+}
+
+
+type_code
+BNetworkAddress::TypeCode() const
+{
+	return B_NETWORK_ADDRESS_TYPE;
+}
+
+
+ssize_t
+BNetworkAddress::FlattenedSize() const
+{
+	return Length();
+}
+
+
+status_t
+BNetworkAddress::Flatten(void* buffer, ssize_t size) const
+{
+	if (buffer == NULL || size < FlattenedSize())
+		return B_BAD_VALUE;
+
+	memcpy(buffer, &fAddress, Length());
+	return B_OK;
+}
+
+
+status_t
+BNetworkAddress::Unflatten(type_code code, const void* buffer, ssize_t size)
+{
+	// 2 bytes minimum for family, and length
+	if (buffer == NULL || size < 2)
+		return fStatus = B_BAD_VALUE;
+	if (!AllowsTypeCode(code))
+		return fStatus = B_BAD_TYPE;
+
+	memcpy(&fAddress, buffer, min_c(size, (ssize_t)sizeof(fAddress)));
+
+	// check if this can contain a valid address
+	if (fAddress.ss_family != AF_UNSPEC && size < (ssize_t)sizeof(sockaddr))
+		return fStatus = B_BAD_VALUE;
+
+	return fStatus = B_OK;
+}
+
+
+// #pragma mark - operators
 
 
 BNetworkAddress&
@@ -1028,6 +1147,17 @@ BNetworkAddress::operator<(const BNetworkAddress& other) const
 				sizeof(address.sin6_addr));
 			break;
 		}
+
+		case AF_LINK:
+			if (LinkLevelAddressLength() < other.LinkLevelAddressLength())
+				return true;
+			if (LinkLevelAddressLength() > other.LinkLevelAddressLength())
+				return true;
+
+			// TODO: could compare index, and name, too
+			compare = memcmp(LinkLevelAddress(), other.LinkLevelAddress(),
+				LinkLevelAddressLength());
+			break;
 	}
 
 	if (compare < 0)
@@ -1072,4 +1202,32 @@ BNetworkAddress::operator sockaddr&()
 BNetworkAddress::operator const sockaddr&()
 {
 	return (sockaddr&)fAddress;
+}
+
+
+// #pragma mark - private
+
+
+status_t
+BNetworkAddress::_ParseLinkAddress(const char* address)
+{
+	uint8 linkAddress[128];
+	uint32 length = 0;
+	while (length < sizeof(linkAddress)) {
+		if (!isxdigit(address[0]) || !isxdigit(address[1]))
+			return B_BAD_VALUE;
+
+		linkAddress[length++] = (from_hex(address[0]) << 4)
+			| from_hex(address[1]);
+
+		if (address[2] == '\0')
+			break;
+		if (address[2] != ':')
+			return B_BAD_VALUE;
+
+		address += 3;
+	}
+
+	SetToLinkLevel(linkAddress, length);
+	return B_OK;
 }

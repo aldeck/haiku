@@ -19,7 +19,9 @@ StaticLibrary libshared.a :
 	CommandPipe.cpp
 	DragTrackingFilter.cpp
 	HashString.cpp
+	IconButton.cpp
 	Keymap.cpp
+	NaturalCompare.cpp
 	QueryFile.cpp
 	RWLockManager.cpp
 	SHA256.cpp

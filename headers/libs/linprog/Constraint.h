@@ -13,7 +13,7 @@
 #include <String.h>
 #include <SupportDefs.h>
 
-#include "OperatorType.h"
+#include "LinearProgrammingTypes.h"
 #include "Summand.h"
 #include "Variable.h"
 
@@ -27,13 +27,12 @@ class LinearSpec;
  * May render a specification infeasible.
  */
 class Constraint {
-
 public:
 			int32				Index() const;
 
 			SummandList*		LeftSide();
 			void				SetLeftSide(SummandList* summands);
-			void				UpdateLeftSide();
+			
 			void				SetLeftSide(double coeff1, Variable* var1);
 			void				SetLeftSide(double coeff1, Variable* var1,
 									double coeff2, Variable* var2);
@@ -57,30 +56,35 @@ public:
 			const char*			Label();
 			void				SetLabel(const char* label);
 
-			void				WriteXML(BFile* file);
-
 			Variable*			DNeg() const;
 			Variable*			DPos() const;
+
+			bool				IsSoft() const;
 
 			bool				IsValid();
 			void				Invalidate();
 
 								operator BString() const;
 			void				GetString(BString& string) const;
+			void				PrintToStream();
 
 								~Constraint();
 
 protected:
 								Constraint(LinearSpec* ls,
 									SummandList* summands, OperatorType op,
-									double rightSide, double penaltyNeg,
-									double penaltyPos);
+									double rightSide,
+									double penaltyNeg = -1,
+									double penaltyPos = -1);
 
 private:
 			LinearSpec*			fLS;
 			SummandList*		fLeftSide;
 			OperatorType		fOp;
 			double				fRightSide;
+
+			double				fPenaltyNeg;
+			double				fPenaltyPos;
 			Summand*			fDNegObjSummand;
 			Summand*			fDPosObjSummand;
 			BString				fLabel;
@@ -89,6 +93,7 @@ private:
 
 public:
 	friend class		LinearSpec;
+	friend class		LPSolveInterface;
 
 };
 

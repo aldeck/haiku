@@ -1,5 +1,6 @@
 /*
  * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2010, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 #ifndef DEBUGGER_INTERFACE_H
@@ -19,6 +20,10 @@ class DebugEvent;
 class ImageInfo;
 class SymbolInfo;
 class ThreadInfo;
+
+namespace BPrivate {
+class KMessage;
+}
 
 
 class DebuggerInterface : public TeamMemory {
@@ -60,6 +65,8 @@ public:
 	// TeamMemory
 	virtual	ssize_t				ReadMemory(target_addr_t address, void* buffer,
 									size_t size);
+	virtual	ssize_t				WriteMemory(target_addr_t address,
+									void* buffer, size_t size);
 
 private:
 	struct DebugContext;
@@ -70,6 +77,9 @@ private:
 			status_t			_CreateDebugEvent(int32 messageCode,
 									const debug_debugger_message_data& message,
 									bool& _ignore, DebugEvent*& _event);
+
+			status_t			_GetNextSystemWatchEvent(DebugEvent*& _event,
+									BPrivate::KMessage& message);
 
 private:
 			team_id				fTeamID;

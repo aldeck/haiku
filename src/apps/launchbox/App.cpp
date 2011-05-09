@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include <AboutWindow.h>
+#include <Catalog.h>
 #include <Entry.h>
 #include <Message.h>
 #include <String.h>
@@ -16,6 +17,8 @@
 
 #include "MainWindow.h"
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "LaunchBox"
 
 App::App()
 	:
@@ -49,11 +52,15 @@ App::ReadyToRun()
 	status_t status = load_settings(&settings, "main_settings", "LaunchBox");
 	if (status >= B_OK) {
 		BMessage windowMessage;
-		for (int32 i = 0; settings.FindMessage("window", i, &windowMessage) >= B_OK; i++) {
-			BString name("Pad ");
-			name << i + 1;
+		for (int32 i = 0; settings.FindMessage("window", i, &windowMessage)
+				>= B_OK; i++) {
+			BString string;
+			string << i + 1;
+			BString name(B_TRANSLATE("Pad %1"));
+			name.ReplaceFirst("%1", string);
 			BMessage* windowSettings = new BMessage(windowMessage);
-			MainWindow* window = new MainWindow(name.String(), frame, windowSettings);
+			MainWindow* window = new MainWindow(name.String(), frame,
+				windowSettings);
 			window->Show();
 			windowAdded = true;
 			frame.OffsetBy(10.0, 10.0);
@@ -62,7 +69,7 @@ App::ReadyToRun()
 	}
 	
 	if (!windowAdded) {
-		MainWindow* window = new MainWindow("Pad 1", frame, true);
+		MainWindow* window = new MainWindow(B_TRANSLATE("Pad 1"), frame, true);
 		window->Show();
 	}
 }
@@ -75,8 +82,10 @@ App::MessageReceived(BMessage* message)
 		case MSG_ADD_WINDOW: {
 			BMessage* settings = new BMessage('sett');
 			bool wasCloned = message->FindMessage("window", settings) == B_OK;
-			BString name("Pad ");
-			name << CountWindows() + 1;
+			BString string;
+			string << CountWindows() + 1;
+			BString name(B_TRANSLATE("Pad %1"));
+			name.ReplaceFirst("%1", string);
 			MainWindow* window = new MainWindow(name.String(),
 				BRect(50.0, 50.0, 65.0, 100.0), settings);
 			if (wasCloned)
@@ -99,9 +108,10 @@ void
 App::AboutRequested()
 {
 	const char* authors[2];
-	authors[0] = "Stephan Aßmus (aka stippi)";
+	authors[0] = B_TRANSLATE("Stephan Aßmus (aka stippi)");
 	authors[1] = NULL;
-	BAboutWindow("LaunchBox", 2004, authors).Show();
+	BString appName = B_TRANSLATE("LaunchBox");
+	BAboutWindow(appName, 2004, authors).Show();
 }
 
 

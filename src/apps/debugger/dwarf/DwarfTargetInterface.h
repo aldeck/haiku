@@ -12,10 +12,11 @@
 #include "Types.h"
 
 
+class CfaContext;
 class Register;
 
 
-class DwarfTargetInterface : public Referenceable {
+class DwarfTargetInterface : public BReferenceable {
 public:
 	virtual						~DwarfTargetInterface();
 
@@ -27,6 +28,8 @@ public:
 	virtual	bool				SetRegisterValue(uint32 index,
 									const BVariant& value) = 0;
 	virtual	bool				IsCalleePreservedRegister(uint32 index) const
+									= 0;
+	virtual status_t			InitRegisterRules(CfaContext& context) const
 									= 0;
 
 	virtual	bool				ReadMemory(target_addr_t address, void* buffer,

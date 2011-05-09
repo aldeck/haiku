@@ -210,7 +210,8 @@ struct DefaultWindowBehaviour::DragState : MouseTrackingState {
 		bool activateOnMouseUp, bool minimizeCheckOnMouseUp)
 		:
 		MouseTrackingState(behavior, where, activateOnMouseUp,
-			minimizeCheckOnMouseUp)
+			minimizeCheckOnMouseUp),
+		fLastSnapTime(0)
 	{
 	}
 
@@ -432,6 +433,15 @@ struct DefaultWindowBehaviour::ResizeBorderState : MouseTrackingState {
 
 	virtual void EnterState(State* previousState)
 	{
+		if ((fWindow->Flags() & B_NOT_RESIZABLE) != 0)
+			fHorizontal = fVertical = NONE;
+		else {
+			if ((fWindow->Flags() & B_NOT_H_RESIZABLE) != 0)
+				fHorizontal = NONE;
+
+			if ((fWindow->Flags() & B_NOT_V_RESIZABLE) != 0)
+				fVertical = NONE;
+		}
 		fBehavior._SetResizeCursor(fHorizontal, fVertical);
 	}
 
@@ -442,14 +452,9 @@ struct DefaultWindowBehaviour::ResizeBorderState : MouseTrackingState {
 
 	virtual void MouseMovedAction(BPoint& delta, bigtime_t now)
 	{
-		if ((fWindow->Flags() & B_NOT_RESIZABLE) != 0) {
-			delta = BPoint(0, 0);
-			return;
-		}
-
-		if ((fWindow->Flags() & B_NOT_H_RESIZABLE) != 0 || fHorizontal == NONE)
+		if (fHorizontal == NONE)
 			delta.x = 0;
-		if ((fWindow->Flags() & B_NOT_V_RESIZABLE) != 0 || fVertical == NONE)
+		if (fVertical == NONE)
 			delta.y = 0;
 
 		if (delta.x == 0 && delta.y == 0)
@@ -656,6 +661,9 @@ struct DefaultWindowBehaviour::ManageWindowState : State {
 private:
 	void _UpdateBorders(BPoint where)
 	{
+		if ((fWindow->Flags() & B_NOT_RESIZABLE) != 0)
+			return;
+
 		// Compute the window center relative location of where. We divide by
 		// the width respective the height, so we compensate for the window's
 		// aspect ratio.
@@ -673,6 +681,11 @@ private:
 		int8 vertical;
 		_ComputeResizeDirection(x, y, horizontal, vertical);
 
+		if ((fWindow->Flags() & B_NOT_H_RESIZABLE) != 0)
+			horizontal = NONE;
+		if ((fWindow->Flags() & B_NOT_V_RESIZABLE) != 0)
+			vertical = NONE;
+
 		// update the highlight, if necessary
 		if (horizontal != fHorizontal || vertical != fVertical) {
 			fBehavior._SetBorderHighlights(fHorizontal, fVertical, false);
@@ -686,68 +699,6 @@ private:
 	BPoint	fLastMousePosition;
 	int8	fHorizontal;
 	int8	fVertical;
-};
-
-
-// #pragma mark - State
-
-
-struct DefaultWindowBehaviour::HumdingerResizeState : State {
-	HumdingerResizeState(DefaultWindowBehaviour& behavior, BPoint where)
-		:
-		State(behavior),
-		fInitialMousePosition(where),
-		fJitterPhase(true)
-	{
-	}
-
-	virtual void EnterState(State* previousState)
-	{
-		fDesktop->SetManagementCursor(
-			fDesktop->GetCursorManager().GetCursor(B_CURSOR_ID_MOVE));
-	}
-
-	virtual void ExitState(State* nextState)
-	{
-		fBehavior._ResetResizeCursor();
-	}
-
-	virtual void MouseUp(BMessage* message, BPoint where)
-	{
-		// Leave the state, when the middle mouse button has been released.
-		int32 buttons = message->FindInt32("buttons");
-		if ((buttons & B_TERTIARY_MOUSE_BUTTON) == 0)
-			fBehavior._NextState(NULL);
-	}
-
-	virtual void MouseMoved(BMessage* message, BPoint where, bool isFake)
-	{
-		// ignore the initial movement
-		float dx = where.x - fInitialMousePosition.x;
-		float dy = where.y - fInitialMousePosition.y;
-		if (dx * dx + dy * dy < (fJitterPhase ? 16 : 64))
-			return;
-
-		// Enter the next phase, if we're still in the first one.
-		if (fJitterPhase) {
-			fInitialMousePosition = where;
-			fJitterPhase = false;
-			return;
-		}
-
-		// The mouse has moved far enough for us to take a guess in which
-		// direction.
-		int8 horizontal;
-		int8 vertical;
-		_ComputeResizeDirection(dx, dy, horizontal, vertical);
-
-		fBehavior._NextState(new (std::nothrow) ResizeBorderState(fBehavior,
-			where, horizontal, vertical));
-	}
-
-private:
-	BPoint	fInitialMousePosition;
-	bool	fJitterPhase;
 };
 
 
@@ -889,11 +840,6 @@ DefaultWindowBehaviour::MouseDown(BMessage* message, BPoint where,
 				default:
 					break;
 			}
-		} else if ((buttons & B_TERTIARY_MOUSE_BUTTON) != 0) {
-			// Middle-click anywhere on the window shall initiate
-			// humdinger-resize mode.
-			if (windowModifier && hitRegion != Decorator::REGION_NONE)
-				action = ACTION_HUMDINGER_RESIZE;
 		}
 	}
 
@@ -961,11 +907,6 @@ DefaultWindowBehaviour::MouseDown(BMessage* message, BPoint where,
 			_NextState(new (std::nothrow) ResizeBorderState(*this, where,
 				hitRegion));
 			STRACE_CLICK(("===> ACTION_RESIZE_BORDER\n"));
-			break;
-
-		case ACTION_HUMDINGER_RESIZE:
-			_NextState(new (std::nothrow) HumdingerResizeState(*this, where));
-			STRACE_CLICK(("===> ACTION_HUMDINGER_RESIZE\n"));
 			break;
 
 		default:
@@ -1109,18 +1050,7 @@ DefaultWindowBehaviour::_SetBorderHighlights(int8 horizontal, int8 vertical,
 		}
 
 		// invalidate the affected regions
-		dirtyRegion.IntersectWith(&fWindow->VisibleRegion());
-		BRect dirtyRect(dirtyRegion.Frame());
-
-		if (dirtyRect.IsValid()) {
-			DrawingEngine* engine = decorator->GetDrawingEngine();
-			engine->LockParallelAccess();
-			engine->ConstrainClippingRegion(&dirtyRegion);
-
-			decorator->Draw(dirtyRect);
-
-			engine->UnlockParallelAccess();
-		}
+		fWindow->ProcessDirtyRegion(dirtyRegion);
 	}
 }
 

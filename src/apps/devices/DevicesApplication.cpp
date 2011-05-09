@@ -8,10 +8,13 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Catalog.h>
 #include <TextView.h>
 
 #include "DevicesView.h"
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "DevicesApplication"
 
 class DevicesApplication : public BApplication {
 public:
@@ -50,13 +53,13 @@ DevicesApplication::AboutRequested()
 void
 DevicesApplication::ShowAbout()
 {
-	BAlert* alert = new BAlert("about", "Devices\n"
+	BAlert* alert = new BAlert(B_TRANSLATE("About"), B_TRANSLATE("Devices\n"
 		"\twritten by Pieter Panman\n"
 		"\n"
 		"\tBased on listdev by Jérôme Duval\n"
 		"\tand the previous Devices preference\n"
 		"\tby Jérôme Duval and Sikosis\n"
-		"\tCopyright 2009, Haiku, Inc.\n", "OK");
+		"\tCopyright 2009, Haiku, Inc.\n"), B_TRANSLATE("OK"));
 	BTextView* view = alert->TextView();
 	BFont font;
 
@@ -73,9 +76,10 @@ DevicesApplication::ShowAbout()
 
 DevicesWindow::DevicesWindow()
 	:
-	BWindow(BRect(50, 50, 750, 550), "Devices", B_TITLED_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS
-			| B_QUIT_ON_WINDOW_CLOSE)
+	BWindow(BRect(50, 50, 750, 550), B_TRANSLATE("Devices"), 
+		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS 
+		| B_AUTO_UPDATE_SIZE_LIMITS
+		| B_QUIT_ON_WINDOW_CLOSE)
 {
 	float minWidth;
 	float maxWidth;

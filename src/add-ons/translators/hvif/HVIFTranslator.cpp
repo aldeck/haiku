@@ -11,6 +11,7 @@
 
 #include <Bitmap.h>
 #include <BitmapStream.h>
+#include <Catalog.h>
 #include <IconUtils.h>
 
 #include <stdio.h>
@@ -21,7 +22,11 @@
 #define HVIF_TRANSLATION_QUALITY		1.0
 #define HVIF_TRANSLATION_CAPABILITY		1.0
 
-static translation_format sInputFormats[] = {
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "HVIFTranslator"
+
+
+static const translation_format sInputFormats[] = {
 	{
 		HVIF_FORMAT_CODE,
 		B_TRANSLATOR_BITMAP,
@@ -33,7 +38,7 @@ static translation_format sInputFormats[] = {
 };
 
 
-static translation_format sOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	{
 		B_TRANSLATOR_BITMAP,
 		B_TRANSLATOR_BITMAP,
@@ -45,9 +50,14 @@ static translation_format sOutputFormats[] = {
 };
 
 
-static TranSetting sDefaultSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{ HVIF_SETTING_RENDER_SIZE, TRAN_SETTING_INT32, 64 }
 };
+
+const uint32 kNumInputFormats = sizeof(sInputFormats) / sizeof(translation_format);
+const uint32 kNumOutputFormats = sizeof(sOutputFormats) / sizeof(translation_format);
+const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting);
+
 
 
 BTranslator *
@@ -60,13 +70,14 @@ make_nth_translator(int32 n, image_id image, uint32 flags, ...)
 
 
 HVIFTranslator::HVIFTranslator()
-	:	BaseTranslator("HVIF icons", "Native Haiku vector icon translator",
-			HVIF_TRANSLATOR_VERSION, sInputFormats,
-			sizeof(sInputFormats) / sizeof(sInputFormats[0]), sOutputFormats,
-			sizeof(sOutputFormats) / sizeof(sOutputFormats[0]),
-			"HVIFTranslator_Settings", sDefaultSettings,
-			sizeof(sDefaultSettings) / sizeof(sDefaultSettings[0]),
-			B_TRANSLATOR_BITMAP, HVIF_FORMAT_CODE)
+	: BaseTranslator(B_TRANSLATE("HVIF icons"), 
+		B_TRANSLATE("Native Haiku vector icon translator"),
+		HVIF_TRANSLATOR_VERSION,
+		sInputFormats, kNumInputFormats,
+		sOutputFormats, kNumOutputFormats,
+		"HVIFTranslator_Settings",
+		sDefaultSettings, kNumDefaultSettings,
+		B_TRANSLATOR_BITMAP, HVIF_FORMAT_CODE)
 {
 }
 
@@ -169,5 +180,6 @@ HVIFTranslator::DerivedTranslate(BPositionIO *inSource,
 BView *
 HVIFTranslator::NewConfigView(TranslatorSettings *settings)
 {
-	return new HVIFView("HVIFTranslator Settings", B_WILL_DRAW, settings);
+	return new HVIFView(B_TRANSLATE("HVIFTranslator Settings"), 
+		B_WILL_DRAW, settings);
 }

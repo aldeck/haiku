@@ -206,8 +206,8 @@ DirectoryIterator::Next()
 		TRACE("DirectoryIterator::Next() skipping entry %d %ld\n", entry->Length(), entry->InodeID());
 	} while (entry->Length() == 0 || entry->InodeID() == 0);
 
-	TRACE("DirectoryIterator::Next() entry->Length() %d entry->name %s\n",
-			entry->Length(), entry->name);
+	TRACE("DirectoryIterator::Next() entry->Length() %d entry->name %*s\n",
+			entry->Length(), entry->NameLength(), entry->name);
 
 	return B_OK;
 }
@@ -309,11 +309,13 @@ DirectoryIterator::FindEntry(const char* name, ino_t* _id)
 	ino_t id;
 
 	status_t status = B_OK;
+	size_t length = strlen(name);
 	while (status == B_OK) {
 		size_t nameLength = EXT2_NAME_LENGTH;
 		status = Get(buffer, &nameLength, &id);
 		if (status == B_OK) {
-			if (strcmp(name, buffer) == 0) {
+			if (length == nameLength 
+				&& strncmp(name, buffer, nameLength) == 0) {
 				if (_id != NULL)
 					*_id = id;
 				return B_OK;
@@ -515,7 +517,7 @@ DirectoryIterator::_SplitIndexedBlock(Transaction& transaction,
 		return B_NO_MEMORY;
 	ArrayDeleter<uint8> bufferDeleter(buffer);
 
-	off_t firstPhysicalBlock = 0;
+	fsblock_t firstPhysicalBlock = 0;
 
 	// Prepare block to hold the first half of the entries and fill the buffer
 	CachedBlock cachedFirst(fVolume);

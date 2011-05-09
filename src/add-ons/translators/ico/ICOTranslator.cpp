@@ -5,12 +5,20 @@
 
 
 #include "ICOTranslator.h"
-#include "ConfigView.h"
-#include "ICO.h"
 
+#include <Catalog.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <Catalog.h>
+
+#include "ConfigView.h"
+#include "ICO.h"
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "ICOTranslator"
 
 
 const char *kDocumentCount = "/documentCount";
@@ -21,7 +29,7 @@ const char *kDocumentIndex = "/documentIndex";
 
 
 // The input formats that this translator supports.
-translation_format sInputFormats[] = {
+static const translation_format sInputFormats[] = {
 	{
 		ICO_IMAGE_FORMAT,
 		B_TRANSLATOR_BITMAP,
@@ -41,7 +49,7 @@ translation_format sInputFormats[] = {
 };
 
 // The output formats that this translator supports.
-translation_format sOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	{
 		ICO_IMAGE_FORMAT,
 		B_TRANSLATOR_BITMAP,
@@ -61,7 +69,7 @@ translation_format sOutputFormats[] = {
 };
 
 // Default settings for the Translator
-static TranSetting sDefaultSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{B_TRANSLATOR_EXT_HEADER_ONLY, TRAN_SETTING_BOOL, false},
 	{B_TRANSLATOR_EXT_DATA_ONLY, TRAN_SETTING_BOOL, false}
 };
@@ -72,7 +80,8 @@ const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting
 
 
 ICOTranslator::ICOTranslator()
-	: BaseTranslator("Windows icon images", "Windows icon translator",
+	: BaseTranslator(B_TRANSLATE("Windows icon images"), 
+		B_TRANSLATE("Windows icon translator"),
 		ICO_TRANSLATOR_VERSION,
 		sInputFormats, kNumInputFormats,
 		sOutputFormats, kNumOutputFormats,
@@ -107,8 +116,10 @@ ICOTranslator::DerivedIdentify(BPositionIO *stream,
 	info->group = B_TRANSLATOR_BITMAP;
 	info->quality = ICO_IN_QUALITY;
 	info->capability = ICO_IN_CAPABILITY;
-	snprintf(info->name, sizeof(info->name), "Windows %s %ld bit image",
-		type == ICO::kTypeIcon ? "Icon" : "Cursor", bitsPerPixel);
+	snprintf(info->name, sizeof(info->name), 
+		B_TRANSLATE("Windows %s %ld bit image"),
+		type == ICO::kTypeIcon ? B_TRANSLATE("Icon") : B_TRANSLATE("Cursor"), 
+		bitsPerPixel);
 	strcpy(info->MIME, kICOMimeType);
 
 	return B_OK;

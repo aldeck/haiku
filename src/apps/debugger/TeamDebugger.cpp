@@ -46,7 +46,7 @@
 // #pragma mark - ImageHandler
 
 
-struct TeamDebugger::ImageHandler : public Referenceable,
+struct TeamDebugger::ImageHandler : public BReferenceable,
 	private LocatableFile::Listener {
 public:
 	ImageHandler(TeamDebugger* teamDebugger, Image* image)
@@ -233,7 +233,7 @@ TeamDebugger::Init(team_id teamID, thread_id threadID, bool stopInMain)
 		fFileManager);
 	if (teamDebugInfo == NULL)
 		return B_NO_MEMORY;
-	Reference<TeamDebugInfo> teamDebugInfoReference(teamDebugInfo);
+	BReference<TeamDebugInfo> teamDebugInfoReference(teamDebugInfo);
 
 	error = teamDebugInfo->Init();
 	if (error != B_OK)
@@ -410,7 +410,7 @@ TeamDebugger::MessageReceived(BMessage* message)
 
 			if (ThreadHandler* handler = _GetThreadHandler(threadID)) {
 				handler->HandleThreadAction(message->what);
-				handler->RemoveReference();
+				handler->ReleaseReference();
 			}
 			break;
 		}
@@ -419,7 +419,7 @@ TeamDebugger::MessageReceived(BMessage* message)
 		case MSG_CLEAR_BREAKPOINT:
 		{
 			UserBreakpoint* breakpoint = NULL;
-			Reference<UserBreakpoint> breakpointReference;
+			BReference<UserBreakpoint> breakpointReference;
 			uint64 address = 0;
 
 			if (message->FindPointer("breakpoint", (void**)&breakpoint) == B_OK)
@@ -454,7 +454,7 @@ TeamDebugger::MessageReceived(BMessage* message)
 
 			if (ThreadHandler* handler = _GetThreadHandler(threadID)) {
 				handler->HandleThreadStateChanged();
-				handler->RemoveReference();
+				handler->ReleaseReference();
 			}
 			break;
 		}
@@ -466,7 +466,7 @@ TeamDebugger::MessageReceived(BMessage* message)
 
 			if (ThreadHandler* handler = _GetThreadHandler(threadID)) {
 				handler->HandleCpuStateChanged();
-				handler->RemoveReference();
+				handler->ReleaseReference();
 			}
 			break;
 		}
@@ -478,7 +478,7 @@ TeamDebugger::MessageReceived(BMessage* message)
 
 			if (ThreadHandler* handler = _GetThreadHandler(threadID)) {
 				handler->HandleStackTraceChanged();
-				handler->RemoveReference();
+				handler->ReleaseReference();
 			}
 			break;
 		}
@@ -631,7 +631,7 @@ TeamDebugger::SetBreakpointEnabledRequested(UserBreakpoint* breakpoint,
 	bool enabled)
 {
 	BMessage message(MSG_SET_BREAKPOINT);
-	Reference<UserBreakpoint> breakpointReference(breakpoint);
+	BReference<UserBreakpoint> breakpointReference(breakpoint);
 	if (message.AddPointer("breakpoint", breakpoint) == B_OK
 		&& message.AddBool("enabled", enabled) == B_OK
 		&& PostMessage(&message) == B_OK) {
@@ -653,7 +653,7 @@ void
 TeamDebugger::ClearBreakpointRequested(UserBreakpoint* breakpoint)
 {
 	BMessage message(MSG_CLEAR_BREAKPOINT);
-	Reference<UserBreakpoint> breakpointReference(breakpoint);
+	BReference<UserBreakpoint> breakpointReference(breakpoint);
 	if (message.AddPointer("breakpoint", breakpoint) == B_OK
 		&& PostMessage(&message) == B_OK) {
 		breakpointReference.Detach();
@@ -799,13 +799,13 @@ TeamDebugger::_DebugEventListener()
 void
 TeamDebugger::_HandleDebuggerMessage(DebugEvent* event)
 {
-	TRACE_EVENTS("TeamDebugger::_HandleDebuggerMessage(): %d\n",
+	TRACE_EVENTS("TeamDebugger::_HandleDebuggerMessage(): %ld\n",
 		event->EventType());
 
 	bool handled = false;
 
 	ThreadHandler* handler = _GetThreadHandler(event->Thread());
-	Reference<ThreadHandler> handlerReference(handler);
+	BReference<ThreadHandler> handlerReference(handler);
 
 	switch (event->EventType()) {
 		case B_DEBUGGER_MESSAGE_THREAD_DEBUGGED:
@@ -884,6 +884,25 @@ TeamDebugger::_HandleDebuggerMessage(DebugEvent* event)
 			handled = _HandleThreadCreated(threadEvent);
 			break;
 		}
+		case DEBUGGER_MESSAGE_THREAD_RENAMED:
+		{
+			ThreadRenamedEvent* threadEvent
+				= dynamic_cast<ThreadRenamedEvent*>(event);
+			TRACE_EVENTS("DEBUGGER_MESSAGE_THREAD_RENAMED: thread: %ld "
+				"(\"%s\")\n",
+				threadEvent->RenamedThread(), threadEvent->NewName());
+			handled = _HandleThreadRenamed(threadEvent);
+			break;
+		}
+		case DEBUGGER_MESSAGE_THREAD_PRIORITY_CHANGED:
+		{
+			ThreadPriorityChangedEvent* threadEvent
+				= dynamic_cast<ThreadPriorityChangedEvent*>(event);
+			TRACE_EVENTS("B_DEBUGGER_MESSAGE_THREAD_PRIORITY_CHANGED: thread:"
+				" %ld\n", threadEvent->ChangedThread());
+			handled = _HandleThreadPriorityChanged(threadEvent);
+			break;
+		}
 		case B_DEBUGGER_MESSAGE_THREAD_DELETED:
 			TRACE_EVENTS("B_DEBUGGER_MESSAGE_THREAD_DELETED: thread: %ld\n",
 				event->Thread());
@@ -919,7 +938,7 @@ TeamDebugger::_HandleDebuggerMessage(DebugEvent* event)
 			break;
 		default:
 			WARNING("TeamDebugger for team %ld: unknown event type: "
-				"%d\n", fTeamID, event->EventType());
+				"%ld\n", fTeamID, event->EventType());
 			break;
 	}
 
@@ -954,12 +973,35 @@ TeamDebugger::_HandleThreadCreated(ThreadCreatedEvent* event)
 
 
 bool
+TeamDebugger::_HandleThreadRenamed(ThreadRenamedEvent* event)
+{
+	AutoLocker< ::Team> locker(fTeam);
+
+	::Thread* thread = fTeam->ThreadByID(event->RenamedThread());
+
+	if (thread != NULL)
+		thread->SetName(event->NewName());
+
+	return false;
+}
+
+
+bool
+TeamDebugger::_HandleThreadPriorityChanged(ThreadPriorityChangedEvent*)
+{
+	// TODO: implement once we actually track thread priorities
+
+	return false;
+}
+
+
+bool
 TeamDebugger::_HandleThreadDeleted(ThreadDeletedEvent* event)
 {
 	AutoLocker< ::Team> locker(fTeam);
 	if (ThreadHandler* handler = fThreadHandlers.Lookup(event->Thread())) {
 		fThreadHandlers.Remove(handler);
-		handler->RemoveReference();
+		handler->ReleaseReference();
 	}
 	fTeam->RemoveThread(event->Thread());
 	return false;
@@ -987,7 +1029,7 @@ TeamDebugger::_HandleImageDeleted(ImageDeletedEvent* event)
 		return false;
 
 	fImageHandlers->Remove(imageHandler);
-	Reference<ImageHandler> imageHandlerReference(imageHandler, true);
+	BReference<ImageHandler> imageHandlerReference(imageHandler, true);
 	locker.Unlock();
 
 	// remove breakpoints in the image
@@ -1007,7 +1049,7 @@ TeamDebugger::_HandleImageDebugInfoChanged(image_id imageID)
 		return;
 
 	Image* image = imageHandler->GetImage();
-	Reference<Image> imageReference(image);
+	BReference<Image> imageReference(image);
 
 	locker.Unlock();
 
@@ -1037,7 +1079,7 @@ TeamDebugger::_HandleSetUserBreakpoint(target_addr_t address, bool enabled)
 	UserBreakpoint* userBreakpoint = NULL;
 	if (breakpoint != NULL && breakpoint->FirstUserBreakpoint() != NULL)
 		userBreakpoint = breakpoint->FirstUserBreakpoint()->GetUserBreakpoint();
-	Reference<UserBreakpoint> userBreakpointReference(userBreakpoint);
+	BReference<UserBreakpoint> userBreakpointReference(userBreakpoint);
 
 	if (userBreakpoint == NULL) {
 		TRACE_CONTROL("  no breakpoint yet\n");
@@ -1090,7 +1132,7 @@ TeamDebugger::_HandleSetUserBreakpoint(target_addr_t address, bool enabled)
 		FunctionID* functionID = functionInstance->GetFunctionID();
 		if (functionID == NULL)
 			return;
-		Reference<FunctionID> functionIDReference(functionID, true);
+		BReference<FunctionID> functionIDReference(functionID, true);
 
 		// create the user breakpoint
 		userBreakpoint = new(std::nothrow) UserBreakpoint(
@@ -1186,7 +1228,7 @@ TeamDebugger::_HandleClearUserBreakpoint(target_addr_t address)
 		return;
 	UserBreakpoint* userBreakpoint
 		= breakpoint->FirstUserBreakpoint()->GetUserBreakpoint();
-	Reference<UserBreakpoint> userBreakpointReference(userBreakpoint);
+	BReference<UserBreakpoint> userBreakpointReference(userBreakpoint);
 
 	locker.Unlock();
 
@@ -1208,7 +1250,7 @@ TeamDebugger::_GetThreadHandler(thread_id threadID)
 
 	ThreadHandler* handler = fThreadHandlers.Lookup(threadID);
 	if (handler != NULL)
-		handler->AddReference();
+		handler->AcquireReference();
 	return handler;
 }
 
@@ -1219,7 +1261,7 @@ TeamDebugger::_AddImage(const ImageInfo& imageInfo, Image** _image)
 	LocatableFile* file = NULL;
 	if (strchr(imageInfo.Name(), '/') != NULL)
 		file = fFileManager->GetTargetFile(imageInfo.Name());
-	Reference<LocatableFile> imageFileReference(file, true);
+	BReference<LocatableFile> imageFileReference(file, true);
 
 	Image* image;
 	status_t error = fTeam->AddImage(imageInfo, file, &image);
@@ -1266,7 +1308,7 @@ TeamDebugger::_LoadSettings()
 			if (sourceFile == NULL)
 				continue;
 		}
-		Reference<LocatableFile> sourceFileReference(sourceFile, true);
+		BReference<LocatableFile> sourceFileReference(sourceFile, true);
 
 		// create the breakpoint
 		UserBreakpointLocation location(breakpointSetting->GetFunctionID(),
@@ -1276,7 +1318,7 @@ TeamDebugger::_LoadSettings()
 		UserBreakpoint* breakpoint = new(std::nothrow) UserBreakpoint(location);
 		if (breakpoint == NULL)
 			return;
-		Reference<UserBreakpoint> breakpointReference(breakpoint, true);
+		BReference<UserBreakpoint> breakpointReference(breakpoint, true);
 
 		// install it
 		fBreakpointManager->InstallUserBreakpoint(breakpoint,

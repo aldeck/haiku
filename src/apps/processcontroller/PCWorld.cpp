@@ -28,12 +28,17 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Catalog.h>
 #include <Deskbar.h>
 #include <Roster.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "ProcessController"
 
 
 class PCApplication : public BApplication {
@@ -82,8 +87,10 @@ PCApplication::ReadyToRun()
 	if (!deskbar.HasItem(kDeskbarItemName)) {
 		// We're not yet installed in the Deskbar, ask if we should
 		BAlert* alert = new BAlert("",
-			"Do you want ProcessController to live in the Deskbar?", "Don't",
-			"Install", NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			B_TRANSLATE("You can run ProcessController in a window"
+			" or install it in the Deskbar."), B_TRANSLATE("Run in window"),
+			B_TRANSLATE("Install in Deskbar"),
+			NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 		alert->SetShortcut(0, B_ESCAPE);
 
 		if (alert->Go() != 0) {
@@ -95,7 +102,8 @@ PCApplication::ReadyToRun()
 		}
 	} else {
 		BAlert* alert = new BAlert("",
-			"ProcessController is already installed in Deskbar.", "OK", NULL,
+			B_TRANSLATE("ProcessController is already installed in Deskbar."),
+			B_TRANSLATE("OK"), NULL,
 			NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 		alert->SetShortcut(0, B_ESCAPE);
 		alert->Go();
@@ -139,8 +147,9 @@ PCApplication::ArgvReceived(int32 argc, char **argv)
 			move_to_deskbar(deskbar);
 	} else if (argc > 1) {
 		// print a simple usage string
-		printf("Usage: %s [-deskbar]\n", argv[0]);
-		printf("(c) 1996-2001 Georges-Edouard Berenger, berenger@francenet.fr\n");
+		printf(B_TRANSLATE("Usage: %s [-deskbar]\n"), argv[0]);
+		printf(B_TRANSLATE("(c) 1996-2001 Georges-Edouard Berenger, "
+		"berenger@francenet.fr\n"));
 	}
 
 	Quit();

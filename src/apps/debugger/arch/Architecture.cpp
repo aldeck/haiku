@@ -10,11 +10,14 @@
 #include <AutoDeleter.h>
 #include <AutoLocker.h>
 
+#include "CfaContext.h"
 #include "CpuState.h"
 #include "FunctionInstance.h"
 #include "Image.h"
 #include "ImageDebugInfo.h"
 #include "ImageDebugInfoProvider.h"
+#include "Register.h"
+#include "RegisterMap.h"
 #include "SpecificImageDebugInfo.h"
 #include "StackTrace.h"
 #include "Team.h"
@@ -43,11 +46,57 @@ Architecture::Init()
 
 
 status_t
+Architecture::InitRegisterRules(CfaContext& context) const
+{
+	// Init the initial register rules. The DWARF 3 specs on the
+	// matter: "The default rule for all columns before
+	// interpretation of the initial instructions is the undefined
+	// rule. However, an ABI authoring body or a compilation system
+	// authoring body may specify an alternate default value for any
+	// or all columns."
+	// GCC's assumes the "same value" rule for all callee preserved
+	// registers. We set them respectively.
+	// the stack pointer is initialized to
+	// CFA offset 0 by default.
+	const Register* registers = Registers();
+	RegisterMap* toDwarf = NULL;
+	status_t result = GetDwarfRegisterMaps(&toDwarf, NULL);
+	if (result != B_OK)
+		return result;
+
+	BReference<RegisterMap> toDwarfMapReference(toDwarf, true);
+	for (int32 i = 0; i < CountRegisters(); i++) {
+		int32 dwarfReg = toDwarf->MapRegisterIndex(i);
+		if (dwarfReg < 0 || dwarfReg > CountRegisters() - 1)
+			continue;
+
+		// TODO: on CPUs that have a return address register
+		// a default rule should be set up to use that to
+		// extract the instruction pointer
+		switch (registers[i].Type()) {
+			case REGISTER_TYPE_STACK_POINTER:
+			{
+				context.RegisterRule(dwarfReg)->SetToValueOffset(0);
+				break;
+			}
+			default:
+			{
+				context.RegisterRule(dwarfReg)->SetToSameValue();
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
+
+status_t
 Architecture::CreateStackTrace(Team* team,
 	ImageDebugInfoProvider* imageInfoProvider, CpuState* cpuState,
 	StackTrace*& _stackTrace)
 {
-	Reference<CpuState> cpuStateReference(cpuState);
+	BReference<CpuState> cpuStateReference(cpuState);
 
 	// create the object
 	StackTrace* stackTrace = new(std::nothrow) StackTrace;
@@ -66,14 +115,15 @@ Architecture::CreateStackTrace(Team* team,
 		// get the image for the instruction pointer
 		AutoLocker<Team> teamLocker(team);
 		Image* image = team->ImageByAddress(instructionPointer);
-		Reference<Image> imageReference(image);
+		BReference<Image> imageReference(image);
 		teamLocker.Unlock();
 
 		// get the image debug info
 		ImageDebugInfo* imageDebugInfo = NULL;
 		if (image != NULL)
 			imageInfoProvider->GetImageDebugInfo(image, imageDebugInfo);
-		Reference<ImageDebugInfo> imageDebugInfoReference(imageDebugInfo, true);
+		BReference<ImageDebugInfo> imageDebugInfoReference(imageDebugInfo,
+			true);
 
 		// get the function
 		teamLocker.Lock();
@@ -84,7 +134,7 @@ Architecture::CreateStackTrace(Team* team,
 			if (function != NULL)
 				functionDebugInfo = function->GetFunctionDebugInfo();
 		}
-		Reference<FunctionInstance> functionReference(function);
+		BReference<FunctionInstance> functionReference(function);
 		teamLocker.Unlock();
 
 		// If the CPU state's instruction pointer is actually the return address

@@ -54,8 +54,7 @@ HTree::HTree(Volume* volume, Inode* directory)
 	fRootEntry(NULL)
 {
 	fBlockSize = volume->BlockSize();
-	fIndexed = volume->IndexedDirectories()
-		&& (directory->Flags() & EXT2_INODE_INDEXED) != 0;
+	fIndexed = directory->IsIndexed();
 
 	ext2_super_block superBlock = volume->SuperBlock();
 	fHashSeed[0] = superBlock.HashSeed(0);
@@ -84,16 +83,13 @@ HTree::~HTree()
 status_t
 HTree::PrepareForHash()
 {
-	off_t blockNum;
+	fsblock_t blockNum;
 	status_t status = fDirectory->FindBlock(0, blockNum);
 	if (status != B_OK)
 		return status;
 
 	CachedBlock cached(fDirectory->GetVolume());
-	const uint8* block = cached.SetTo(blockNum);
-
-	HTreeRoot* root = (HTreeRoot*)block;
-
+	HTreeRoot* root = (HTreeRoot*)cached.SetTo(blockNum);
 	if (root == NULL)
 		return B_IO_ERROR;
 	if (!root->IsValid())
@@ -110,21 +106,18 @@ HTree::Lookup(const char* name, DirectoryIterator** iterator)
 {
 	TRACE("HTree::Lookup()\n");
 	if (!fIndexed || (name[0] == '.'
-		&& (name[1] == '\0' || (name[1] == '.' && name[2] == '0')))) {
+		&& (name[1] == '\0' || (name[1] == '.' && name[2] == '\0')))) {
 		// No HTree support or looking for trivial directories
 		return _FallbackToLinearIteration(iterator);
 	}
 	
-	off_t blockNum;
+	fsblock_t blockNum;
 	status_t status = fDirectory->FindBlock(0, blockNum);
 	if (status != B_OK)
 		return _FallbackToLinearIteration(iterator);
 
 	CachedBlock cached(fDirectory->GetVolume());
-	const uint8* block = cached.SetTo(blockNum);
-
-	HTreeRoot* root = (HTreeRoot*)block;
-	
+	HTreeRoot* root = (HTreeRoot*)cached.SetTo(blockNum);
 	if (root == NULL || !root->IsValid())
 		return _FallbackToLinearIteration(iterator);
 
@@ -249,7 +242,6 @@ void
 HTree::_HalfMD4Transform(uint32 buffer[4], uint32 blocks[8])
 {
 	uint32 a, b, c, d;
-	
 	a = buffer[0];
 	b = buffer[1];
 	c = buffer[2];
@@ -312,7 +304,7 @@ HTree::_HashHalfMD4(const char* name, uint8 _length)
 {
 	TRACE("HTree::_HashHalfMD4()\n");
 	uint32 buffer[4];
-	int32 length = (uint32)_length;
+	int32 length = _length;
 
 	buffer[0] = fHashSeed[0];
 	buffer[1] = fHashSeed[1];
@@ -388,9 +380,9 @@ void
 HTree::_PrepareBlocksForHash(const char* string, uint32 length, uint32* blocks,
 	uint32 numBlocks)
 {
-	uint32 padding = (uint32)length;
-	padding = (padding << 8) | padding;
-	padding = (padding << 16) | padding;
+	uint32 padding = length;
+	padding |= padding << 8;
+	padding |= padding << 16;
 	
 	uint32 numBytes = numBlocks * 4;
 	if (length > numBytes)
@@ -399,10 +391,10 @@ HTree::_PrepareBlocksForHash(const char* string, uint32 length, uint32* blocks,
 	uint32 completeIterations = length / 4;
 	
 	for (uint32 i = 0; i < completeIterations; ++i) {
-		uint32 value = (padding << 8) | *(string++);
-		value = (value << 8) | *(string++);
-		value = (value << 8) | *(string++);
-		value = (value << 8) | *(string++);
+		uint32 value = (padding << 8) + *(string++);
+		value = (value << 8) + *(string++);
+		value = (value << 8) + *(string++);
+		value = (value << 8) + *(string++);
 		blocks[i] = value;
 	}
 	
@@ -428,3 +420,4 @@ HTree::_FallbackToLinearIteration(DirectoryIterator** iterator)
 
 	return *iterator == NULL ? B_NO_MEMORY : B_OK;
 }
+

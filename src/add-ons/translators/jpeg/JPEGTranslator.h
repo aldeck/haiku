@@ -34,6 +34,7 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <Alert.h>
 #include <Application.h>
+#include <Catalog.h>
 #include <CheckBox.h>
 #include <FindDirectory.h>
 #include <Path.h>
@@ -52,6 +53,9 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "BaseTranslator.h"
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "JPEGTranslator"
+
 // Settings
 #define SETTINGS_FILE	"JPEGTranslator"
 
@@ -66,17 +70,6 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	VIEW_MSG_SET_PHOTOSHOPCMYK 'JSPC'
 #define	VIEW_MSG_SET_SHOWREADERRORBOX 'JSEB'
 
-// View labels
-#define VIEW_LABEL_QUALITY "Output quality"
-#define VIEW_LABEL_SMOOTHING "Output smoothing strength"
-#define VIEW_LABEL_PROGRESSIVE "Use progressive compression"
-#define VIEW_LABEL_OPTIMIZECOLORS "Prevent colors 'washing out'"
-#define	VIEW_LABEL_SMALLERFILE "Make file smaller (sligthtly worse quality)"
-#define	VIEW_LABEL_GRAY1ASRGB24 "Write black-and-white images as RGB24"
-#define	VIEW_LABEL_ALWAYSRGB32 "Read greyscale images as RGB32"
-#define	VIEW_LABEL_PHOTOSHOPCMYK "Use CMYK code with 0 for 100% ink coverage"
-#define	VIEW_LABEL_SHOWREADERRORBOX "Show warning messages"
-
 // strings for use in TranslatorSettings
 #define JPEG_SET_SMOOTHING "smoothing"
 #define JPEG_SET_QUALITY "quality"
@@ -87,7 +80,6 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define JPEG_SET_ALWAYS_RGB32 "always"
 #define JPEG_SET_PHOTOSHOP_CMYK "cmyk"
 #define JPEG_SET_SHOWREADWARNING "readWarning"
-
 
 
 /*!
@@ -210,3 +202,4 @@ EXTERN(struct jpeg_error_mgr *) be_jpeg_std_error (struct jpeg_error_mgr * err,
 	// implemented in "be_jerror.cpp"
 
 #endif // _JPEGTRANSLATOR_H_
+

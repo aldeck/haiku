@@ -34,12 +34,17 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "TranslatorWindow.h"
 #include "exif_parser.h"
 
+#include <syslog.h>
+
 #include <Alignment.h>
+#include <Catalog.h>
 #include <GridLayoutBuilder.h>
 #include <GroupLayoutBuilder.h>
 #include <TabView.h>
 #include <TextView.h>
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "JPEGTranslator"
 
 #define MARKER_EXIF	0xe1
 
@@ -54,43 +59,39 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define B_TRANSLATOR_BITMAP_DESCRIPTION "Be Bitmap Format (JPEGTranslator)"
 
 
-// Translation Kit required globals
-char gTranslatorName[] = "JPEG images";
-char gTranslatorInfo[] =
-	"©2002-2003, Marcin Konicki\n"
+static const int32 sTranslatorVersion = B_TRANSLATION_MAKE_VERSION(1, 2, 0);
+
+static const char* sTranslatorName = B_TRANSLATE("JPEG images");
+static const char* sTranslatorInfo = B_TRANSLATE("©2002-2003, Marcin Konicki\n"
 	"©2005-2007, Haiku\n"
 	"\n"
 	"Based on IJG library ©  1994-2009, Thomas G. Lane, Guido Vollbeding.\n"
-	"          http://www.ijg.org/files/\n"
+	"\thttp://www.ijg.org/files/\n"
 	"\n"
 	"with \"lossless\" encoding support patch by Ken Murchison\n"
-	"          http://www.oceana.com/ftp/ljpeg/\n"
+	"\thttp://www.oceana.com/ftp/ljpeg/\n"
 	"\n"
 	"With some colorspace conversion routines by Magnus Hellman\n"
-	"          http://www.bebits.com/app/802\n";
-
-int32 gTranslatorVersion = B_TRANSLATION_MAKE_VERSION(1, 2, 0);
+	"\thttp://www.bebits.com/app/802\n");
 
 // Define the formats we know how to read
-const translation_format gInputFormats[] = {
+static const translation_format sInputFormats[] = {
 	{ JPEG_FORMAT, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		JPEG_MIME_STRING, JPEG_DESCRIPTION },
 	{ B_TRANSLATOR_BITMAP, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		B_TRANSLATOR_BITMAP_MIME_STRING, B_TRANSLATOR_BITMAP_DESCRIPTION }
 };
-const int gInputFormatCount = sizeof(gInputFormats) / sizeof(translation_format);
 
 // Define the formats we know how to write
-const translation_format gOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	{ JPEG_FORMAT, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		JPEG_MIME_STRING, JPEG_DESCRIPTION },
 	{ B_TRANSLATOR_BITMAP, B_TRANSLATOR_BITMAP, 0.5, 0.5,
 		B_TRANSLATOR_BITMAP_MIME_STRING, B_TRANSLATOR_BITMAP_DESCRIPTION }
 };
-const int gOutputFormatCount = sizeof(gOutputFormats) / sizeof(translation_format);
 
 
-TranSetting gSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{JPEG_SET_SMOOTHING, TRAN_SETTING_INT32, 0},
 	{JPEG_SET_QUALITY, TRAN_SETTING_INT32, 95},
 	{JPEG_SET_PROGRESSIVE, TRAN_SETTING_BOOL, true},
@@ -101,7 +102,10 @@ TranSetting gSettings[] = {
 	{JPEG_SET_PHOTOSHOP_CMYK, TRAN_SETTING_BOOL, true},
 	{JPEG_SET_SHOWREADWARNING, TRAN_SETTING_BOOL, true}
 };
-const int gSettingsCount = sizeof(gSettings) / sizeof(TranSetting);
+
+const uint32 kNumInputFormats = sizeof(sInputFormats) / sizeof(translation_format);
+const uint32 kNumOutputFormats = sizeof(sOutputFormats) / sizeof(translation_format);
+const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting);
 
 
 namespace conversion {
@@ -414,17 +418,20 @@ TranslatorReadView::TranslatorReadView(const char* name,
 	fSettings(settings)
 		// settings should already be Acquired()
 {
-	fAlwaysRGB32 = new BCheckBox("alwaysrgb32", VIEW_LABEL_ALWAYSRGB32,
+	fAlwaysRGB32 = new BCheckBox("alwaysrgb32",
+		B_TRANSLATE("Read greyscale images as RGB32"),
 		new BMessage(VIEW_MSG_SET_ALWAYSRGB32));
 	if (fSettings->SetGetBool(JPEG_SET_ALWAYS_RGB32, NULL))
 		fAlwaysRGB32->SetValue(B_CONTROL_ON);
 
-	fPhotoshopCMYK = new BCheckBox("photoshopCMYK", VIEW_LABEL_PHOTOSHOPCMYK,
+	fPhotoshopCMYK = new BCheckBox("photoshopCMYK",
+		B_TRANSLATE("Use CMYK code with 0 for 100% ink coverage"),
 		new BMessage(VIEW_MSG_SET_PHOTOSHOPCMYK));
 	if (fSettings->SetGetBool(JPEG_SET_PHOTOSHOP_CMYK, NULL))
 		fPhotoshopCMYK->SetValue(B_CONTROL_ON);
 
-	fShowErrorBox = new BCheckBox("error", VIEW_LABEL_SHOWREADERRORBOX,
+	fShowErrorBox = new BCheckBox("error",
+		B_TRANSLATE("Show warning messages"),
 		new BMessage(VIEW_MSG_SET_SHOWREADERRORBOX));
 	if (fSettings->SetGetBool(JPEG_SET_SHOWREADWARNING, NULL))
 		fShowErrorBox->SetValue(B_CONTROL_ON);
@@ -509,39 +516,44 @@ TranslatorWriteView::TranslatorWriteView(const char* name,
 	fSettings(settings)
 		// settings should already be Acquired()
 {
-	fQualitySlider = new SSlider("quality", VIEW_LABEL_QUALITY,
+	fQualitySlider = new SSlider("quality", B_TRANSLATE("Output quality"),
 		new BMessage(VIEW_MSG_SET_QUALITY), 0, 100);
 	fQualitySlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
 	fQualitySlider->SetHashMarkCount(10);
-	fQualitySlider->SetLimitLabels("Low", "High");
+	fQualitySlider->SetLimitLabels(B_TRANSLATE("Low"), B_TRANSLATE("High"));
 	fQualitySlider->SetValue(fSettings->SetGetInt32(JPEG_SET_QUALITY, NULL));
 
-	fSmoothingSlider = new SSlider("smoothing", VIEW_LABEL_SMOOTHING,
+	fSmoothingSlider = new SSlider("smoothing",
+		B_TRANSLATE("Output smoothing strength"),
 		new BMessage(VIEW_MSG_SET_SMOOTHING), 0, 100);
 	fSmoothingSlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
 	fSmoothingSlider->SetHashMarkCount(10);
-	fSmoothingSlider->SetLimitLabels("None", "High");
+	fSmoothingSlider->SetLimitLabels(B_TRANSLATE("None"), B_TRANSLATE("High"));
 	fSmoothingSlider->SetValue(
 		fSettings->SetGetInt32(JPEG_SET_SMOOTHING, NULL));
 
-	fProgress = new BCheckBox("progress", VIEW_LABEL_PROGRESSIVE,
+	fProgress = new BCheckBox("progress",
+		B_TRANSLATE("Use progressive compression"),
 		new BMessage(VIEW_MSG_SET_PROGRESSIVE));
 	if (fSettings->SetGetBool(JPEG_SET_PROGRESSIVE, NULL))
 		fProgress->SetValue(B_CONTROL_ON);
 
-	fSmallerFile = new BCheckBox("smallerfile", VIEW_LABEL_SMALLERFILE,
+	fSmallerFile = new BCheckBox("smallerfile",
+		B_TRANSLATE("Make file smaller (sligthtly worse quality)"),
 		new BMessage(VIEW_MSG_SET_SMALLERFILE));
 	if (fSettings->SetGetBool(JPEG_SET_SMALL_FILES))
 		fSmallerFile->SetValue(B_CONTROL_ON);
 
-	fOptimizeColors = new BCheckBox("optimizecolors", VIEW_LABEL_OPTIMIZECOLORS,
+	fOptimizeColors = new BCheckBox("optimizecolors",
+		B_TRANSLATE("Prevent colors 'washing out'"),
 		new BMessage(VIEW_MSG_SET_OPTIMIZECOLORS));
 	if (fSettings->SetGetBool(JPEG_SET_OPT_COLORS, NULL))
 		fOptimizeColors->SetValue(B_CONTROL_ON);
 	else
 		fSmallerFile->SetEnabled(false);
 
-	fGrayAsRGB24 = new BCheckBox("gray1asrgb24", VIEW_LABEL_GRAY1ASRGB24,
+	fGrayAsRGB24 = new BCheckBox("gray1asrgb24",
+		B_TRANSLATE("Write black-and-white images as RGB24"),
 		new BMessage(VIEW_MSG_SET_GRAY1ASRGB24));
 	if (fSettings->SetGetBool(JPEG_SET_GRAY1_AS_RGB24))
 		fGrayAsRGB24->SetValue(B_CONTROL_ON);
@@ -658,19 +670,19 @@ TranslatorAboutView::TranslatorAboutView(const char* name)
 	BView(name, 0, new BGroupLayout(B_VERTICAL))
 {
 	BAlignment labelAlignment = BAlignment(B_ALIGN_LEFT, B_ALIGN_TOP);
-	BStringView* title = new BStringView("Title", gTranslatorName);
+	BStringView* title = new BStringView("Title", sTranslatorName);
 	title->SetFont(be_bold_font);
 	title->SetExplicitAlignment(labelAlignment);
 
 	char versionString[16];
-	sprintf(versionString, "v%d.%d.%d", (int)(gTranslatorVersion >> 8),
-		(int)((gTranslatorVersion >> 4) & 0xf), (int)(gTranslatorVersion & 0xf));
+	sprintf(versionString, "v%d.%d.%d", (int)(sTranslatorVersion >> 8),
+		(int)((sTranslatorVersion >> 4) & 0xf), (int)(sTranslatorVersion & 0xf));
 
 	BStringView* version = new BStringView("Version", versionString);
 	version->SetExplicitAlignment(labelAlignment);
 
 	BTextView* infoView = new BTextView("info");
-	infoView->SetText(gTranslatorInfo);
+	infoView->SetText(sTranslatorInfo);
 	infoView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 	infoView->MakeEditable(false);
 
@@ -691,9 +703,9 @@ TranslatorView::TranslatorView(const char* name, TranslatorSettings* settings)
 	:
 	BTabView(name)
 {
-	AddTab(new TranslatorWriteView("Write", settings->Acquire()));
-	AddTab(new TranslatorReadView("Read", settings->Acquire()));
-	AddTab(new TranslatorAboutView("About"));
+	AddTab(new TranslatorWriteView(B_TRANSLATE("Write"), settings->Acquire()));
+	AddTab(new TranslatorReadView(B_TRANSLATE("Read"), settings->Acquire()));
+	AddTab(new TranslatorAboutView(B_TRANSLATE("About")));
 
 	settings->Release();
 
@@ -784,8 +796,8 @@ JPEGTranslator::DerivedTranslate(BPositionIO* inSource,
 				&longJumpBuffer);
 		}
 	} catch (...) {
-		fprintf(stderr, "libjpeg encoutered a critical error "
-			"(caught C++ exception).\n");
+		syslog(LOG_ERR, "libjpeg encountered a critical error (caught C++ "
+			"exception).\n");
 		return B_ERROR;
 	}
 
@@ -938,7 +950,7 @@ JPEGTranslator::Compress(BPositionIO* in, BPositionIO* out,
 			break;
 
 		default:
-			fprintf(stderr, "Wrong type: Color space not implemented.\n");
+			syslog(LOG_ERR, "Wrong type: Color space not implemented.\n");
 			return B_ERROR;
 	}
 	out_row_bytes = jpg_input_components * width;
@@ -1092,7 +1104,7 @@ JPEGTranslator::Decompress(BPositionIO* in, BPositionIO* out,
 	if (cinfo.out_color_space != JCS_RGB) {
 		switch (cinfo.out_color_space) {
 			case JCS_UNKNOWN:		/* error/unspecified */
-				fprintf(stderr, "From Type: Jpeg uses unknown color type\n");
+				syslog(LOG_ERR, "From Type: Jpeg uses unknown color type\n");
 				break;
 			case JCS_GRAYSCALE:		/* monochrome */
 				// Check if user wants to read only as RGB32 or not
@@ -1124,7 +1136,8 @@ JPEGTranslator::Decompress(BPositionIO* in, BPositionIO* out,
 					converter = convert_from_CMYK_to_32;
 				break;
 			default:
-				fprintf(stderr, "From Type: Jpeg uses hmm... i don't know really :(\n");
+				syslog(LOG_ERR,
+						"From Type: Jpeg uses hmm... i don't know really :(\n");
 				break;
 		}
 	}
@@ -1271,7 +1284,10 @@ JPEGTranslator::PopulateInfoFromFormat(translator_info* info,
 			info->group = formats[i].group;
 			info->quality = formats[i].quality;
 			info->capability = formats[i].capability;
-			strcpy(info->name, formats[i].name);
+			BString str1(formats[i].name);
+			str1.ReplaceFirst("Be Bitmap Format (JPEGTranslator)", 
+				B_TRANSLATE("Be Bitmap Format (JPEGTranslator)"));
+			strncpy(info->name, str1.String(), sizeof(info->name));
 			strcpy(info->MIME,  formats[i].MIME);
 			return B_OK;
 		}
@@ -1293,11 +1309,12 @@ JPEGTranslator::Error(j_common_ptr cinfo, status_t error)
 
 
 JPEGTranslator::JPEGTranslator()
-	:
-	BaseTranslator(gTranslatorName, gTranslatorInfo, gTranslatorVersion,
-	gInputFormats, gInputFormatCount, gOutputFormats, gOutputFormatCount,
-	SETTINGS_FILE, gSettings, gSettingsCount,
-	B_TRANSLATOR_BITMAP, JPEG_FORMAT)
+	: BaseTranslator(sTranslatorName, sTranslatorInfo, sTranslatorVersion,
+		sInputFormats,  kNumInputFormats,
+		sOutputFormats, kNumOutputFormats,
+		SETTINGS_FILE,
+		sDefaultSettings, kNumDefaultSettings,
+		B_TRANSLATOR_BITMAP, JPEG_FORMAT)
 {}
 
 
@@ -1316,7 +1333,7 @@ main(int, char**)
 {
 	BApplication app("application/x-vnd.Haiku-JPEGTranslator");
 	JPEGTranslator* translator = new JPEGTranslator();
-	if (LaunchTranslatorWindow(translator, gTranslatorName) == B_OK)
+	if (LaunchTranslatorWindow(translator, sTranslatorName) == B_OK)
 		app.Run();
 
 	return 0;

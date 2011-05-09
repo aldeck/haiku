@@ -24,6 +24,100 @@ class _EXPORT BMailProtocolConfigView;
 #include "ProtocolConfigView.h"
 
 
+const char* kPartialDownloadLimit = "partial_download_limit";
+
+
+BodyDownloadConfig::BodyDownloadConfig()
+	:
+	BView(BRect(0,0,50,50), "body_config", B_FOLLOW_ALL_SIDES, 0)
+{
+	const char *partial_text = MDR_DIALECT_CHOICE (
+		"Partially download messages larger than",
+		"部分ダウンロードする");
+
+	BRect r(0, 0, 280, 15);
+	fPartialBox = new BCheckBox(r, "size_if", partial_text,
+		new BMessage('SIZF'));
+	fPartialBox->ResizeToPreferred();
+
+	r = fPartialBox->Frame();
+	r.OffsetBy(17,r.Height() + 1);
+	r.right = r.left + be_plain_font->StringWidth("0000") + 10;
+	fSizeBox = new BTextControl(r, "size", "", "", NULL);
+
+	r.OffsetBy(r.Width() + 5,0);
+	fBytesLabel = new BStringView(r, "kb", "KB");
+	AddChild(fBytesLabel);
+	fSizeBox->SetDivider(0);
+
+	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+	AddChild(fPartialBox);
+	AddChild(fSizeBox);
+	ResizeToPreferred();
+}
+
+
+void
+BodyDownloadConfig::SetTo(MailAddonSettings& addonSettings)
+{
+	const BMessage* settings = &addonSettings.Settings();
+
+	int32 limit = 0;
+	if (settings->HasInt32(kPartialDownloadLimit))
+		limit = settings->FindInt32(kPartialDownloadLimit);
+	if (limit < 0) {
+		fPartialBox->SetValue(B_CONTROL_OFF);
+		fSizeBox->SetText("0");
+		fSizeBox->SetEnabled(false);
+	} else {
+		limit = int32(limit / 1024);
+		BString kb;
+		kb << limit;
+		fSizeBox->SetText(kb);
+		fPartialBox->SetValue(B_CONTROL_ON);
+		fSizeBox->SetEnabled(true);
+	}
+}
+
+
+void
+BodyDownloadConfig::MessageReceived(BMessage *msg)
+{
+	if (msg->what != 'SIZF')
+		return BView::MessageReceived(msg);
+	fSizeBox->SetEnabled(fPartialBox->Value());
+}
+
+
+void
+BodyDownloadConfig::AttachedToWindow()
+{
+	fPartialBox->SetTarget(this);
+	fPartialBox->ResizeToPreferred();
+}
+
+
+void
+BodyDownloadConfig::GetPreferredSize(float *width, float *height)
+{
+	*height = fSizeBox->Frame().bottom + 5;
+	*width = 200;
+}
+
+
+status_t
+BodyDownloadConfig::Archive(BMessage* into, bool) const
+{
+	into->RemoveName(kPartialDownloadLimit);
+	if (fPartialBox->Value() == B_CONTROL_ON)
+		into->AddInt32(kPartialDownloadLimit, atoi(fSizeBox->Text()) * 1024);
+	else
+		into->AddInt32(kPartialDownloadLimit, -1);
+
+	return B_OK;
+}
+
+
 namespace {
 
 //--------------------Support functions and #defines---------------
@@ -48,7 +142,7 @@ TextControl(BView *parent,const char *name)
 
 
 BTextControl *
-AddTextField (BRect &rect, const char *name, const char *label) 
+AddTextField(BRect &rect, const char *name, const char *label) 
 {
 	BTextControl *text_control = new BTextControl(rect,name,label,"",NULL,B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP);
 //	text_control->SetDivider(be_plain_font->StringWidth(label));
@@ -104,7 +198,9 @@ FindWidestLabel(BView *view)
 //----------------Real code----------------------
 BMailProtocolConfigView::BMailProtocolConfigView(uint32 options_mask) 
 	:
-	BView (BRect(0,0,100,20), "protocol_config_view", B_FOLLOW_LEFT | B_FOLLOW_TOP, B_WILL_DRAW) 
+	BView (BRect(0,0,100,20), "protocol_config_view", B_FOLLOW_LEFT
+		| B_FOLLOW_TOP, B_WILL_DRAW),
+	fBodyDownloadConfig(NULL)
 {
 	BRect rect(5,5,245,25);
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -141,10 +237,20 @@ BMailProtocolConfigView::BMailProtocolConfigView(uint32 options_mask)
 	}
 
 	if (options_mask & B_MAIL_PROTOCOL_CAN_LEAVE_MAIL_ON_SERVER) {
-		AddChild(AddCheckBox(rect,"leave_mail_remote",MDR_DIALECT_CHOICE ("Leave mail on server","受信後にサーバ内のメールを削除しない"),new BMessage('lmos')));
-		BCheckBox *box = AddCheckBox(rect,"delete_remote_when_local",MDR_DIALECT_CHOICE ("Remove mail from server when deleted","端末で削除されたらサーバ保存分も削除"));
+		AddChild(AddCheckBox(rect, "leave_mail_on_server",
+			MDR_DIALECT_CHOICE ("Leave mail on server",
+				"受信後にサーバ内のメールを削除しない"), new BMessage('lmos')));
+		BCheckBox* box = AddCheckBox(rect, "delete_remote_when_local",
+			MDR_DIALECT_CHOICE ("Remove mail from server when deleted",
+				"端末で削除されたらサーバ保存分も削除"));
 		box->SetEnabled(false);
 		AddChild(box);
+	}
+
+	if (options_mask & B_MAIL_PROTOCOL_PARTIAL_DOWNLOAD) {
+		fBodyDownloadConfig = new BodyDownloadConfig();
+		fBodyDownloadConfig->MoveBy(0, rect.bottom + 5);
+		AddChild(fBodyDownloadConfig);
 	}
 
 	// resize views
@@ -165,21 +271,23 @@ BMailProtocolConfigView::~BMailProtocolConfigView()
 
 
 void 
-BMailProtocolConfigView::SetTo(BMessage *archive) 
+BMailProtocolConfigView::SetTo(MailAddonSettings& settings)
 {
+ 	const BMessage* archive = &settings.Settings();
+
 	BString host = archive->FindString("server");
 	if (archive->HasInt32("port"))
 		host << ':' << archive->FindInt32("port");
 
-	SetTextControl(this,"host",host.String());
-	SetTextControl(this,"user",archive->FindString("username"));
+	SetTextControl(this,"host", host.String());
+	SetTextControl(this,"user", archive->FindString("username"));
 
-	char *password = get_passwd(archive,"cpasswd");
+	char *password = get_passwd(archive, "cpasswd");
 	if (password) {
-		SetTextControl(this,"pass",password);
+		SetTextControl(this,"pass", password);
 		delete[] password;
 	} else
-		SetTextControl(this,"pass",archive->FindString("password"));
+		SetTextControl(this,"pass", archive->FindString("password"));
 	
 	if (archive->HasInt32("flavor")) {
 		BMenuField *menu = (BMenuField *)(FindView("flavor"));
@@ -203,7 +311,7 @@ BMailProtocolConfigView::SetTo(BMessage *archive)
 	}
 
 		
-	BCheckBox *box = (BCheckBox *)(FindView("leave_mail_remote"));
+	BCheckBox *box = (BCheckBox *)(FindView("leave_mail_on_server"));
 	if (box != NULL)
 		box->SetValue(archive->FindBool("leave_mail_on_server") ? B_CONTROL_ON : B_CONTROL_OFF);
 		
@@ -216,6 +324,9 @@ BMailProtocolConfigView::SetTo(BMessage *archive)
 		else
 			box->SetEnabled(false);
 	}
+
+	if (fBodyDownloadConfig)
+		fBodyDownloadConfig->SetTo(settings);
 }
 
 
@@ -255,7 +366,7 @@ BMailProtocolConfigView::AttachedToWindow()
 	if (menu != NULL)
 		menu->Menu()->SetTargetForItems(this);
 		
-	BCheckBox *box = (BCheckBox *)(FindView("leave_mail_remote"));
+	BCheckBox *box = (BCheckBox *)(FindView("leave_mail_on_server"));
 	if (box != NULL)
 		box->SetTarget(this);
 }
@@ -286,7 +397,7 @@ BMailProtocolConfigView::MessageReceived(BMessage *msg)
 
 
 status_t 
-BMailProtocolConfigView::Archive(BMessage *into, bool) const 
+BMailProtocolConfigView::Archive(BMessage *into, bool deep) const 
 {
 	const char *host = TextControl((BView *)this,"host");
 	int32 port = -1;
@@ -335,20 +446,27 @@ BMailProtocolConfigView::Archive(BMessage *into, bool) const
 	if (into->ReplaceInt32("auth_method",index) != B_OK)
 		into->AddInt32("auth_method",index);
 		
-	if (FindView("leave_mail_remote") != NULL) {
-		if (into->ReplaceBool("leave_mail_on_server",((BControl *)(FindView("leave_mail_remote")))->Value() == B_CONTROL_ON) != B_OK)
-			into->AddBool("leave_mail_on_server",((BControl *)(FindView("leave_mail_remote")))->Value() == B_CONTROL_ON);
-			
-		if (into->ReplaceBool("delete_remote_when_local",((BControl *)(FindView("delete_remote_when_local")))->Value() == B_CONTROL_ON) != B_OK)
-			into->AddBool("delete_remote_when_local",((BControl *)(FindView("delete_remote_when_local")))->Value() == B_CONTROL_ON);
+	if (FindView("leave_mail_on_server") != NULL) {
+		BControl* control = (BControl*)FindView("leave_mail_on_server");
+		bool on = (control->Value() == B_CONTROL_ON);
+		if (into->ReplaceBool("leave_mail_on_server", on) != B_OK)
+			into->AddBool("leave_mail_on_server", on);
+
+		control = (BControl*)FindView("delete_remote_when_local");
+		on = (control->Value() == B_CONTROL_ON);
+		if (into->ReplaceBool("delete_remote_when_local", on)) {
+			into->AddBool("delete_remote_when_local", on);
+		}
 	} else {
-		if (into->ReplaceBool("leave_mail_on_server",false) != B_OK)
-			into->AddBool("leave_mail_on_server",false);
+		if (into->ReplaceBool("leave_mail_on_server", false) != B_OK)
+			into->AddBool("leave_mail_on_server", false);
 			
-		if (into->ReplaceBool("delete_remote_when_local",false) != B_OK)
-			into->AddBool("delete_remote_when_local",false);
+		if (into->ReplaceBool("delete_remote_when_local", false) != B_OK)
+			into->AddBool("delete_remote_when_local", false);
 	}
-		
+
+	if (fBodyDownloadConfig)
+		fBodyDownloadConfig->Archive(into, deep);
 	return B_OK;
 }
 
@@ -365,5 +483,11 @@ BMailProtocolConfigView::GetPreferredSize(float *width, float *height)
 		minWidth = 250;
 	*width = minWidth + 10;
 	*height = (CountChildren() * sItemHeight) + 5;
+
+	if (fBodyDownloadConfig) {
+		float bodyW, bodyH;
+		fBodyDownloadConfig->GetPreferredSize(&bodyW, &bodyH);
+		*height+= bodyH;
+	}
 }
 

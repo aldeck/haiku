@@ -22,6 +22,7 @@
 #include <AppFileInfo.h>
 #include <Beep.h>
 #include <Bitmap.h>
+#include <Catalog.h> 
 #include <ControlLook.h>
 #include <Clipboard.h>
 #include <File.h>
@@ -41,6 +42,8 @@
 #include "CalcOptions.h"
 #include "ExpressionTextView.h"
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "CalcView"
 
 //const uint8 K_COLOR_OFFSET				= 32;
 const float kFontScaleY						= 0.4f;
@@ -682,12 +685,12 @@ CalcView::FrameResized(float width, float height)
 void
 CalcView::AboutRequested()
 {
-	BAlert* alert = new BAlert("about",
+	BAlert* alert = new BAlert(B_TRANSLATE("about"),B_TRANSLATE(
 		"DeskCalc v2.1.0\n\n"
 		"written by Timothy Wayper,\nStephan Aßmus and Ingo Weinhold\n\n"
-		B_UTF8_COPYRIGHT"1997, 1998 R3 Software Ltd.\n"
-		B_UTF8_COPYRIGHT"2006-2009 Haiku, Inc.\n\n"
-		"All Rights Reserved.", "OK");
+		B_UTF8_COPYRIGHT "1997, 1998 R3 Software Ltd.\n"
+		B_UTF8_COPYRIGHT "2006-2009 Haiku, Inc.\n\n"
+		"All Rights Reserved."), "OK");
 	alert->Go(NULL);
 }
 
@@ -954,13 +957,13 @@ CalcView::_ParseCalcDesc(const char* keypadDescription)
 
 		// set code
 		if (strcmp(key->label, "=") == 0)
-			strcpy(key->code, "\n");
+			strlcpy(key->code, "\n", sizeof(key->code));
 		else
-			strcpy(key->code, key->label);
+			strlcpy(key->code, key->label, sizeof(key->code));
 
 		// set keymap
 		if (strlen(key->label) == 1)
-			strcpy(key->keymap, key->label);
+			strlcpy(key->keymap, key->label, sizeof(key->keymap));
 		else
 			*key->keymap = '\0';
 
@@ -1098,13 +1101,13 @@ void
 CalcView::_CreatePopUpMenu()
 {
 	// construct items
-	fAutoNumlockItem = new BMenuItem("Enable Num Lock on startup",
+	fAutoNumlockItem = new BMenuItem(B_TRANSLATE("Enable Num Lock on startup"),
 		new BMessage(MSG_OPTIONS_AUTO_NUM_LOCK));
-	fAudioFeedbackItem = new BMenuItem("Audio Feedback",
+	fAudioFeedbackItem = new BMenuItem(B_TRANSLATE("Audio Feedback"),
 		new BMessage(MSG_OPTIONS_AUDIO_FEEDBACK));
-	fShowKeypadItem = new BMenuItem("Show keypad",
+	fShowKeypadItem = new BMenuItem(B_TRANSLATE("Show keypad"),
 		new BMessage(MSG_OPTIONS_SHOW_KEYPAD));
-	fAboutItem = new BMenuItem("About DeskCalc" B_UTF8_ELLIPSIS,
+	fAboutItem = new BMenuItem(B_TRANSLATE("About DeskCalc" B_UTF8_ELLIPSIS),
 		new BMessage(B_ABOUT_REQUESTED));
 
 	// apply current settings
@@ -1178,9 +1181,12 @@ void
 CalcView::_FetchAppIcon(BBitmap* into)
 {
 	entry_ref appRef;
-	be_roster->FindApp(kAppSig, &appRef);
-	BFile file(&appRef, B_READ_ONLY);
-	BAppFileInfo appInfo(&file);
-	if (appInfo.GetIcon(into, B_MINI_ICON) != B_OK)
+	status_t status = be_roster->FindApp(kAppSig, &appRef);
+	if (status == B_OK) {
+		BFile file(&appRef, B_READ_ONLY);
+		BAppFileInfo appInfo(&file);
+		status = appInfo.GetIcon(into, B_MINI_ICON);
+	}
+	if (status != B_OK)
 		memset(into->Bits(), 0, into->BitsLength());
 }

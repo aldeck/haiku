@@ -1,3 +1,9 @@
+/*
+ * Copyright 2004-2007 Haiku Inc. All rights reserved.
+ * Distributed under the terms of the MIT License.
+ *
+ */
+
 #include <Alert.h>
 #include <Application.h>
 #include <Catalog.h>
@@ -8,10 +14,11 @@
 
 
 #define SOFTWARE_EDITOR			"Haiku"
-#define NAME					"NetworkSettings"
+#define NAME					"NetworkSetup"
 #define SOFTWARE_VERSION_LABEL	"0.1.0 alpha"
 
 #define APPLICATION_SIGNATURE	"application/x-vnd." SOFTWARE_EDITOR "-" NAME
+
 
 class Application : public BApplication
 {

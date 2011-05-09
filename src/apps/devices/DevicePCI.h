@@ -11,7 +11,6 @@
 
 #include "Device.h"
 
-
 class DevicePCI : public Device {
 public:
 						DevicePCI(Device* parent);
@@ -19,9 +18,7 @@ public:
 	virtual Attributes	GetBusAttributes();
 	virtual BString		GetBusStrings();
 	virtual void		InitFromAttributes();
-	
-	virtual BString		GetBusTabName()
-							{ return "PCI Information"; }
+	virtual BString		GetBusTabName();
 
 private:
 	uint16				fClassBaseId;

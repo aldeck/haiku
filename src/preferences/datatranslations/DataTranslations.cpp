@@ -10,7 +10,10 @@
 
 #include "DataTranslations.h"
 
+#include <stdio.h>
+
 #include <Alert.h>
+#include <Catalog.h>
 #include <Directory.h>
 #include <FindDirectory.h>
 #include <String.h>
@@ -19,6 +22,10 @@
 
 #include "DataTranslationsSettings.h"
 #include "DataTranslationsWindow.h"
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "DataTranslations"
 
 
 const char* kApplicationSignature = "application/x-vnd.Haiku-DataTranslations";
@@ -46,9 +53,10 @@ DataTranslationsApplication::SetWindowCorner(const BPoint& leftTop)
 void
 DataTranslationsApplication::AboutRequested()
 {
-	BAlert* alert = new BAlert("about", "DataTranslations\n\twritten by Oliver "
-		"Siebenmarck and others\n\tCopyright 2002-2010, Haiku Inc. All rights "
-		"reserved.\n", "OK");
+	BAlert* alert = new BAlert(B_TRANSLATE("About"),
+		B_TRANSLATE("DataTranslations\n\twritten by Oliver Siebenmarck and"
+		" others\n\tCopyright 2002-2010, Haiku Inc. All rights reserved.\n"),
+		B_TRANSLATE("OK"));
 
 	BTextView* view = alert->TextView();
 	view->SetStylable(true);
@@ -66,9 +74,12 @@ DataTranslationsApplication::AboutRequested()
 void
 DataTranslationsApplication::_InstallError(const char* name, status_t status)
 {
-	BString text("Could not install ");
-	text << name << ":\n" << strerror(status);
-	BAlert* alert = new BAlert("DataTranslations - Error", text.String(), "Ok");
+	BString text;
+	snprintf(text.LockBuffer(512), 512,
+			B_TRANSLATE("Could not install %s:\n%s"), name, strerror(status));
+	text.UnlockBuffer();
+	BAlert* alert = new BAlert(B_TRANSLATE("DataTranslations - Error"),
+		text.String(), B_TRANSLATE("OK"));
 	alert->Go();
 }
 
@@ -95,10 +106,11 @@ DataTranslationsApplication::_Install(BDirectory& target, BEntry& entry)
 void
 DataTranslationsApplication::_NoTranslatorError(const char* name)
 {
-	BString text("The item '");
-	text << name << "' does not appear to be a Translator and will not be "
-		"installed.";
-	BAlert* alert = new BAlert("", text.String(), "Ok");
+	BString text(
+		B_TRANSLATE("The item '%name' does not appear to be a Translator and "
+		"will not be installed."));
+	text.ReplaceAll("%name", name);
+	BAlert* alert = new BAlert("", text.String(), B_TRANSLATE("Ok"));
 	alert->Go();
 }
 
@@ -144,12 +156,15 @@ DataTranslationsApplication::RefsReceived(BMessage* message)
 		}
 
 		if (target.Contains(ref.name)) {
-			BString string("An item named '");
-			string << ref.name << "' already exists in the Translators folder! "
-				"Shall the existing translator be overwritten?";
+			BString string(
+				B_TRANSLATE("An item named '%name' already exists in the "
+				"Translators folder! Shall the existing translator be "
+				"overwritten?"));
+			string.ReplaceAll("%name", ref.name);
 
-			BAlert* alert = new BAlert("DataTranslations - Note", string.String(),
-				"Cancel", "Overwrite");
+			BAlert* alert = new BAlert(B_TRANSLATE("DataTranslations - Note"),
+				string.String(), B_TRANSLATE("Cancel"),
+				B_TRANSLATE("Overwrite"));
 			alert->SetShortcut(0, B_ESCAPE);
 			if (alert->Go() != 1)
 				continue;
@@ -161,8 +176,9 @@ DataTranslationsApplication::RefsReceived(BMessage* message)
 
 		status = _Install(target, entry);
 		if (status == B_OK) {
-			BAlert* alert = new BAlert("DataTranslations - Note", "The new "
-				"translator has been installed successfully.", "OK");
+			BAlert* alert = new BAlert(B_TRANSLATE("DataTranslations - Note"),
+				B_TRANSLATE("The new translator has been installed "
+					"successfully."), B_TRANSLATE("OK"));
 			alert->Go(NULL);
 		} else
 			_InstallError(ref.name, status);

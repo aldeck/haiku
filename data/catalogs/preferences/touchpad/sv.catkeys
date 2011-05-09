@@ -1,0 +1,16 @@
+1	swedish	x-vnd.Haiku-Touchpad	1498191605
+Defaults	TouchpadPrefView		Förval
+Fast	TouchpadPrefView		Snabb
+High	TouchpadPrefView		Hög
+Horizontal scroll speed	TouchpadPrefView		Horisontell svephastighet
+Horizontal scrolling	TouchpadPrefView		Horisontell svepning
+Off	TouchpadPrefView		Av
+Revert	TouchpadPrefView		Återställ
+Scroll acceleration	TouchpadPrefView		Svepningsacceleration
+Scrolling	TouchpadPrefView		Svepning
+Slow	TouchpadPrefView		Långsam
+Tap click sensitivity	TouchpadPrefView		Knackningskänslighet
+Tap gesture	TouchpadPrefView		Knackning
+Touchpad	TouchpadMain		Pekplatta
+Two finger scrolling	TouchpadPrefView		Tvåfingerssvepning
+Vertical scroll speed	TouchpadPrefView		Vertikal svephastighet

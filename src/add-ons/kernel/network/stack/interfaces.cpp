@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2010, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2011, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -54,7 +54,8 @@ struct AddressHashDefinition {
 
 	size_t Hash(InterfaceAddress* address) const
 	{
-		return address->domain->address_module->hash_address(address->local, false);
+		return address->domain->address_module->hash_address(address->local,
+			false);
 	}
 
 	bool Compare(const KeyType& key, InterfaceAddress* address) const
@@ -75,7 +76,7 @@ struct AddressHashDefinition {
 	}
 };
 
-typedef BOpenHashTable<AddressHashDefinition, true, true> AddressTable;
+typedef BOpenHashTable<AddressHashDefinition, true, false> AddressTable;
 
 
 static mutex sLock;
@@ -311,6 +312,13 @@ InterfaceAddress::RemoveDefaultRoutes(int32 option)
 }
 
 
+bool
+InterfaceAddress::LocalIsDefined() const
+{
+	return local != NULL && local->sa_family != AF_UNSPEC;
+}
+
+
 #if ENABLE_DEBUGGER_COMMANDS
 
 
@@ -388,6 +396,10 @@ InterfaceAddress::Set(sockaddr** _address, const sockaddr* to)
 }
 
 
+/*!	Makes sure that the sockaddr object pointed to by \a _address is large
+	enough to hold \a size bytes.
+	\a _address may point to NULL when calling this method.
+*/
 /*static*/ sockaddr*
 InterfaceAddress::Prepare(sockaddr** _address, size_t size)
 {
@@ -594,8 +606,10 @@ Interface::AddAddress(InterfaceAddress* address)
 	fAddresses.Add(address);
 	locker.Unlock();
 
-	MutexLocker hashLocker(sHashLock);
-	sAddressTable.Insert(address);
+	if (address->LocalIsDefined()) {
+		MutexLocker hashLocker(sHashLock);
+		sAddressTable.Insert(address);
+	}
 	return B_OK;
 }
 
@@ -614,8 +628,10 @@ Interface::RemoveAddress(InterfaceAddress* address)
 
 	locker.Unlock();
 
-	MutexLocker hashLocker(sHashLock);
-	sAddressTable.Remove(address);
+	if (address->LocalIsDefined()) {
+		MutexLocker hashLocker(sHashLock);
+		sAddressTable.Remove(address);
+	}
 }
 
 
@@ -667,6 +683,9 @@ Interface::AddressAt(size_t index)
 int32
 Interface::IndexOfAddress(InterfaceAddress* address)
 {
+	if (address == NULL)
+		return -1;
+
 	RecursiveLocker locker(fLock);
 
 	AddressList::Iterator iterator = fAddresses.GetIterator();
@@ -697,7 +716,15 @@ Interface::RemoveAddresses()
 	RecursiveLocker locker(fLock);
 
 	while (InterfaceAddress* address = fAddresses.RemoveHead()) {
+		locker.Unlock();
+
+		if (address->LocalIsDefined()) {
+			MutexLocker hashLocker(sHashLock);
+			sAddressTable.Remove(address);
+		}
 		address->ReleaseReference();
+
+		locker.Lock();
 	}
 }
 
@@ -1198,12 +1225,19 @@ add_interface(const char* name, net_domain_private* domain,
 
 	locker.Unlock();
 
-	notify_interface_added(interface);
-	add_interface_address(interface, domain, request);
+	status_t status = add_interface_address(interface, domain, request);
+	if (status == B_OK)
+		notify_interface_added(interface);
+	else {
+		locker.Lock();
+		sInterfaces.Remove(interface);
+		locker.Unlock();
+		interface->ReleaseReference();
+	}
 
 	interface->ReleaseReference();
 
-	return B_OK;
+	return status;
 }
 
 
@@ -1316,45 +1350,45 @@ update_interface_address(InterfaceAddress* interfaceAddress, int32 option,
 		return B_OK;
 	}
 
-	sAddressTable.Remove(interfaceAddress);
+	if (interfaceAddress->LocalIsDefined())
+		sAddressTable.Remove(interfaceAddress);
 
 	// Copy new address over
 	status_t status = InterfaceAddress::Set(_address, newAddress);
 	if (status == B_OK) {
 		sockaddr* address = *_address;
 
-		if (option == SIOCSIFADDR) {
+		if (option == SIOCSIFADDR || option == SIOCSIFNETMASK) {
 			// Reset netmask and broadcast addresses to defaults
 			net_domain* domain = interfaceAddress->domain;
-			sockaddr* netmask = NULL;
-			const sockaddr* oldNetmask = NULL;
+			sockaddr* defaultNetmask = NULL;
+			const sockaddr* netmask = NULL;
 			if (option == SIOCSIFADDR) {
-				netmask = InterfaceAddress::Prepare(
+				defaultNetmask = InterfaceAddress::Prepare(
 					&interfaceAddress->mask, address->sa_len);
-			} else {
-				oldNetmask = oldAddress;
-				netmask = interfaceAddress->mask;
-			}
+			} else
+				netmask = newAddress;
 
 			// Reset the broadcast address if the address family has
 			// such
-			sockaddr* broadcast = NULL;
+			sockaddr* defaultBroadcast = NULL;
 			if ((domain->address_module->flags
 					& NET_ADDRESS_MODULE_FLAG_BROADCAST_ADDRESS) != 0) {
-				broadcast = InterfaceAddress::Prepare(
+				defaultBroadcast = InterfaceAddress::Prepare(
 					&interfaceAddress->destination, address->sa_len);
 			} else
 				InterfaceAddress::Set(&interfaceAddress->destination, NULL);
 
-			domain->address_module->set_to_defaults(netmask, broadcast,
-				interfaceAddress->local, oldNetmask);
+			domain->address_module->set_to_defaults(defaultNetmask,
+				defaultBroadcast, interfaceAddress->local, netmask);
 		}
 
 		interfaceAddress->AddDefaultRoutes(option);
 		notify_interface_changed(interface);
 	}
 
-	sAddressTable.Insert(interfaceAddress);
+	if (interfaceAddress->LocalIsDefined())
+		sAddressTable.Insert(interfaceAddress);
 	return status;
 }
 
@@ -1611,6 +1645,9 @@ uninit_interfaces()
 {
 #if ENABLE_DEBUGGER_COMMANDS
 	remove_debugger_command("net_interface", &dump_interface);
+	remove_debugger_command("net_interfaces", &dump_interfaces);
+	remove_debugger_command("net_local", &dump_local);
+	remove_debugger_command("net_route", &dump_route);
 #endif
 
 	mutex_destroy(&sLock);

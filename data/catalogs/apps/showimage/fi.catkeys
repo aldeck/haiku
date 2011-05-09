@@ -1,65 +1,62 @@
-1	finnish	x-vnd.Haiku-ShowImage	1038439310
-Use as background…	Menus		Käytä taustana…
-5 seconds	Menus		5 sekuntia
-Slide delay	Menus		Diaviive
-Zoom in	Menus		Lähennä
-The document '%s' has been changed. Do you want to close the document?	ClosePrompt		Asiakirja '%s' on muuttunut. Haluatko sulkea asiakirjan?
-8 seconds	Menus		8 sekuntia
-Previous page	Menus		Edellinen sivu
-View	Menus		Näkymä
+1	finnish	x-vnd.Haiku-ShowImage	3385354583
+%SECONDS seconds	Menus	Don't translate %SECONDS	%SECONDS sekuntia
+About ShowImage…	Menus		Ohjelmasta Kuvankatselin…
+Browse	Menus		Selaa
+Cancel	ClosePrompt		Peru
+Clear selection	Menus		Tyhjennä valinta
+Close	ClosePrompt		Sulje
+Close	Menus		Sulje
+Close document	ClosePrompt		Sulje asiakirja
+Copy	Menus		Kopioi
+Could not load image! Either the file or an image translator for it does not exist.	LoadAlerts		Ei voitu ladata kuvaa! Puuttuu joko tiedosto tai kuvamuunnin sitä varten.
+DPI:	PrintOptionsWindow		DPI:
+Edit	Menus		Muokkaa
+File	Menus		Tiedosto
+First page	Menus		Ensimmäinen sivu
+Fit image to page	PrintOptionsWindow		Sovita kuva sivulle
+Fit to window	Menus		Sovita ikkunaan
+Flip left to right	Menus		Käännä ympäri vasemmalta oikealle
+Flip top to bottom	Menus		Käännä ympäri ylhäältä alas
 Full screen	Menus		Kokoruutu
 Go to page	Menus		Siirry sivulle
-Zoom out	Menus		Loitonna
-20 seconds	Menus		20 sekuntia
-Invert colors	Menus		Käännä värit
-3 seconds	Menus		3 sekuntia
-Rotate counterclockwise	Menus		Pyöritä vastapäivään
-10 seconds	Menus		10 sekuntia
-High-quality zooming	Menus		Korkealaatuinen rajaus
-Browse	Menus		Selaa
-6 seconds	Menus		6 sekuntia
-Could not load image! Either the file or an image translator for it does not exist.	LoadAlerts		Ei voitu ladata kuvaa! Puuttuu joko tiedosto tai kuvakääntäjä sitä varten.
-First page	Menus		Ensimmäinen sivu
-The document '%s' (page %d) has been changed. Do you want to close the document?	ClosePrompt		Asiakirja '%s' (sivu %d) on muuttunut. Haluatko sulkea asiakirjan?
-About ShowImage…	Menus		ShowImage-ohjelmasta…
-Open	Menus		Avaa
-OK	LoadAlerts		Valmis
-Close	ClosePrompt		Sulje
-Height:	ResizerWindow		Korkeus:
-Undo	Menus		Peru
-Resize to (in 1/72 inches):	PrintOptionsWindow		Skaalaa kokoon (1/72 tuumissa):
-Apply	ResizerWindow		Sovella
-Keep original proportions	ResizerWindow		Säilytä alkuperäinen kuvasuhde
-9 seconds	Menus		9 sekuntia
-Flip left to right	Menus		Käännä ympäri vasemmalta oikealle
-Show caption in full screen mode	Menus		Näytä kuvateksti kokoruututilassa
-DPI:	PrintOptionsWindow		DPI:
-Next file	Menus		Seuraava tiedosto
-4 seconds	Menus		4 sekuntia
-Zoom to window	Menus		Rajaa ikkunaan
-Close document	ClosePrompt		Sulje asiakirja
-ShowImage	LoadAlerts		ShowImage
 Height: 	PrintOptionsWindow		Korkeus: 
-Cancel	ClosePrompt		Peru
-Resize…	Menus		Skaalaa…
-Print options	PrintOptionsWindow		Tulostusvalitsimet
-Width:	ResizerWindow		Leveys:
-ShowImage	AboutWindow		ShowImage
-7 seconds	Menus		7 sekuntia
-Last page	Menus		Viimeinen sivu
-Previous file	Menus		Edellinen tiedosto
-Resize	ResizerWindow		Skaalaa
-Slide show	Menus		Diaesitys
-Fit image to page	PrintOptionsWindow		Sovita kuva sivulle
-Flip top to bottom	Menus		Käännä ympäri ylhäältä alas
-Zoom factor in %:	PrintOptionsWindow		Rajaustekijä kohteessa %:
-Width:	PrintOptionsWindow		Leveys:
+High-quality zooming	Menus		Korkealaatuinen rajaus
 Image	Menus		Kuva
-Rotate clockwise	Menus		Pyöritä myötäpäivään
 Job setup	PrintOptionsWindow		Työasetukset
-Original size	Menus		Alkuperäiskoko
+Last page	Menus		Viimeinen sivu
+Next file	Menus		Seuraava tiedosto
 Next page	Menus		Seuraava sivu
-Shrink to window	Menus		Kutista ikkunaan
+OK	Alerts		Valmis
 OK	SaveToFile		Valmis
-The file '%s' could not be written.	SaveToFile		Tiedostoa '%s' ei voitu kirjoittaa.
+Open…	Menus		Avaa...
+Original size	Menus		Alkuperäiskoko
+Page setup…	Menus		Sivuasetus...
+Previous file	Menus		Edellinen tiedosto
+Previous page	Menus		Edellinen sivu
+Print options	PrintOptionsWindow		Tulostusvalitsimet
+Print…	Menus		Tulosta...
 Progress monitor	ProgressWindow		Edistymisvalvonta
+Quit	Menus		Poistu
+Rating	Menus		Arvosana
+Resize to (in 1/72 inches):	PrintOptionsWindow		Skaalaa kokoon (1/72 tuumissa):
+Rotate clockwise	Menus		Pyöritä myötäpäivään
+Rotate counterclockwise	Menus		Pyöritä vastapäivään
+Save as…	Menus		Tallenna nimellä...
+Select all	Menus		Valitse kaikki
+Selection Mode	Menus		Valintatila
+Show caption in full screen mode	Menus		Näytä kuvateksti kokoruututilassa
+ShowImage	AboutWindow		Kuvankatselin
+ShowImage	Menus		Kuvankatselin
+Slide delay	Menus		Diaviive
+Slide show	Menus		Diaesitys
+Stretch to window	Menus		Venytä ikkunaan
+The document '%s' (page %d) has been changed. Do you want to close the document?	ClosePrompt		Asiakirja ’%s’ (sivu %d) on muuttunut. Haluatko sulkea asiakirjan?
+The document '%s' has been changed. Do you want to close the document?	ClosePrompt		Asiakirja ’%s’ on muuttunut. Haluatko sulkea asiakirjan?
+The file '%s' could not be written.	SaveToFile		Tiedostoa ’%s’ ei voitu kirjoittaa.
+Undo	Menus		Peru
+Use as background…	Menus		Käytä taustana…
+View	Menus		Näkymä
+Width:	PrintOptionsWindow		Leveys:
+Zoom factor in %:	PrintOptionsWindow		Rajaustekijä kohteessa %:
+Zoom in	Menus		Lähennä
+Zoom out	Menus		Loitonna

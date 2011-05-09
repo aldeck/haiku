@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2009, Haiku, Inc. All rights reserved.
+ * Copyright 2004-2010, Haiku, Inc. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -122,14 +122,68 @@ instantiate_add_on(image_id image, const char* path, const char* type)
 
 
 AddOnManager::AddOnManager(bool safeMode)
-	: BLooper("add-on manager"),
+	:
+	AddOnMonitor(),
+	fHandler(new(std::nothrow) MonitorHandler(this)),
 	fSafeMode(safeMode)
 {
+	SetHandler(fHandler);
 }
 
 
 AddOnManager::~AddOnManager()
 {
+	delete fHandler;
+}
+
+
+void
+AddOnManager::MessageReceived(BMessage* message)
+{
+	CALLED();
+
+	BMessage reply;
+	status_t status;
+
+	TRACE("%s what: %.4s\n", __PRETTY_FUNCTION__, (char*)&message->what);
+
+	switch (message->what) {
+		case IS_FIND_DEVICES:
+			status = _HandleFindDevices(message, &reply);
+			break;
+		case IS_WATCH_DEVICES:
+			status = _HandleWatchDevices(message, &reply);
+			break;
+		case IS_IS_DEVICE_RUNNING:
+			status = _HandleIsDeviceRunning(message, &reply);
+			break;
+		case IS_START_DEVICE:
+			status = _HandleStartStopDevices(message, &reply);
+			break;
+		case IS_STOP_DEVICE:
+			status = _HandleStartStopDevices(message, &reply);
+			break;
+		case IS_CONTROL_DEVICES:
+			status = _HandleControlDevices(message, &reply);
+			break;
+		case SYSTEM_SHUTTING_DOWN:
+			status = _HandleSystemShuttingDown(message, &reply);
+			break;
+		case IS_METHOD_REGISTER:
+			status = _HandleMethodReplicant(message, &reply);
+			break;
+
+		case B_PATH_MONITOR:
+			_HandleDeviceMonitor(message);
+			return;
+
+		default:
+			AddOnMonitor::MessageReceived(message);
+			return;
+	}
+
+	reply.AddInt32("status", status);
+	message->SendReply(&reply);
 }
 
 
@@ -148,6 +202,55 @@ AddOnManager::SaveState()
 }
 
 
+status_t
+AddOnManager::StartMonitoringDevice(DeviceAddOn* addOn, const char* device)
+{
+	CALLED();
+
+	BString path;
+	if (device[0] != '/')
+		path = "/dev/";
+	path += device;
+
+	TRACE("AddOnMonitor::StartMonitoringDevice(%s)\n", path.String());
+
+	bool newPath;
+	status_t status = _AddDevicePath(addOn, path.String(), newPath);
+	if (status == B_OK && newPath) {
+		status = BPathMonitor::StartWatching(path.String(), B_ENTRY_CREATED
+			| B_ENTRY_REMOVED | B_ENTRY_MOVED | B_WATCH_FILES_ONLY
+			| B_WATCH_RECURSIVELY, this);
+		if (status != B_OK) {
+			bool lastPath;
+			_RemoveDevicePath(addOn, path.String(), lastPath);
+		}
+	}
+
+	return status;
+}
+
+
+status_t
+AddOnManager::StopMonitoringDevice(DeviceAddOn* addOn, const char *device)
+{
+	CALLED();
+
+	BString path;
+	if (device[0] != '/')
+		path = "/dev/";
+	path += device;
+
+	TRACE("AddOnMonitor::StopMonitoringDevice(%s)\n", path.String());
+
+	bool lastPath;
+	status_t status = _RemoveDevicePath(addOn, path.String(), lastPath);
+	if (status == B_OK && lastPath)
+		BPathMonitor::StopWatching(path.String(), this);
+
+	return status;
+}
+
+
 // #pragma mark -
 
 
@@ -156,17 +259,6 @@ AddOnManager::_RegisterAddOns()
 {
 	CALLED();
 	BAutolock locker(this);
-	status_t err;
-
-	fHandler = new MonitorHandler(this);
-	fAddOnMonitor = new AddOnMonitor(fHandler);
-
-	err = fAddOnMonitor->InitCheck();
-	if (err != B_OK) {
-		ERROR("AddOnManager::RegisterAddOns(): fAddOnMonitor->InitCheck() "
-			"returned %s\n", strerror(err));
-		return;
-	}
 
 	const directory_which directories[] = {
 		B_USER_ADDONS_DIRECTORY,
@@ -202,13 +294,6 @@ void
 AddOnManager::_UnregisterAddOns()
 {
 	BAutolock locker(this);
-
-	BMessenger messenger(fAddOnMonitor);
-	messenger.SendMessage(B_QUIT_REQUESTED);
-	int32 exitValue;
-	wait_for_thread(fAddOnMonitor->Thread(), &exitValue);
-	delete fHandler;
-	fHandler = NULL;
 
 	// We have to stop manually the add-ons because the monitor doesn't
 	// disable them on exit
@@ -525,9 +610,9 @@ AddOnManager::_LoadReplicant()
 	be_app->GetAppInfo(&info);
 
 	status_t err = BDeskbar().AddItem(&info.ref);
-	if (err != B_OK) {
+	if (err != B_OK)
 		ERROR("Deskbar refuses to add method replicant: %s\n", strerror(err));
-	}
+
 	BMessage request(B_GET_PROPERTY);
 	BMessenger to;
 	BMessenger status;
@@ -653,55 +738,6 @@ AddOnManager::_GetReplicantView(BMessenger target, int32 uid,
 		return err ? err : e;
 
 	return B_OK;
-}
-
-
-void
-AddOnManager::MessageReceived(BMessage* message)
-{
-	CALLED();
-
-	BMessage reply;
-	status_t status;
-
-	ERROR("%s what: %.4s\n", __PRETTY_FUNCTION__, (char*)&message->what);
-
-	switch (message->what) {
-		case IS_FIND_DEVICES:
-			status = _HandleFindDevices(message, &reply);
-			break;
-		case IS_WATCH_DEVICES:
-			status = _HandleWatchDevices(message, &reply);
-			break;
-		case IS_IS_DEVICE_RUNNING:
-			status = _HandleIsDeviceRunning(message, &reply);
-			break;
-		case IS_START_DEVICE:
-			status = _HandleStartStopDevices(message, &reply);
-			break;
-		case IS_STOP_DEVICE:
-			status = _HandleStartStopDevices(message, &reply);
-			break;
-		case IS_CONTROL_DEVICES:
-			status = _HandleControlDevices(message, &reply);
-			break;
-		case SYSTEM_SHUTTING_DOWN:
-			status = _HandleSystemShuttingDown(message, &reply);
-			break;
-		case IS_METHOD_REGISTER:
-			status = _HandleMethodReplicant(message, &reply);
-			break;
-
-		case B_PATH_MONITOR:
-			_HandleDeviceMonitor(message);
-			return;
-
-		default:
-			return;
-	}
-
-	reply.AddInt32("status", status);
-	message->SendReply(&reply);
 }
 
 
@@ -906,53 +942,4 @@ AddOnManager::_RemoveDevicePath(DeviceAddOn* addOn, const char* path,
 		fDeviceAddOns.RemoveItem(addOn);
 
 	return B_OK;
-}
-
-
-status_t
-AddOnManager::StartMonitoringDevice(DeviceAddOn* addOn, const char* device)
-{
-	CALLED();
-
-	BString path;
-	if (device[0] != '/')
-		path = "/dev/";
-	path += device;
-
-	TRACE("AddOnMonitor::StartMonitoringDevice(%s)\n", path.String());
-
-	bool newPath;
-	status_t status = _AddDevicePath(addOn, path.String(), newPath);
-	if (status == B_OK && newPath) {
-		status = BPathMonitor::StartWatching(path.String(), B_ENTRY_CREATED
-			| B_ENTRY_REMOVED | B_ENTRY_MOVED | B_WATCH_FILES_ONLY
-			| B_WATCH_RECURSIVELY, this);
-		if (status != B_OK) {
-			bool lastPath;
-			_RemoveDevicePath(addOn, path.String(), lastPath);
-		}
-	}
-
-	return status;
-}
-
-
-status_t
-AddOnManager::StopMonitoringDevice(DeviceAddOn* addOn, const char *device)
-{
-	CALLED();
-
-	BString path;
-	if (device[0] != '/')
-		path = "/dev/";
-	path += device;
-
-	TRACE("AddOnMonitor::StopMonitoringDevice(%s)\n", path.String());
-
-	bool lastPath;
-	status_t status = _RemoveDevicePath(addOn, path.String(), lastPath);
-	if (status == B_OK && lastPath)
-		BPathMonitor::StopWatching(path.String(), this);
-
-	return status;
 }

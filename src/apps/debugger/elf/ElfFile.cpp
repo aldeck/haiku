@@ -275,11 +275,9 @@ ElfFile::Init(const char* fileName)
 ElfSection*
 ElfFile::GetSection(const char* name)
 {
-	for (SectionList::Iterator it = fSections.GetIterator();
-			ElfSection* section = it.Next();) {
-		if (strcmp(section->Name(), name) == 0)
-			return section->Load() == B_OK ? section : NULL;
-	}
+	ElfSection* section = FindSection(name);
+	if (section != NULL && section->Load() == B_OK)
+		return section;
 
 	return NULL;
 }
@@ -290,6 +288,19 @@ ElfFile::PutSection(ElfSection* section)
 {
 	if (section != NULL)
 		section->Unload();
+}
+
+
+ElfSection*
+ElfFile::FindSection(const char* name) const
+{
+	for (SectionList::ConstIterator it = fSections.GetIterator();
+			ElfSection* section = it.Next();) {
+		if (strcmp(section->Name(), name) == 0)
+			return section;
+	}
+
+	return NULL;
 }
 
 

@@ -72,7 +72,7 @@ ProgressWindow::Start(BWindow* referenceWindow, bool center)
 		GetDecoratorSettings(&settings);
 
 		int32 borderWidth;
-		if (settings.FindInt32("border", &borderWidth) != B_OK)
+		if (settings.FindInt32("border width", &borderWidth) != B_OK)
 			borderWidth = 5;
 
 		MoveTo(screen.Frame().left + borderWidth,

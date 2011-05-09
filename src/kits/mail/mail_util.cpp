@@ -86,6 +86,46 @@ extern const CharsetConversionEntry mail_charsets [] =
 };
 
 
+status_t
+write_read_attr(BNode& node, read_flags flag)
+{
+	if (node.WriteAttr(B_MAIL_ATTR_READ, B_INT32_TYPE, 0, &flag, sizeof(int32))
+		< 0)
+		return B_ERROR;
+
+#if R5_COMPATIBLE
+	const char* statusString = (flag == B_READ) ? "Read"
+		: (flag  == B_SEEN) ? "Seen" : "New";
+	if (node.WriteAttr(B_MAIL_ATTR_STATUS, B_STRING_TYPE, 0, statusString,
+		strlen(statusString)) < 0)
+		return B_ERROR;
+#endif
+	return B_OK;
+}
+
+
+status_t
+read_read_attr(BNode& node, read_flags& flag)
+{
+	if (node.ReadAttr(B_MAIL_ATTR_READ, B_INT32_TYPE, 0, &flag, sizeof(int32))
+		== sizeof(int32))
+		return B_OK;
+
+#if R5_COMPATIBLE
+	BString statusString;
+	if (node.ReadAttrString(B_MAIL_ATTR_STATUS, &statusString) == B_OK) {
+		if (statusString.ICompare("New"))
+			flag = B_UNREAD;
+		else
+			flag = B_READ;
+
+		return B_OK;
+	}
+#endif
+	return B_ERROR;
+}
+
+
 // The next couple of functions are our wrapper around convert_to_utf8 and
 // convert_from_utf8 so that they can also convert from UTF-8 to UTF-8 by
 // specifying the B_MAIL_UTF8_CONVERSION constant as the conversion operation.  It
@@ -305,13 +345,12 @@ static int handle_non_rfc2047_encoding(char **buffer,size_t *bufferLength,size_t
 		// just to be sure
 		int32 destLength = length * 4 + 1;
 		int32 destBufferLength = destLength;
-		char *dest = (char *)malloc(destLength);
+		char *dest = (char*)malloc(destLength);
 		if (dest == NULL)
 			return 0;
 
-		if (convert_to_utf8(B_ISO1_CONVERSION,string,&length,dest,&destLength,&state) == B_OK)
-		{
-			free(*buffer);
+		if (convert_to_utf8(B_ISO1_CONVERSION, string, &length,dest,
+			&destLength, &state) == B_OK) {
 			*buffer = dest;
 			*bufferLength = destBufferLength;
 			*sourceLength = destLength;
@@ -1371,6 +1410,56 @@ parse_header(BMessage &headers, BPositionIO &input)
 		headers.AddString(header.String(), delimiter);
 	}
 	free(buffer);
+
+	return B_OK;
+}
+
+
+_EXPORT status_t
+extract_from_header(const BString& header, const BString& field,
+	BString& target)
+{
+	int32 headerLength = header.Length();
+	int32 fieldEndPos = 0;
+	while (true) {
+		int32 pos = header.IFindFirst(field, fieldEndPos);
+		if (pos < 0)
+			return B_BAD_VALUE;
+		fieldEndPos = pos + field.Length();
+		
+		if (pos != 0 && header.ByteAt(pos - 1) != '\n')
+			continue;
+		if (header.ByteAt(fieldEndPos) == ':')
+			break;
+	}
+	fieldEndPos++;
+
+	int32 crPos = fieldEndPos;
+	while (true) {
+		fieldEndPos = crPos;
+		crPos = header.FindFirst('\n', crPos);
+		if (crPos < 0)
+			crPos = headerLength;
+		BString temp;
+		header.CopyInto(temp, fieldEndPos, crPos - fieldEndPos);
+		if (header.ByteAt(crPos - 1) == '\r') {
+			temp.Truncate(temp.Length() - 1);
+			temp += " ";
+		}
+		target += temp;
+		crPos++;
+		if (crPos >= headerLength)
+			break;
+		char nextByte = header.ByteAt(crPos);
+		if (nextByte != ' ' && nextByte != '\t')
+			break;
+		crPos++;
+	}
+
+	size_t bufferSize = target.Length();
+	char* buffer = target.LockBuffer(bufferSize);
+	size_t length = rfc2047_to_utf8(&buffer, &bufferSize, bufferSize);
+	target.UnlockBuffer(length);
 
 	return B_OK;
 }

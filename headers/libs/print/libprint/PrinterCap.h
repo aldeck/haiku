@@ -200,10 +200,13 @@ public:
 		kDriverSpecificCapabilities,
 
 		// Static boolean settings follow.
-		// For them isSupport() has to be implemented only.
+		// For them Supports() has to be implemented only.
 		kCopyCommand,	// supports printer page copy command?
 		kHalftone,		// needs the printer driver the configuration
 						// for class Halftone?
+		kCanRotatePageInLandscape,
+						// can the printer driver rotate the page
+						// printing in landscape
 
 		// The driver specific generic capabilities start here
 		kDriverSpecificCapabilitiesBegin = 100
@@ -262,28 +265,29 @@ public:
 
 	};
 
-	virtual	int				countCap(CapID category) const = 0;
-	virtual	bool			isSupport(CapID category) const = 0;
-	virtual	const BaseCap**	enumCap(CapID category) const = 0;
-			const EnumCap*	getDefaultCap(CapID category) const;
-			const EnumCap*	findCap(CapID category, int id) const;
-			const BaseCap*	findCap(CapID category, const char* label) const;
-			const EnumCap*	findCapWithKey(CapID category, const char* key)
+	virtual	int				CountCap(CapID category) const = 0;
+	virtual	bool			Supports(CapID category) const = 0;
+	virtual	const BaseCap**	GetCaps(CapID category) const = 0;
+
+			const EnumCap*	GetDefaultCap(CapID category) const;
+			const EnumCap*	FindCap(CapID category, int id) const;
+			const BaseCap*	FindCap(CapID category, const char* label) const;
+			const EnumCap*	FindCapWithKey(CapID category, const char* key)
 								const;
 
-			const BooleanCap*		findBooleanCap(CapID category) const;
-			const IntRangeCap*		findIntRangeCap(CapID category) const;
-			const DoubleRangeCap*	findDoubleRangeCap(CapID category) const;
+			const BooleanCap*		FindBooleanCap(CapID category) const;
+			const IntRangeCap*		FindIntRangeCap(CapID category) const;
+			const DoubleRangeCap*	FindDoubleRangeCap(CapID category) const;
 
-			int				getProtocolClass() const;
+			int				GetProtocolClass() const;
 
 protected:
 							PrinterCap(const PrinterCap& printerCap);
 			PrinterCap&		operator=(const PrinterCap& printerCap);
 			template<typename Predicate>
-			const BaseCap*	findCap(CapID category, Predicate& predicate) const;
+			const BaseCap*	FindCap(CapID category, Predicate& predicate) const;
 
-			const PrinterData*	getPrinterData() const;
+			const PrinterData*	GetPrinterData() const;
 
 private:
 			const PrinterData*	fPrinterData;

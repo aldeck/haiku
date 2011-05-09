@@ -25,6 +25,8 @@ public:
 
 			status_t			GetNextInterface(uint32& cookie,
 									BMessage& interface);
+			status_t			GetNextNetwork(uint32& cookie,
+									BMessage& network);
 			status_t			GetNextService(uint32& cookie,
 									BMessage& service);
 			const BMessage&		Services() const;
@@ -70,6 +72,7 @@ private:
 private:
 			BMessenger			fListener;
 			BMessage			fInterfaces;
+			BMessage			fNetworks;
 			BMessage			fServices;
 };
 

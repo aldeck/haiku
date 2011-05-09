@@ -4,8 +4,6 @@
  */
 
 
-#include "package.h"
-
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -13,14 +11,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <package/hpkg/HPKGDefs.h>
+#include <package/hpkg/PackageAttributeValue.h>
+#include <package/hpkg/PackageContentHandler.h>
+#include <package/hpkg/PackageEntry.h>
+#include <package/hpkg/PackageEntryAttribute.h>
+#include <package/hpkg/PackageReader.h>
+
 #include "package.h"
-#include "PackageEntry.h"
-#include "PackageEntryAttribute.h"
-#include "PackageReader.h"
 #include "StandardErrorOutput.h"
 
 
-struct PackageContentDumpHandler : LowLevelPackageContentHandler {
+using namespace BPackageKit::BHPKG;
+
+
+struct PackageContentDumpHandler : BLowLevelPackageContentHandler {
 	PackageContentDumpHandler()
 		:
 		fLevel(0),
@@ -29,13 +34,13 @@ struct PackageContentDumpHandler : LowLevelPackageContentHandler {
 	{
 	}
 
-	virtual status_t HandleAttribute(const char* attributeName,
-		const PackageAttributeValue& value, void* parentToken, void*& _token)
+	virtual status_t HandleAttribute(BHPKGAttributeID attributeID,
+		const BPackageAttributeValue& value, void* parentToken, void*& _token)
 	{
 		if (fErrorOccurred)
 			return B_OK;
 
-		printf("%*s>%s: ", fLevel * 2, "", attributeName);
+		printf("%*s>%s: ", fLevel * 2, "", AttributeNameForID(attributeID));
 		_PrintValue(value);
 		printf("\n");
 
@@ -44,8 +49,8 @@ struct PackageContentDumpHandler : LowLevelPackageContentHandler {
 		return B_OK;
 	}
 
-	virtual status_t HandleAttributeDone(const char* attributeName,
-		const PackageAttributeValue& value, void* token)
+	virtual status_t HandleAttributeDone(BHPKGAttributeID attributeID,
+		const BPackageAttributeValue& value, void* token)
 	{
 		if (fErrorOccurred)
 			return B_OK;
@@ -53,7 +58,7 @@ struct PackageContentDumpHandler : LowLevelPackageContentHandler {
 		fLevel--;
 
 		if (fHasChildren)
-			printf("%*s<%s\n", fLevel * 2, "", attributeName);
+			printf("%*s<%s\n", fLevel * 2, "", AttributeNameForID(attributeID));
 
 		fHasChildren = true;
 		return B_OK;
@@ -65,7 +70,7 @@ struct PackageContentDumpHandler : LowLevelPackageContentHandler {
 	}
 
 private:
-	void _PrintValue(const PackageAttributeValue& value)
+	void _PrintValue(const BPackageAttributeValue& value)
 	{
 		switch (value.type) {
 			case B_HPKG_ATTRIBUTE_TYPE_INT:
@@ -137,16 +142,14 @@ command_dump(int argc, const char* const* argv)
 
 	// open package
 	StandardErrorOutput errorOutput;
-	PackageReader packageReader(&errorOutput);
+	BPackageReader packageReader(&errorOutput);
 	status_t error = packageReader.Init(packageFileName);
-printf("Init(): %s\n", strerror(error));
 	if (error != B_OK)
 		return 1;
 
 	// list
 	PackageContentDumpHandler handler;
 	error = packageReader.ParseContent(&handler);
-printf("ParseContent(): %s\n", strerror(error));
 	if (error != B_OK)
 		return 1;
 

@@ -548,19 +548,20 @@ TermWindow::_SaveWindowPosition()
 	BFile file;
 	BMessage originalSettings;
 
-	// We append ourself to the existing settings file
-	// So we have to read it, insert our BMessage, and rewrite it.
-
+	// Read the settings file if it exists and is a valid BMessage.
 	status_t status = _GetWindowPositionFile(&file, B_READ_ONLY);
 	if (status == B_OK) {
-		originalSettings.Unflatten(&file);
-			// No error checking on that : it fails if the settings
-			// file is missing, but we can create it.
-
+		status = originalSettings.Unflatten(&file);
 		file.Unset();
+
+		if (status != B_OK)
+			status = originalSettings.MakeEmpty();
+
+		if (status != B_OK)
+			return status;
 	}
 
-	// Append the new settings
+	// Replace the settings
 	int32 id = fTerminalRoster.ID();
 	BRect rect(Frame());
 	if (originalSettings.ReplaceRect("rect", id, rect) != B_OK)
@@ -775,7 +776,8 @@ TermWindow::MessageReceived(BMessage *message)
 				float mbHeight = fMenuBar->Bounds().Height() + 1;
 				fSavedFrame = Frame();
 				BScreen screen(this);
-				_ActiveTermView()->ScrollBar()->ResizeBy(0, (B_H_SCROLL_BAR_HEIGHT - 2));
+				for (int32 i = fTabView->CountTabs() - 1; i >=0 ; i--)
+					_TermViewAt(i)->ScrollBar()->ResizeBy(0, (B_H_SCROLL_BAR_HEIGHT - 1));
 
 				fMenuBar->Hide();
 				fTabView->ResizeBy(0, mbHeight);
@@ -790,7 +792,8 @@ TermWindow::MessageReceived(BMessage *message)
 				_ActiveTermView()->DisableResizeView();
 				float mbHeight = fMenuBar->Bounds().Height() + 1;
 				fMenuBar->Show();
-				_ActiveTermView()->ScrollBar()->ResizeBy(0, -(B_H_SCROLL_BAR_HEIGHT - 2));
+				for (int32 i = fTabView->CountTabs() - 1; i >=0 ; i--)
+					_TermViewAt(i)->ScrollBar()->ResizeBy(0, -(B_H_SCROLL_BAR_HEIGHT - 1));
 				ResizeTo(fSavedFrame.Width(), fSavedFrame.Height());
 				MoveTo(fSavedFrame.left, fSavedFrame.top);
 				fTabView->ResizeBy(0, -mbHeight);
@@ -1066,9 +1069,6 @@ void
 TermWindow::_NewTab()
 {
 	if (fTabView->CountTabs() < kMaxTabs) {
-		if (fFullScreen)
-			_ActiveTermView()->ScrollBar()->Show();
-
 		ActiveProcessInfo info;
 		if (_ActiveTermView()->GetActiveProcessInfo(info))
 			_AddTab(NULL, info.CurrentDirectory());
@@ -1098,6 +1098,8 @@ TermWindow::_AddTab(Arguments* args, const BString& currentDirectory)
 		TermViewContainerView* containerView = new TermViewContainerView(view);
 		BScrollView* scrollView = new TermScrollView("scrollView",
 			containerView, view, fSessions.IsEmpty());
+		if (!fFullScreen)
+			scrollView->ScrollBar(B_VERTICAL)->ResizeBy(0, -(B_H_SCROLL_BAR_HEIGHT - 1));
 
 		if (fSessions.IsEmpty())
 			fTabView->SetScrollView(scrollView);
@@ -1179,8 +1181,6 @@ TermWindow::_RemoveTab(int32 index)
 
 			delete session;
 			delete fTabView->RemoveTab(index);
-			if (fFullScreen)
-				_ActiveTermView()->ScrollBar()->Hide();
 		}
 	} else
 		PostMessage(B_QUIT_REQUESTED);

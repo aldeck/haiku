@@ -14,8 +14,9 @@
 // ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
 
 
-// Includes ------------------------------------------------------------------------------------------ //
+// Includes ------------------------------------------------------------------
 #include <Box.h>
+#include <Catalog.h>
 #include <Screen.h>
 #include <ScrollView.h>
 #include <stdio.h>
@@ -24,6 +25,9 @@
 
 #include "DevicesInfo.h"
 #include "DevicesWindows.h"
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "ResourceUsageWindow"
 
 class IRQDMAItem : public BListItem
 {
@@ -180,18 +184,19 @@ RangeItem::Compare(const void *firstArg, const void *secondArg)
 }
 
 
-// -------------------------------------------------------------------------------------------------- //
+// ----------------------------------------------------------------------------
 
 
 // ResourceUsageWindow - Constructor
 ResourceUsageWindow::ResourceUsageWindow(BRect frame, BList &list) 
-	: BWindow (frame, "Resource Usage", B_TITLED_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL , B_NOT_ZOOMABLE|B_NOT_RESIZABLE)
+	: BWindow (frame, B_TRANSLATE("Resource Usage"), B_TITLED_WINDOW_LOOK,
+		B_NORMAL_WINDOW_FEEL , B_NOT_ZOOMABLE|B_NOT_RESIZABLE)
 {
 	InitWindow(list);
 	CenterOnScreen();
 	Show();
 }
-// -------------------------------------------------------------------------------------------------- //
+// ----------------------------------------------------------------------------
 
 
 // ResourceUsageWindow - Destructor
@@ -199,7 +204,7 @@ ResourceUsageWindow::~ResourceUsageWindow()
 {
 	
 }
-// -------------------------------------------------------------------------------------------------- //
+// ----------------------------------------------------------------------------
 
 
 // ResourceUsageWindow::InitWindow -- Initialization Commands here
@@ -221,36 +226,42 @@ void ResourceUsageWindow::InitWindow(BList &list)
 	rtab.InsetBy(5,5);
 	
 	// Create the ListViews
-	BListView *IRQListView = new BListView(rlist, "IRQListView", B_SINGLE_SELECTION_LIST, 
-		B_FOLLOW_LEFT | B_FOLLOW_TOP, B_WILL_DRAW | B_NAVIGABLE);
-	BListView *DMAListView = new BListView(rlist, "DMAListView", B_SINGLE_SELECTION_LIST, 
-		B_FOLLOW_LEFT | B_FOLLOW_TOP, B_WILL_DRAW | B_NAVIGABLE);
-	BListView *IORangeListView = new BListView(rlist, "IORangeListView", B_SINGLE_SELECTION_LIST, 
-		B_FOLLOW_LEFT | B_FOLLOW_TOP, B_WILL_DRAW | B_NAVIGABLE);
-	BListView *memoryListView = new BListView(rlist, "memoryListView", B_SINGLE_SELECTION_LIST, 
-		B_FOLLOW_LEFT | B_FOLLOW_TOP, B_WILL_DRAW | B_NAVIGABLE);
+	BListView *IRQListView = new BListView(rlist, "IRQListView",
+		B_SINGLE_SELECTION_LIST, B_FOLLOW_LEFT | B_FOLLOW_TOP,
+		B_WILL_DRAW | B_NAVIGABLE);
+	BListView *DMAListView = new BListView(rlist, "DMAListView",
+		B_SINGLE_SELECTION_LIST, B_FOLLOW_LEFT | B_FOLLOW_TOP,
+		B_WILL_DRAW | B_NAVIGABLE);
+	BListView *IORangeListView = new BListView(rlist, "IORangeListView",
+		B_SINGLE_SELECTION_LIST, B_FOLLOW_LEFT | B_FOLLOW_TOP,
+		B_WILL_DRAW | B_NAVIGABLE);
+	BListView *memoryListView = new BListView(rlist, "memoryListView",
+		B_SINGLE_SELECTION_LIST, B_FOLLOW_LEFT | B_FOLLOW_TOP,
+		B_WILL_DRAW | B_NAVIGABLE);
 	
-	BScrollView *IRQScrollView = new BScrollView("scroll_list1", IRQListView, B_FOLLOW_LEFT|B_FOLLOW_TOP, 
-		0, false, true, B_FANCY_BORDER);
-	BScrollView *DMAScrollView = new BScrollView("scroll_list2", DMAListView, B_FOLLOW_LEFT|B_FOLLOW_TOP, 
-		0, false, true, B_FANCY_BORDER);
-	BScrollView *IORangeScrollView = new BScrollView("scroll_list3", IORangeListView, B_FOLLOW_LEFT|B_FOLLOW_TOP, 
-		0, false, true, B_FANCY_BORDER);
-	BScrollView *memoryScrollView = new BScrollView("scroll_list4", memoryListView, B_FOLLOW_LEFT|B_FOLLOW_TOP, 
-		0, false, true, B_FANCY_BORDER);
+	BScrollView *IRQScrollView = new BScrollView("scroll_list1", IRQListView,
+		B_FOLLOW_LEFT|B_FOLLOW_TOP, 0, false, true, B_FANCY_BORDER);
+	BScrollView *DMAScrollView = new BScrollView("scroll_list2", DMAListView,
+		B_FOLLOW_LEFT|B_FOLLOW_TOP, 0, false, true, B_FANCY_BORDER);
+	BScrollView *IORangeScrollView = new BScrollView("scroll_list3",
+		IORangeListView, B_FOLLOW_LEFT|B_FOLLOW_TOP, 0, false, true,
+		B_FANCY_BORDER);
+	BScrollView *memoryScrollView = new BScrollView("scroll_list4",
+		memoryListView, B_FOLLOW_LEFT|B_FOLLOW_TOP, 0, false, true,
+		B_FANCY_BORDER);
 	
 	BTab *tab = new BTab();
 	tabView->AddTab(IRQScrollView, tab);
-	tab->SetLabel("IRQ");
+	tab->SetLabel(B_TRANSLATE("IRQ"));
 	tab = new BTab();
 	tabView->AddTab(DMAScrollView, tab);
-	tab->SetLabel("DMA");
+	tab->SetLabel(B_TRANSLATE("DMA"));
 	tab = new BTab();
 	tabView->AddTab(IORangeScrollView, tab);
-	tab->SetLabel("IO Range");
+	tab->SetLabel(B_TRANSLATE("IO Range"));
 	tab = new BTab();
 	tabView->AddTab(memoryScrollView, tab);
-	tab->SetLabel("Memory Range");
+	tab->SetLabel(B_TRANSLATE("Memory Range"));
 	
 	{
 		uint32 mask = 1;
@@ -263,14 +274,16 @@ void ResourceUsageWindow::InitWindow(BList &list)
 				struct device_configuration *current = deviceInfo->GetCurrent();
 				resource_descriptor r;
 				
-				int32 num = count_resource_descriptors_of_type(current, B_IRQ_RESOURCE);
+				int32 num = count_resource_descriptors_of_type(current,
+					B_IRQ_RESOURCE);
 				
 				for (int32 k=0;k<num;k++) {
 					get_nth_resource_descriptor_of_type(current, k, B_IRQ_RESOURCE,
 							&r, sizeof(resource_descriptor));
 					
 					if (mask & r.d.m.mask) {
-						IRQListView->AddItem(new IRQDMAItem(first ? i : -1, deviceInfo->GetCardName()));
+						IRQListView->AddItem(new IRQDMAItem(first ? i : -1,
+							deviceInfo->GetCardName()));
 						first = false;
 					}
 				}
@@ -293,14 +306,16 @@ void ResourceUsageWindow::InitWindow(BList &list)
 				struct device_configuration *current = deviceInfo->GetCurrent();
 				resource_descriptor r;
 				
-				int32 num = count_resource_descriptors_of_type(current, B_DMA_RESOURCE);
+				int32 num = count_resource_descriptors_of_type(current,
+					B_DMA_RESOURCE);
 				
 				for (int32 k=0;k<num;k++) {
-					get_nth_resource_descriptor_of_type(current, k, B_DMA_RESOURCE,
-							&r, sizeof(resource_descriptor));
+					get_nth_resource_descriptor_of_type(current, k,
+						B_DMA_RESOURCE,	&r, sizeof(resource_descriptor));
 					
 					if (mask & r.d.m.mask) {
-						DMAListView->AddItem(new IRQDMAItem(first ? i : -1, deviceInfo->GetCardName()));
+						DMAListView->AddItem(new IRQDMAItem(first ? i : -1,
+							deviceInfo->GetCardName()));
 						first = false;
 					}
 				}
@@ -318,11 +333,12 @@ void ResourceUsageWindow::InitWindow(BList &list)
 			struct device_configuration *current = deviceInfo->GetCurrent();
 			resource_descriptor r;
 			
-			int32 num = count_resource_descriptors_of_type(current, B_IO_PORT_RESOURCE);
+			int32 num = count_resource_descriptors_of_type(current,
+				B_IO_PORT_RESOURCE);
 			
 			for (int32 k=0;k<num;k++) {
-				get_nth_resource_descriptor_of_type(current, k, B_IO_PORT_RESOURCE,
-						&r, sizeof(resource_descriptor));
+				get_nth_resource_descriptor_of_type(current, k,
+					B_IO_PORT_RESOURCE,	&r, sizeof(resource_descriptor));
 				
 				IORangeListView->AddItem(new RangeItem(r.d.r.minbase, 
 					r.d.r.minbase + r.d.r.len - 1, deviceInfo->GetCardName()));
@@ -338,7 +354,8 @@ void ResourceUsageWindow::InitWindow(BList &list)
 			struct device_configuration *current = deviceInfo->GetCurrent();
 			resource_descriptor r;
 			
-			int32 num = count_resource_descriptors_of_type(current, B_MEMORY_RESOURCE);
+			int32 num = count_resource_descriptors_of_type(current,
+				B_MEMORY_RESOURCE);
 			
 			for (int32 k=0;k<num;k++) {
 				get_nth_resource_descriptor_of_type(current, k, B_MEMORY_RESOURCE,
@@ -358,7 +375,7 @@ void ResourceUsageWindow::InitWindow(BList &list)
 	AddChild(background);
 	background->AddChild(tabView);
 }
-// -------------------------------------------------------------------------------------------------- //
+// ----------------------------------------------------------------------------
 
 
 // ResourceUsageWindow::MessageReceived -- receives messages
@@ -372,4 +389,4 @@ ResourceUsageWindow::MessageReceived (BMessage *message)
 			break;
 	}
 }
-// -------------------------------------------------------------------------------------------------- //
+// ----------------------------------------------------------------------------

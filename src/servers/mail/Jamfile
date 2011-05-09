@@ -9,7 +9,6 @@ if $(TARGET_PLATFORM) != haiku {
 UsePublicHeaders [ FDirName add-ons mail_daemon ] ;
 UsePrivateHeaders mail ;
 UsePrivateHeaders shared ;
-UseLibraryHeaders icon ;
 
 SubDirHdrs [ FDirName $(HAIKU_TOP) headers os add-ons mail_daemon ] ;
 
@@ -17,8 +16,12 @@ AddResources mail_daemon : mail_daemon.rdef DeskbarViewIcons.rdef ;
 
 Server mail_daemon :
 	DeskbarView.cpp
+	ErrorLogWindow.cpp
 	LEDAnimation.cpp
+	MailDaemon.cpp
 	main.cpp
+	Notifier.cpp
+	StatusWindow.cpp
 ;
 
 LinkAgainst mail_daemon : be libmail.so tracker $(TARGET_LIBSTDC++) $(TARGET_NETWORK_LIBS) ;

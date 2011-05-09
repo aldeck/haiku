@@ -8,12 +8,15 @@
 
 
 #include <Application.h>
+#include <Catalog.h>
 #include <MenuBar.h>
 
 #include <iostream>
 
 #include "DevicesView.h"
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "DevicesView"
 
 DevicesView::DevicesView(const BRect& rect)
 	: BView(rect, "DevicesView", B_FOLLOW_ALL, B_WILL_DRAW | B_FRAME_EVENTS)
@@ -30,20 +33,22 @@ DevicesView::CreateLayout()
 	SetLayout(new BGroupLayout(B_VERTICAL));
 
 	BMenuBar* menuBar = new BMenuBar("menu");
-	BMenu* menu = new BMenu("Devices");
+	BMenu* menu = new BMenu(B_TRANSLATE("Devices"));
 	BMenuItem* item;
-	menu->AddItem(new BMenuItem("Refresh devices", new BMessage(kMsgRefresh), 'R'));
-	menu->AddItem(item = new BMenuItem("Report compatibility",
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Refresh devices"),
+		 new BMessage(kMsgRefresh), 'R'));
+	menu->AddItem(item = new BMenuItem(B_TRANSLATE("Report compatibility"),
 		new BMessage(kMsgReportCompatibility)));
 	item->SetEnabled(false);
-	menu->AddItem(item = new BMenuItem("Generate system information",
-		new BMessage(kMsgGenerateSysInfo)));
+	menu->AddItem(item = new BMenuItem(B_TRANSLATE(
+		"Generate system information"), new BMessage(kMsgGenerateSysInfo)));
 	item->SetEnabled(false);
 	menu->AddSeparatorItem();
-	menu->AddItem(item = new BMenuItem("About Devices" B_UTF8_ELLIPSIS,
-		new BMessage(B_ABOUT_REQUESTED)));
+	menu->AddItem(item = new BMenuItem(B_TRANSLATE("About Devices"
+		 B_UTF8_ELLIPSIS), new BMessage(B_ABOUT_REQUESTED)));
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
+		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menu->SetTargetForItems(this);
 	item->SetTarget(be_app);
 	menuBar->AddItem(menu);
@@ -60,33 +65,33 @@ DevicesView::CreateLayout()
 	// why? Bug? In scrollview or in outlinelistview?
 
 	BPopUpMenu* orderByPopupMenu = new BPopUpMenu("orderByMenu");
-	BMenuItem* byCategory = new BMenuItem("Category",
+	BMenuItem* byCategory = new BMenuItem(B_TRANSLATE("Category"),
 		new BMessage(kMsgOrderCategory));
-	BMenuItem* byConnection = new BMenuItem("Connection",
+	BMenuItem* byConnection = new BMenuItem(B_TRANSLATE("Connection"),
 		new BMessage(kMsgOrderConnection));
 	byCategory->SetMarked(true);
 	fOrderBy = byCategory->IsMarked() ? ORDER_BY_CATEGORY :
 		ORDER_BY_CONNECTION;
 	orderByPopupMenu->AddItem(byCategory);
 	orderByPopupMenu->AddItem(byConnection);
-	fOrderByMenu = new BMenuField("Order by:", orderByPopupMenu);
+	fOrderByMenu = new BMenuField(B_TRANSLATE("Order by:"), orderByPopupMenu);
 
 	fTabView = new BTabView("fTabView", B_WIDTH_FROM_LABEL);
 
 	fBasicTab = new BTab();
 	fBasicView = new PropertyListPlain("basicView");
 	fTabView->AddTab(fBasicView, fBasicTab);
-	fBasicTab->SetLabel("Basic information");
+	fBasicTab->SetLabel(B_TRANSLATE("Basic information"));
 
 	fDeviceTypeTab = new BTab();
 	fBusView = new PropertyListPlain("busView");
 	fTabView->AddTab(fBusView, fDeviceTypeTab);
-	fDeviceTypeTab->SetLabel("Bus");
+	fDeviceTypeTab->SetLabel(B_TRANSLATE("Bus"));
 
 	fDetailedTab = new BTab();
 	fAttributesView = new PropertyList("attributesView");
 	fTabView->AddTab(fAttributesView, fDetailedTab);
-	fDetailedTab->SetLabel("Detailed");
+	fDetailedTab->SetLabel(B_TRANSLATE("Detailed"));
 
 	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0)
 				.Add(menuBar)
@@ -280,28 +285,32 @@ DevicesView::AddDeviceAndChildren(device_node_cookie *node, Device* parent)
 		// Devices Root
 		if (attributes[i].fName == B_DEVICE_PRETTY_NAME
 				&& attributes[i].fValue == "Devices Root") {
-			newDevice = new Device(parent, BUS_NONE, CAT_COMPUTER, "Computer");
+			newDevice = new Device(parent, BUS_NONE,
+									CAT_COMPUTER, B_TRANSLATE("Computer"));
 			break;
 		}
 
 		// ACPI Controller
 		if (attributes[i].fName == B_DEVICE_PRETTY_NAME
 				&& attributes[i].fValue == "ACPI") {
-			newDevice = new Device(parent, BUS_ACPI, CAT_BUS, "ACPI bus");
+			newDevice = new Device(parent, BUS_ACPI,
+									CAT_BUS, B_TRANSLATE("ACPI bus"));
 			break;
 		}
 
 		// PCI bus
 		if (attributes[i].fName == B_DEVICE_PRETTY_NAME
 				&& attributes[i].fValue == "PCI") {
-			newDevice = new Device(parent, BUS_PCI, CAT_BUS, "PCI bus");
+			newDevice = new Device(parent, BUS_PCI,
+									CAT_BUS, B_TRANSLATE("PCI bus"));
 			break;
 		}
 
 		// ISA bus
 		if (attributes[i].fName == B_DEVICE_BUS
 				&& attributes[i].fValue == "isa") {
-			newDevice = new Device(parent, BUS_ISA, CAT_BUS, "ISA bus");
+			newDevice = new Device(parent, BUS_ISA,
+									CAT_BUS, B_TRANSLATE("ISA bus"));
 			break;
 		}
 
@@ -321,7 +330,8 @@ DevicesView::AddDeviceAndChildren(device_node_cookie *node, Device* parent)
 	}
 
 	if (newDevice == NULL) {
-		newDevice = new Device(parent, BUS_NONE, CAT_NONE, "Unknown device");
+		newDevice = new Device(parent, BUS_NONE,
+									CAT_NONE, B_TRANSLATE("Unknown device"));
 	}
 
 	// Add its attributes to the device, initialize it and add to the list.

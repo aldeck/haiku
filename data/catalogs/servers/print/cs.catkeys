@@ -1,0 +1,39 @@
+1	czech	x-vnd.Be-PSRV	76139813
+A printer with that name already exists, but it's not usable at all! Replace?	PrintServerApp		Tiskárna s tímto názvem již existuje, ale není vůbec použitelná! Nahradit?
+A printer with that name already exists, but its driver could not be found! Replace?	PrintServerApp		Tiskárna s tímto názvem již existuje, ale její ovladač nebyl nalezen. Nahradit?
+A0	ConfigWindow	ISO 216 paper size	A0
+A2	ConfigWindow	ISO 216 paper size	A2
+A4	ConfigWindow	ISO 216 paper size	A4
+A6	ConfigWindow	ISO 216 paper size	A6
+All pages	ConfigWindow		Všechny stránky
+B5	ConfigWindow	ISO 216 paper size	B5
+Cancel	ConfigWindow		Zrušit
+Cancel	PrintServerApp		Zrušit
+Get comments about this printer	Printer Scripting		Získat komentáře k této tiskárně
+Get currently available ports/devices	Transport Scripting		Získat aktuálně dostupné porty/zařízení
+Get name of the printer add-on used for this printer	Printer Scripting		Získat jméno tiskového add-onu použitého pro tuto tiskárnu
+Get name of the transport add-on used for this printer	Printer Scripting		Získat jméno transportního add-onu pro tuto tiskárnu
+Get the transport configuration for this printer	Printer Scripting		Získat nastavení transportu pro tuto tiskárnu
+Landscape	ConfigWindow		Krajina
+Ledger	ConfigWindow	ANSI B (ledger), a North American paper size	Ledger
+Legal	ConfigWindow	A North American paper size (216 x 356 mm, or 8.5 x 14 in)	Legal
+Letter	ConfigWindow	ANSI A (letter), a North American paper size	Letter
+No	PrintServerApp		Ne
+OK	ConfigWindow		OK
+Page %1 to %2	ConfigWindow		Stránky %1 až %2
+Page %1 to %2, %3 copies	ConfigWindow		Stránky %1 až %2, %3 kopie
+Page setup:	ConfigWindow		Nastavení stránky:
+Portrait	ConfigWindow		Portrét
+Printer server	ConfigWindow		Tiskový server
+Printer:	ConfigWindow		Tiskárna:
+Retrieve a specific printer	PrintServerApp Scripting		Získat určitou tiskárnu
+Retrieve or select the active printer	PrintServerApp Scripting		Získat nebo zvolit aktivní tiskárnu
+Return the number of available printers	PrintServerApp Scripting		Zobrazit počet dostupných tiskáren
+Return the number of available transports	PrintServerApp Scripting		Zobrazit počet dostupných transportů
+Select a printer	ConfigWindow		Vybrat tiskárnu
+Show configuration window	PrintServerApp Scripting		Zobrazit okno nastavení
+There are no printers set up.	PrintServerApp		Nejsou nastaveny žádné tiskárny.
+There is no default printer set up.	PrintServerApp		Není nastavena implicitní tiskárna.
+Undefined	ConfigWindow		Nedefinováno
+Would you like to set one up now?	PrintServerApp		Chcete nějakou nastavit nyní?
+Yes	PrintServerApp		Ano

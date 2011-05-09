@@ -4,8 +4,6 @@
  */
 
 
-#include "package.h"
-
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -13,14 +11,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <package/hpkg/PackageContentHandler.h>
+#include <package/hpkg/PackageEntry.h>
+#include <package/hpkg/PackageEntryAttribute.h>
+#include <package/hpkg/PackageInfoAttributeValue.h>
+#include <package/hpkg/PackageReader.h>
+
+#include <package/PackageInfo.h>
+
 #include "package.h"
-#include "PackageEntry.h"
-#include "PackageEntryAttribute.h"
-#include "PackageReader.h"
 #include "StandardErrorOutput.h"
 
 
-struct PackageContentListHandler : PackageContentHandler {
+using namespace BPackageKit::BHPKG;
+using namespace BPackageKit;
+
+
+struct PackageContentListHandler : BPackageContentHandler {
 	PackageContentListHandler(bool listAttributes)
 		:
 		fLevel(0),
@@ -28,7 +35,7 @@ struct PackageContentListHandler : PackageContentHandler {
 	{
 	}
 
-	virtual status_t HandleEntry(PackageEntry* entry)
+	virtual status_t HandleEntry(BPackageEntry* entry)
 	{
 		fLevel++;
 
@@ -72,8 +79,8 @@ struct PackageContentListHandler : PackageContentHandler {
 		return B_OK;
 	}
 
-	virtual status_t HandleEntryAttribute(PackageEntry* entry,
-		PackageEntryAttribute* attribute)
+	virtual status_t HandleEntryAttribute(BPackageEntry* entry,
+		BPackageEntryAttribute* attribute)
 	{
 		if (!fListAttribute)
 			return B_OK;
@@ -95,9 +102,126 @@ struct PackageContentListHandler : PackageContentHandler {
 		return B_OK;
 	}
 
-	virtual status_t HandleEntryDone(PackageEntry* entry)
+	virtual status_t HandleEntryDone(BPackageEntry* entry)
 	{
 		fLevel--;
+		return B_OK;
+	}
+
+	virtual status_t HandlePackageAttribute(
+		const BPackageInfoAttributeValue& value)
+	{
+		switch (value.attributeID) {
+			case B_PACKAGE_INFO_NAME:
+				printf("package-attributes:\n");
+				printf("\tname: %s\n", value.string);
+				break;
+
+			case B_PACKAGE_INFO_SUMMARY:
+				printf("\tsummary: %s\n", value.string);
+				break;
+
+			case B_PACKAGE_INFO_DESCRIPTION:
+				printf("\tdescription: %s\n", value.string);
+				break;
+
+			case B_PACKAGE_INFO_VENDOR:
+				printf("\tvendor: %s\n", value.string);
+				break;
+
+			case B_PACKAGE_INFO_PACKAGER:
+				printf("\tpackager: %s\n", value.string);
+				break;
+
+			case B_PACKAGE_INFO_FLAGS:
+				if (value.unsignedInt == 0)
+					break;
+				printf("\tflags:\n");
+				if ((value.unsignedInt & B_PACKAGE_FLAG_APPROVE_LICENSE) != 0)
+					printf("\t\tapprove_license\n");
+				if ((value.unsignedInt & B_PACKAGE_FLAG_SYSTEM_PACKAGE) != 0)
+					printf("\t\tsystem_package\n");
+				break;
+
+			case B_PACKAGE_INFO_ARCHITECTURE:
+				printf("\tarchitecture: %s\n",
+					BPackageInfo::kArchitectureNames[value.unsignedInt]);
+				break;
+
+			case B_PACKAGE_INFO_VERSION:
+				printf("\tversion: %s.%s.%s-%d\n", value.version.major,
+					value.version.minor, value.version.micro,
+					value.version.release);
+				break;
+
+			case B_PACKAGE_INFO_COPYRIGHTS:
+				printf("\tcopyright: %s\n", value.string);
+				break;
+
+			case B_PACKAGE_INFO_LICENSES:
+				printf("\tlicense: %s\n", value.string);
+				break;
+
+			case B_PACKAGE_INFO_PROVIDES:
+				printf("\tprovides: %s", value.resolvable.name);
+				if (value.resolvable.haveVersion) {
+					printf(" = ");
+					_PrintPackageVersion(value.resolvable.version);
+				}
+				printf("\n");
+				break;
+
+			case B_PACKAGE_INFO_REQUIRES:
+				printf("\trequires: %s", value.resolvableExpression.name);
+				if (value.resolvableExpression.haveOpAndVersion) {
+					printf(" %s ", BPackageResolvableExpression::kOperatorNames[
+							value.resolvableExpression.op]);
+					_PrintPackageVersion(value.resolvableExpression.version);
+				}
+				printf("\n");
+				break;
+
+			case B_PACKAGE_INFO_SUPPLEMENTS:
+				printf("\tsupplements: %s", value.resolvableExpression.name);
+				if (value.resolvableExpression.haveOpAndVersion) {
+					printf(" %s ", BPackageResolvableExpression::kOperatorNames[
+							value.resolvableExpression.op]);
+					_PrintPackageVersion(value.resolvableExpression.version);
+				}
+				printf("\n");
+				break;
+
+			case B_PACKAGE_INFO_CONFLICTS:
+				printf("\tconflicts: %s", value.resolvableExpression.name);
+				if (value.resolvableExpression.haveOpAndVersion) {
+					printf(" %s ", BPackageResolvableExpression::kOperatorNames[
+							value.resolvableExpression.op]);
+					_PrintPackageVersion(value.resolvableExpression.version);
+				}
+				printf("\n");
+				break;
+
+			case B_PACKAGE_INFO_FRESHENS:
+				printf("\tfreshens: %s", value.resolvableExpression.name);
+				if (value.resolvableExpression.haveOpAndVersion) {
+					printf(" %s ", BPackageResolvableExpression::kOperatorNames[
+							value.resolvableExpression.op]);
+					_PrintPackageVersion(value.resolvableExpression.version);
+				}
+				printf("\n");
+				break;
+
+			case B_PACKAGE_INFO_REPLACES:
+				printf("\treplaces: %s\n", value.string);
+				break;
+
+			default:
+				printf(
+					"*** Invalid package attribute section: unexpected "
+					"package attribute id %d encountered\n", value.attributeID);
+				return B_BAD_DATA;
+		}
+
 		return B_OK;
 	}
 
@@ -118,6 +242,17 @@ private:
 
 		buffer[3] = '\0';
 		return buffer;
+	}
+
+	static void _PrintPackageVersion(const BPackageVersionData& version)
+	{
+		printf("%s", version.major);
+		if (version.minor != NULL && version.minor[0] != '\0')
+			printf(".%s", version.minor);
+		if (version.micro != NULL && version.micro[0] != '\0')
+			printf(".%s", version.micro);
+		if (version.release > 0)
+			printf("-%d", version.release);
 	}
 
 private:
@@ -165,16 +300,14 @@ command_list(int argc, const char* const* argv)
 
 	// open package
 	StandardErrorOutput errorOutput;
-	PackageReader packageReader(&errorOutput);
+	BPackageReader packageReader(&errorOutput);
 	status_t error = packageReader.Init(packageFileName);
-printf("Init(): %s\n", strerror(error));
 	if (error != B_OK)
 		return 1;
 
 	// list
 	PackageContentListHandler handler(listAttributes);
 	error = packageReader.ParseContent(&handler);
-printf("ParseContent(): %s\n", strerror(error));
 	if (error != B_OK)
 		return 1;
 

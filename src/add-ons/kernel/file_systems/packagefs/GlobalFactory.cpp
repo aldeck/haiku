@@ -8,7 +8,7 @@
 
 #include <new>
 
-#include <haiku_package.h>
+#include <package/hpkg/HPKGDefsPrivate.h>
 
 
 static const uint32 kMaxCachedBuffers = 32;
@@ -66,8 +66,8 @@ GlobalFactory::Default()
 
 
 status_t
-GlobalFactory::CreatePackageDataReader(DataReader* dataReader,
-	const PackageData& data, PackageDataReader*& _reader)
+GlobalFactory::CreatePackageDataReader(BDataReader* dataReader,
+	const BPackageData& data, BPackageDataReader*& _reader)
 {
 	return fPackageDataReaderFactory.CreatePackageDataReader(dataReader, data,
 		_reader);

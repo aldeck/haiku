@@ -35,6 +35,7 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <Alert.h>
 #include <Application.h>
+#include <Catalog.h>
 #include <CheckBox.h>
 #include <FindDirectory.h>
 #include <Path.h>
@@ -52,6 +53,9 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "libjasper/jasper.h"
 
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "JPEG2000Translator"
+
 // Settings
 #define JP2_SETTINGS_FILE	"JPEG2000Translator"
 
@@ -65,13 +69,6 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	VIEW_MSG_SET_GRAY1ASRGB24 'JSGR'
 #define	VIEW_MSG_SET_JPC 'JSJC'
 #define	VIEW_MSG_SET_GRAYASRGB32 'JSAC'
-
-// View labels
-#define VIEW_LABEL_QUALITY "Output quality"
-#define VIEW_LABEL_JPC "Output only codestream (.jpc)"
-#define VIEW_LABEL_GRAY1ASRGB24 "Write black-and-white images as RGB24"
-#define	VIEW_LABEL_GRAYASRGB32 "Read greyscale images as RGB32"
-
 
 
 /*!

@@ -249,7 +249,8 @@ BLocaleRoster::GetFlagIconForCountry(BBitmap* flagIcon, const char* countryCode)
 		return B_ERROR;
 
 	if (!rosterData->fAreResourcesLoaded) {
-		status_t result = rosterData->fResources.SetToImage(rosterData);
+		status_t result = rosterData->fResources.SetToImage(
+			(const void*)&BLocaleRoster::Default);
 		if (result != B_OK)
 			return result;
 
@@ -335,7 +336,7 @@ BLocaleRoster::_GetCatalog(BCatalog* catalog, vint32* catalogInitStatus)
 	}
 
 	if (!found) {
-		log_team(LOG_DEBUG, "Catalog %x doesn't belong to any image !",
+		log_team(LOG_DEBUG, "Catalog %x doesn't belong to any image!",
 			catalog);
 		return catalog;
 	}
@@ -345,7 +346,7 @@ BLocaleRoster::_GetCatalog(BCatalog* catalog, vint32* catalogInitStatus)
 	char objectSignature[B_MIME_TYPE_LENGTH];
 	if (objectInfo.GetSignature(objectSignature) != B_OK) {
 		log_team(LOG_ERR, "File %s has no mimesignature, so it can't use"
-			"localization.", info.name);
+			" localization.", info.name);
 		return catalog;
 	}
 

@@ -1,0 +1,47 @@
+1	russian	x-vnd.Haiku-Devices	1945405248
+ACPI Information	DeviceACPI		Информация ACPI
+ACPI controller	Device		ACPI контроллер
+About	DevicesApplication		о программе
+About Devices…	DevicesView		О программе…
+Basic information	DevicesView		Основная информация
+Bridge	Device		Мост
+Bus	DevicesView		Шина
+Category	DevicesView		категориям
+Communication controller	Device		Контроллер связи
+Computer	Device		Компьютер
+Connection	DevicesView		подключению
+Detailed	DevicesView		Подробности
+Device Name\t\t\t\t: %Name%\nManufacturer\t\t\t: %Manufacturer%\nDriver used\t\t\t\t: %DriverUsed%\nDevice paths\t: %DevicePaths%	Device		Имя устройства\t\t\t\t: %Name%\nПроизводитель\t\t\t: %Manufacturer%\nИспользуемый драйвер\t\t\t\t: %DriverUsed%\nПути устройства\t: %DevicePaths%
+Device name	Device		Название устройства
+Device name:	Device		Название устройства:
+Device paths	Device		Путь к устройству
+Devices	DevicesApplication		Устройства
+Devices	DevicesView		Устройства
+Devices\n\twritten by Pieter Panman\n\n\tBased on listdev by Jérôme Duval\n\tand the previous Devices preference\n\tby Jérôme Duval and Sikosis\n\tCopyright 2009, Haiku, Inc.\n	DevicesApplication		Devices\n\tразработал Pieter Panman\n\n\tОсновано на listdev от Jérôme Duval\n\tи на предыдущей версии Devices,\n\tкоторую разработали Jérôme Duval и Sikosis\n\tАвторские права 2009, Haiku, Inc.\n
+Display controller	Device		Контроллер дисплея
+Docking station	Device		Кредл
+Driver used	Device		Используемый драйвер
+Encryption controller	Device		Контроллер шифрования
+Generate system information	DevicesView		Сгенерировать системную информацию
+Generic system peripheral	Device		Общая системная периферия
+Input device controller	Device		Контроллер устройств ввода
+Intelligent controller	Device		Интеллектуальный контроллер
+Manufacturer	Device		Производитель 
+Manufacturer:	Device		Производитель:
+Mass storage controller	Device		Контроллер накопителей
+Memory controller	Device		Контроллер памяти
+Multimedia controller	Device		Мультимедийный контроллер
+Network controller	Device		Сетевой контроллер
+None	Device		Отсутствует
+OK	DevicesApplication		ОК
+Order by:	DevicesView		Сортировать по:
+PCI Information	DevicePCI		PCI информация 
+Processor	Device		Процессор
+Quit	DevicesView		Выход
+Refresh devices	DevicesView		Обновить список устройств
+Report compatibility	DevicesView		Отчет о совместимости
+Satellite communications controller	Device		Контроллер спутниковой связи
+Serial bus controller	Device		Контроллер последовательной шины
+Signal processing controller	Device		Контроллер обработки сигналов
+Unclassified device	Device		Неклассифицированные устройства
+Wireless controller	Device		Беспроводной контроллер

@@ -1319,9 +1319,9 @@ FindPanel::PushMimeType(BQuery *query) const
 	if (strcmp(kAllMimeTypes, type)) {
 		// add an asterisk if we are searching for a supertype
 		char buffer[B_FILE_NAME_LENGTH];
-		if (strchr(type,'/') == NULL) {
-			strcpy(buffer,type);
-			strcat(buffer,"/*");
+		if (strchr(type, '/') == NULL) {
+			strlcpy(buffer, type, sizeof(buffer));
+			strlcat(buffer, "/*", sizeof(buffer));
 			type = buffer;
 		}
 
@@ -2242,11 +2242,12 @@ FindPanel::RestoreWindowState(const BNode *node)
 	BString focusedView;
 	if (node->ReadAttrString("_trk/focusedView", &focusedView) == B_OK) {
 		BView *view = FindView(focusedView.String());
-		if (view) {
+		if (view != NULL) {
 			view->MakeFocus();
 			BTextControl *textControl = dynamic_cast<BTextControl *>(view);
-			if (textControl) {
-				int32 selStart = 0, selEnd = LONG_MAX;
+			if (textControl != NULL && Mode() == kByFormulaItem) {
+				int32 selStart = 0;
+				int32 selEnd = LONG_MAX;
 				node->ReadAttr("_trk/focusedSelStart", B_INT32_TYPE, 0,
 					&selStart, sizeof(selStart));
 				node->ReadAttr("_trk/focusedSelEnd", B_INT32_TYPE, 0,

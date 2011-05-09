@@ -9,9 +9,11 @@
 
 #include "PropertyList.h"
 
+#include <Catalog.h>
 #include <ColumnTypes.h>
 
-//#include <stdio.h>
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "PropertyList"
 
 
 PropertyRow::PropertyRow(const char* name, const char* value)
@@ -49,11 +51,11 @@ PropertyList::PropertyList(const char* name)
 		B_NO_BORDER, true)
 {
 	BStringColumn* nameColumn;
-	AddColumn(nameColumn = new BStringColumn("Name", 150, 50, 500,
+	AddColumn(nameColumn = new BStringColumn(B_TRANSLATE("Name"), 150, 50, 500,
 			B_TRUNCATE_MIDDLE),
 		kNameColumn);
-	AddColumn(new BStringColumn("Value", 150, 50, 500, B_TRUNCATE_END),
-		kValueColumn);
+	AddColumn(new BStringColumn(B_TRANSLATE("Value"), 150, 50, 500,
+		B_TRUNCATE_END), kValueColumn);
 	SetSortColumn(nameColumn, false, true);
 }
 

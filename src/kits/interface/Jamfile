@@ -24,8 +24,8 @@ if ! $(TARGET_PLATFORM_HAIKU_COMPATIBLE) {
 
 SetSubDirSupportedPlatforms haiku libbe_test ;
 
-UseLibraryHeaders agg icon ;
-UsePrivateHeaders app input print interface libbe shared tracker ;
+UseLibraryHeaders agg ;
+UsePrivateHeaders app input print interface libbe shared support tracker ;
 
 SEARCH_SOURCE += [ FDirName $(SUBDIR) textview_support ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) layouter ] ;

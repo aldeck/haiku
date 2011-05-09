@@ -9,6 +9,7 @@
 
 #include <Alert.h>
 #include <Bitmap.h>
+#include <Debug.h>
 #include <Message.h>
 #include <PrintJob.h>
 #include <Region.h>
@@ -36,36 +37,53 @@ using namespace std;
 // Measure printJob() time. Either true or false.
 #define MEASURE_PRINT_JOB_TIME false
 
+
 enum {
-	kMaxMemorySize = (4 *1024 *1024)
+	kMaxMemorySize = 4 * 1024 * 1024
 };
 
-GraphicsDriver::GraphicsDriver(BMessage *msg, PrinterData *printer_data, const PrinterCap *printer_cap)
-	: fMsg(msg)
-	, fPrinterData(printer_data)
-	, fPrinterCap(printer_cap)
+
+GraphicsDriver::GraphicsDriver(BMessage* message, PrinterData* printerData,
+	const PrinterCap* printerCap)
+	:
+	fMessage(message),
+	fView(NULL),
+	fBitmap(NULL),
+	fRotatedBitmap(NULL),
+	fTransport(NULL),
+	fOrgJobData(NULL),
+	fRealJobData(NULL),
+	fPrinterData(printerData),
+	fPrinterCap(printerCap),
+	fSpoolMetaData(NULL),
+	fPageWidth(0),
+	fPageHeight(0),
+	fBandWidth(0),
+	fBandHeight(0),
+	fPixelDepth(0),
+	fBandCount(0),
+	fInternalCopies(0),
+	fPageCount(0),
+	fStatusWindow(NULL)
 {
-	fView          = NULL;
-	fBitmap        = NULL;
-	fTransport     = NULL;
-	fOrgJobData    = NULL;
-	fRealJobData   = NULL;
-	fSpoolMetaData = NULL;
 }
+
 
 GraphicsDriver::~GraphicsDriver()
 {
 }
 
 
-static BRect RotateRect(BRect rect)
+static BRect
+RotateRect(BRect rect)
 {
 	BRect rotated(rect.top, rect.left, rect.bottom, rect.right);
 	return rotated;
 }
 
+
 bool 
-GraphicsDriver::setupData(BFile *spoolFile)
+GraphicsDriver::_SetupData(BFile* spoolFile)
 {
 	if (fOrgJobData != NULL) {
 		// already initialized
@@ -98,25 +116,30 @@ GraphicsDriver::setupData(BFile *spoolFile)
 
 	fRealJobData = new JobData(*fOrgJobData);
 
-	switch (fOrgJobData->getNup()) {
+	switch (fOrgJobData->GetNup()) {
 	case 2:
 	case 8:
 	case 32:
 	case 128:
-		fRealJobData->setPrintableRect(RotateRect(fOrgJobData->getPrintableRect()));
-		fRealJobData->setScaledPrintableRect(RotateRect(fOrgJobData->getScaledPrintableRect()));
-		fRealJobData->setPhysicalRect(RotateRect(fOrgJobData->getPhysicalRect()));
-		fRealJobData->setScaledPhysicalRect(RotateRect(fOrgJobData->getScaledPhysicalRect()));
-		if (JobData::kPortrait == fOrgJobData->getOrientation())
-			fRealJobData->setOrientation(JobData::kLandscape);
+		fRealJobData->SetPrintableRect(
+			RotateRect(fOrgJobData->GetPrintableRect()));
+		fRealJobData->SetScaledPrintableRect(
+			RotateRect(fOrgJobData->GetScaledPrintableRect()));
+		fRealJobData->SetPhysicalRect(
+			RotateRect(fOrgJobData->GetPhysicalRect()));
+		fRealJobData->SetScaledPhysicalRect(
+			RotateRect(fOrgJobData->GetScaledPhysicalRect()));
+
+		if (JobData::kPortrait == fOrgJobData->GetOrientation())
+			fRealJobData->SetOrientation(JobData::kLandscape);
 		else
-			fRealJobData->setOrientation(JobData::kPortrait);
+			fRealJobData->SetOrientation(JobData::kPortrait);
 		break;
 	}
 
-	if (fOrgJobData->getCollate() && fPageCount > 1) {
-		fRealJobData->setCopies(1);
-		fInternalCopies = fOrgJobData->getCopies();
+	if (fOrgJobData->GetCollate() && fPageCount > 1) {
+		fRealJobData->SetCopies(1);
+		fInternalCopies = fOrgJobData->GetCopies();
 	} else {
 		fInternalCopies = 1;
 	}
@@ -125,8 +148,9 @@ GraphicsDriver::setupData(BFile *spoolFile)
 	return true;
 }
 
+
 void 
-GraphicsDriver::cleanupData()
+GraphicsDriver::_CleanupData()
 {
 	delete fRealJobData;
 	delete fOrgJobData;
@@ -136,13 +160,16 @@ GraphicsDriver::cleanupData()
 	fSpoolMetaData = NULL;
 }
 
-void 
-GraphicsDriver::setupBitmap()
-{
-	fPixelDepth = color_space2pixel_depth(fOrgJobData->getSurfaceType());
 
-	fPageWidth  = (fRealJobData->getPhysicalRect().IntegerWidth()  * fOrgJobData->getXres() + 71) / 72;
-	fPageHeight = (fRealJobData->getPhysicalRect().IntegerHeight() * fOrgJobData->getYres() + 71) / 72;
+void 
+GraphicsDriver::_SetupBitmap()
+{
+	fPixelDepth = color_space2pixel_depth(fOrgJobData->GetSurfaceType());
+
+	fPageWidth  = (fRealJobData->GetPhysicalRect().IntegerWidth()
+		* fOrgJobData->GetXres() + 71) / 72;
+	fPageHeight = (fRealJobData->GetPhysicalRect().IntegerHeight()
+		* fOrgJobData->GetYres() + 71) / 72;
 
 	int widthByte = (fPageWidth * fPixelDepth + 7) / 8;
 	int size = widthByte * fPageHeight;
@@ -156,7 +183,7 @@ GraphicsDriver::setupBitmap()
 		fBandHeight = fPageHeight;
 	} else {
 		fBandCount  = (size + kMaxMemorySize - 1) / kMaxMemorySize;
-		if ((JobData::kLandscape == fRealJobData->getOrientation()) && (fFlags & kGDFRotateBandBitmap)) {
+		if (_NeedRotateBitmapBand()) {
 			fBandWidth  = (fPageWidth + fBandCount - 1) / fBandCount;
 			fBandHeight = fPageHeight;
 		} else {
@@ -174,21 +201,32 @@ GraphicsDriver::setupBitmap()
 
 	BRect rect;
 	rect.Set(0, 0, fBandWidth - 1, fBandHeight - 1);
-	fBitmap = new BBitmap(rect, fOrgJobData->getSurfaceType(), true);
+	fBitmap = new BBitmap(rect, fOrgJobData->GetSurfaceType(), true);
 	fView   = new BView(rect, "", B_FOLLOW_ALL, B_WILL_DRAW);
 	fBitmap->AddChild(fView);
+
+	if (_NeedRotateBitmapBand()) {
+		BRect rotatedRect(0, 0, rect.bottom, rect.right);
+		fRotatedBitmap = new BBitmap(rotatedRect, fOrgJobData->GetSurfaceType(),
+			false);
+	}
 }
 
+
 void 
-GraphicsDriver::cleanupBitmap()
+GraphicsDriver::_CleanupBitmap()
 {
 	delete fBitmap;
 	fBitmap = NULL;
 	fView   = NULL;
+
+	delete fRotatedBitmap;
+	fRotatedBitmap = NULL;
 }
 
+
 BPoint 
-GraphicsDriver::getScale(int32 nup, BRect physicalRect, float scaling)
+GraphicsDriver::GetScale(int32 nup, BRect physicalRect, float scaling)
 {
 	float width;
 	float height;
@@ -271,9 +309,11 @@ GraphicsDriver::getScale(int32 nup, BRect physicalRect, float scaling)
 	return scale;
 }
 
+
 BPoint 
-GraphicsDriver::getOffset(int32 nup, int index, JobData::Orientation orientation, 
-	const BPoint *scale, BRect scaledPhysicalRect, BRect scaledPrintableRect,
+GraphicsDriver::GetOffset(int32 nup, int index,
+	JobData::Orientation orientation, const BPoint* scale,
+	BRect scaledPhysicalRect, BRect scaledPrintableRect,
 	BRect physicalRect)
 {
 	BPoint offset;
@@ -368,9 +408,10 @@ GraphicsDriver::getOffset(int32 nup, int index, JobData::Orientation orientation
 	return offset;
 }
 
+
 // print the specified pages on a physical page
 bool 
-GraphicsDriver::printPage(PageDataList *pages)
+GraphicsDriver::_PrintPage(PageDataList* pages)
 {
 	BPoint offset;
 	offset.x = 0.0f;
@@ -387,23 +428,34 @@ GraphicsDriver::printPage(PageDataList *pages)
 		fView->ConstrainClippingRegion(NULL);
 		fView->FillRect(fView->Bounds());
 
-		BPoint scale = getScale(fOrgJobData->getNup(), fOrgJobData->getPhysicalRect(), fOrgJobData->getScaling());
-		float real_scale = min(scale.x, scale.y) * fOrgJobData->getXres() / 72.0f;
+		BPoint scale = GetScale(fOrgJobData->GetNup(),
+			fOrgJobData->GetPhysicalRect(), fOrgJobData->GetScaling());
+		float real_scale = min(scale.x, scale.y) * fOrgJobData->GetXres()
+			/ 72.0f;
 		fView->SetScale(real_scale);
 		float x = offset.x / real_scale;
 		float y = offset.y / real_scale;
 		int page_index = 0;
 
-		for (PageDataList::iterator it = pages->begin(); it != pages->end(); it++) {
-			BPoint left_top(getOffset(fOrgJobData->getNup(), page_index++, fOrgJobData->getOrientation(), &scale, fOrgJobData->getScaledPhysicalRect(), fOrgJobData->getScaledPrintableRect(), fOrgJobData->getPhysicalRect()));
+		for (PageDataList::iterator it = pages->begin(); it != pages->end();
+			it++) {
+			BPoint left_top(GetOffset(fOrgJobData->GetNup(), page_index++,
+				fOrgJobData->GetOrientation(), &scale,
+				fOrgJobData->GetScaledPhysicalRect(),
+				fOrgJobData->GetScaledPrintableRect(),
+				fOrgJobData->GetPhysicalRect()));
+
 			left_top.x -= x;
 			left_top.y -= y;
-			BRect clip(fOrgJobData->getScaledPrintableRect());
+
+			BRect clip(fOrgJobData->GetScaledPrintableRect());
 			clip.OffsetTo(left_top);
+
 			BRegion *region = new BRegion();
 			region->Set(clip);
 			fView->ConstrainClippingRegion(region);
 			delete region;
+
 			if ((*it)->startEnum()) {
 				bool more;
 				do {
@@ -416,39 +468,93 @@ GraphicsDriver::printPage(PageDataList *pages)
 				} while (more);
 			}
 		}
-		if (!nextBand(fBitmap, &offset)) {
+
+		if (!_PrintBand(fBitmap, &offset))
 			return false;
-		}
+
 	} while (offset.x >= 0.0f && offset.y >= 0.0f);
 	
 	return true;
 }
 
+
+bool
+GraphicsDriver::_PrintBand(BBitmap* band, BPoint* offset)
+{
+	if (!_NeedRotateBitmapBand())
+		return NextBand(band, offset);
+
+	_RotateInto(fRotatedBitmap, band);
+
+	BPoint rotatedOffset(offset->y, offset->x);
+	bool success = NextBand(fRotatedBitmap, &rotatedOffset);
+	offset->x = rotatedOffset.y;
+	offset->y = rotatedOffset.x;
+
+	return success;
+}
+
+
+void
+GraphicsDriver::_RotateInto(BBitmap* target, const BBitmap* source)
+{
+	ASSERT(target->ColorSpace() == B_RGB32);
+	ASSERT(source->ColorSpace() == B_RGB32);
+	ASSERT(target->Bounds().IntegerWidth() == source->Bounds().IntegerHeight());
+	ASSERT(target->Bounds().IntegerHeight() == source->Bounds().IntegerWidth());
+
+	const int32 width = source->Bounds().IntegerWidth() + 1;
+	const int32 height = source->Bounds().IntegerHeight() + 1;
+
+	const int32 sourceBPR = source->BytesPerRow();
+	const int32 targetBPR = target->BytesPerRow();
+
+	const uint8_t* sourceBits =
+		reinterpret_cast<const uint8_t*>(source->Bits());
+	uint8_t* targetBits = static_cast<uint8_t*>(target->Bits());
+
+	for (int32 y = 0; y < height; y ++) {
+		for (int32 x = 0; x < width; x ++) {
+			const uint32_t* sourcePixel =
+				reinterpret_cast<const uint32_t*>(sourceBits + sourceBPR * y
+					+ sizeof(uint32_t) * x);
+
+			int32 targetX = (height - y - 1);
+			int32 targetY = x;
+			uint32_t* targetPixel =
+				reinterpret_cast<uint32_t*>(targetBits + targetBPR * targetY
+					+ sizeof(uint32_t) * targetX);
+			*targetPixel = *sourcePixel;
+		}
+	}
+}
+
 bool 
-GraphicsDriver::collectPages(SpoolData *spool_data, PageDataList *pages)
+GraphicsDriver::_CollectPages(SpoolData* spoolData, PageDataList* pages)
 {
 	// collect the pages to be printed on the physical page
 	PageData *page_data;
-	int nup = fOrgJobData->getNup();
+	int nup = fOrgJobData->GetNup();
 	bool more;
 	do {
-		more = spool_data->enumObject(&page_data);
-		if (pages != NULL) {
+		more = spoolData->enumObject(&page_data);
+		if (pages != NULL)
 			pages->push_back(page_data);
-		}
 	} while (more && --nup);
 	
 	return more;
 }
 
-bool 
-GraphicsDriver::skipPages(SpoolData *spool_data)
-{
-	return collectPages(spool_data, NULL);
-}
 
 bool 
-GraphicsDriver::printDocument(SpoolData *spool_data)
+GraphicsDriver::_SkipPages(SpoolData* spoolData)
+{
+	return _CollectPages(spoolData, NULL);
+}
+
+
+bool 
+GraphicsDriver::_PrintDocument(SpoolData* spoolData)
 {
 	bool more;
 	bool success;
@@ -460,41 +566,41 @@ GraphicsDriver::printDocument(SpoolData *spool_data)
 	success = true;
 	page_index = 0;
 	
-	if (fPrinterCap->isSupport(PrinterCap::kCopyCommand)) {
+	if (fPrinterCap->Supports(PrinterCap::kCopyCommand))
 		// let the printer perform the copy operation
 		copies = 1;
-	} else {
+	else
 		// send the page multiple times to the printer
-		copies = fRealJobData->getCopies();
-	}
-	fStatusWindow -> SetPageCopies(copies);						// inform fStatusWindow about number of copies
+		copies = fRealJobData->GetCopies();
+
+	fStatusWindow -> SetPageCopies(copies);
+		// inform fStatusWindow about number of copies
 	
 	// printing of even/odd numbered pages only is valid in simplex mode
-	bool simplex = fRealJobData->getPrintStyle() == JobData::kSimplex;
+	bool simplex = fRealJobData->GetPrintStyle() == JobData::kSimplex;
 	
-	if (spool_data->startEnum()) {
+	if (spoolData->startEnum()) {
 		do {
 			DBGMSG(("page index = %d\n", page_index));
 
-			if (simplex && 
-				fRealJobData->getPageSelection() == JobData::kEvenNumberedPages) {
+			if (simplex
+				&& fRealJobData->GetPageSelection()
+					== JobData::kEvenNumberedPages)
 				// skip odd numbered page
-				more = skipPages(spool_data);
-			}
+				more = _SkipPages(spoolData);
 
-			if (!more) {
+			if (!more)
 				// end reached
 				break;
-			}
 			
 			PageDataList pages;
-			more = collectPages(spool_data, &pages);
+			more = _CollectPages(spoolData, &pages);
 			
-			if (more && simplex && 
-				fRealJobData->getPageSelection() == JobData::kOddNumberedPages) {
+			if (more && simplex
+				&& fRealJobData->GetPageSelection()
+					== JobData::kOddNumberedPages)
 				// skip even numbered page
-				more = skipPages(spool_data);
-			}
+				more = _SkipPages(spoolData);
 
 			// print each physical page "copies" of times
 			for (copy = 0; success && copy < copies; copy ++) {
@@ -503,17 +609,17 @@ GraphicsDriver::printDocument(SpoolData *spool_data)
 				if (fStatusWindow->UpdateStatusBar(page_index, copy))		
 					return false;	
 
-				success = startPage(page_index);
+				success = StartPage(page_index);
 				if (!success)
 					break;
 				
 				// print the pages on the physical page
 				fView->Window()->Lock();
-				success = printPage(&pages);
+				success = _PrintPage(&pages);
 				fView->Window()->Unlock();
 
 				if (success) {
-					success = endPage(page_index);
+					success = EndPage(page_index);
 				}
 			}
 				
@@ -523,76 +629,79 @@ GraphicsDriver::printDocument(SpoolData *spool_data)
 
 #ifndef USE_PREVIEW_FOR_DEBUG
 	if (success
-		&& fPrinterCap->isSupport(PrinterCap::kPrintStyle)
-		&& (fOrgJobData->getPrintStyle() != JobData::kSimplex)
-		&& (((page_index + fOrgJobData->getNup() - 1) / fOrgJobData->getNup()) % 2))
-	{
-		// append an empty page on the back side of the page in duplex or booklet mode
+		&& fPrinterCap->Supports(PrinterCap::kPrintStyle)
+		&& (fOrgJobData->GetPrintStyle() != JobData::kSimplex)
+		&& (((page_index + fOrgJobData->GetNup() - 1) / fOrgJobData->GetNup())
+			% 2)) {
+		// append an empty page on the back side of the page in duplex or
+		// booklet mode
 		success = 
-			startPage(page_index) &&
-			printPage(NULL) &&
-			endPage(page_index);
+			StartPage(page_index) &&
+			_PrintPage(NULL) &&
+			EndPage(page_index);
 	}
 #endif
 
 	return success;
 }
 
+
 const JobData*
-GraphicsDriver::getJobData(BFile *spoolFile)
+GraphicsDriver::GetJobData(BFile* spoolFile)
 {
-	setupData(spoolFile);
+	_SetupData(spoolFile);
 	return fOrgJobData;
 }
 
+
 bool 
-GraphicsDriver::printJob(BFile *spoolFile)
+GraphicsDriver::_PrintJob(BFile* spoolFile)
 {
 	bool success = true;
-	if (!setupData(spoolFile)) {
+	if (!_SetupData(spoolFile)) {
 		// silently exit if there is nothing to print
 		return true;
 	}
 
 	fTransport = new Transport(fPrinterData);
 
-	if (fTransport->check_abort()) {
+	if (fTransport->CheckAbort()) {
 		success = false;
-	} else if (!fTransport->is_print_to_file_canceled()) {
+	} else if (!fTransport->IsPrintToFileCanceled()) {
 		BStopWatch stopWatch("printJob", !MEASURE_PRINT_JOB_TIME);
-		setupBitmap();
-		SpoolData spool_data(spoolFile, fPageCount, fOrgJobData->getNup(), fOrgJobData->getReverse());
-		success = startDoc();
+		_SetupBitmap();
+		SpoolData spoolData(spoolFile, fPageCount, fOrgJobData->GetNup(),
+			fOrgJobData->GetReverse());
+		success = StartDocument();
 		if (success) {
 			fStatusWindow = new StatusWindow(
-				fRealJobData->getPageSelection() == JobData::kOddNumberedPages,
-				fRealJobData->getPageSelection() == JobData::kEvenNumberedPages, 												
-				fRealJobData->getFirstPage(),
+				fRealJobData->GetPageSelection() == JobData::kOddNumberedPages,
+				fRealJobData->GetPageSelection() == JobData::kEvenNumberedPages,
+				fRealJobData->GetFirstPage(),
 				fPageCount, 
-				fInternalCopies,fRealJobData->getNup());
+				fInternalCopies,fRealJobData->GetNup());
 				
 			while (fInternalCopies--) {
-				success = printDocument(&spool_data);
+				success = _PrintDocument(&spoolData);
 				if (success == false) {
 					break;
 				}
 			}
-			endDoc(success);
+			EndDocument(success);
 		
 			fStatusWindow->Lock();
 			fStatusWindow->Quit();
 		}
-		cleanupBitmap();
-		cleanupData();
+		_CleanupBitmap();
+		_CleanupData();
 	}
 
 	if (success == false) {
 		BAlert *alert;
-		if (fTransport->check_abort()) {
-			alert = new BAlert("", fTransport->last_error().c_str(), "OK");
-		} else {
+		if (fTransport->CheckAbort())
+			alert = new BAlert("", fTransport->LastError().c_str(), "OK");
+		else
 			alert = new BAlert("", "Printer not responding.", "OK");
-		}
 		alert->Go();
 	}
 
@@ -602,83 +711,103 @@ GraphicsDriver::printJob(BFile *spoolFile)
 	return success;
 }
 
-BMessage *
-GraphicsDriver::takeJob(BFile* spoolFile, uint32 flags)
+
+BMessage*
+GraphicsDriver::TakeJob(BFile* spoolFile)
 {
-	fFlags = flags;
 	BMessage *msg;
-	if (printJob(spoolFile)) {
+	if (_PrintJob(spoolFile))
 		msg = new BMessage('okok');
-	} else {
+	else
 		msg = new BMessage('baad');
-	}
 	return msg;
 }
 
+
 bool 
-GraphicsDriver::startDoc()
+GraphicsDriver::StartDocument()
 {
 	return true;
 }
 
+
 bool 
-GraphicsDriver::startPage(int)
+GraphicsDriver::StartPage(int)
 {
 	return true;
 }
 
+
 bool 
-GraphicsDriver::nextBand(BBitmap *, BPoint *)
+GraphicsDriver::NextBand(BBitmap*, BPoint*)
 {
 	return true;
 }
 
+
 bool 
-GraphicsDriver::endPage(int)
+GraphicsDriver::EndPage(int)
 {
 	return true;
 }
 
+
 bool 
-GraphicsDriver::endDoc(bool)
+GraphicsDriver::EndDocument(bool)
 {
 	return true;
-}
-
-void 
-GraphicsDriver::writeSpoolData(const void *buffer, size_t size) throw(TransportException)
-{
-	if (fTransport) {
-		fTransport->write(buffer, size);
-	}
-}
-
-void 
-GraphicsDriver::writeSpoolString(const char *format, ...) throw(TransportException)
-{
-	if (fTransport) {
-		char buffer[256];
-		va_list	ap;
-		va_start(ap, format);
-		vsprintf(buffer, format, ap);
-		fTransport->write(buffer, strlen(buffer));
-		va_end(ap);
-	}
-}
-
-void 
-GraphicsDriver::writeSpoolChar(char c) throw(TransportException)
-{
-	if (fTransport) {
-		fTransport->write(&c, 1);
-	}
 }
 
 
 void 
-GraphicsDriver::rgb32_to_rgb24(void* src, void* dst, int width) {
+GraphicsDriver::WriteSpoolData(const void* buffer, size_t size)
+	throw (TransportException)
+{
+	if (fTransport == NULL)
+		return;
+	fTransport->Write(buffer, size);
+}
+
+
+void 
+GraphicsDriver::WriteSpoolString(const char* format, ...)
+	throw (TransportException)
+{
+	if (fTransport == NULL)
+		return;
+
+	char buffer[256];
+	va_list	ap;
+	va_start(ap, format);
+	vsprintf(buffer, format, ap);
+	fTransport->Write(buffer, strlen(buffer));
+	va_end(ap);
+}
+
+
+void 
+GraphicsDriver::WriteSpoolChar(char c)
+	throw (TransportException)
+{
+	if (fTransport == NULL)
+		return;
+
+	fTransport->Write(&c, 1);
+}
+
+
+bool
+GraphicsDriver::_NeedRotateBitmapBand() const
+{
+	return JobData::kLandscape == fRealJobData->GetOrientation()
+		&& !fPrinterCap->Supports(PrinterCap::kCanRotatePageInLandscape);
+}
+
+
+void 
+GraphicsDriver::_ConvertRGB32ToRGB24(const void* src, void* dst, int width) {
 	uint8* d = (uint8*)dst;
-	rgb_color* s = (rgb_color*)src;
+	const rgb_color* s = static_cast<const rgb_color*>(src);
 	for (int i = width; i > 0; i --) {
 		*d ++ = s->red;
 		*d ++ = s->green;
@@ -687,10 +816,11 @@ GraphicsDriver::rgb32_to_rgb24(void* src, void* dst, int width) {
 	}
 }
 
+
 void 
-GraphicsDriver::cmap8_to_rgb24(void* src, void* dst, int width) {
+GraphicsDriver::_ConvertCMAP8ToRGB24(const void* src, void* dst, int width) {
 	uint8* d = (uint8*)dst;
-	uint8* s = (uint8*)src;
+	const uint8* s = static_cast<const uint8*>(src);
 	const color_map* cmap = system_colors();
 	for (int i = width; i > 0; i --) {
 		const rgb_color* rgb = &cmap->color_list[*s];
@@ -701,51 +831,57 @@ GraphicsDriver::cmap8_to_rgb24(void* src, void* dst, int width) {
 	}
 }
 
+
 void 
-GraphicsDriver::convert_to_rgb24(void* src, void* dst, int width, color_space cs) {
-	if (cs == B_RGB32) rgb32_to_rgb24(src, dst, width);
-	else if (cs == B_CMAP8) cmap8_to_rgb24(src, dst, width);
+GraphicsDriver::ConvertToRGB24(const void* src, void* dst, int width,
+	color_space cs) {
+	if (cs == B_RGB32)
+		_ConvertRGB32ToRGB24(src, dst, width);
+	else if (cs == B_CMAP8)
+		_ConvertCMAP8ToRGB24(src, dst, width);
 	else {
 		DBGMSG(("color_space %d not supported", cs));
 	}
 }
 
+
 uint8 
-GraphicsDriver::gray(uint8 r, uint8 g, uint8 b) {
-	if (r == g && g == b) {
+GraphicsDriver::_ConvertToGray(uint8 r, uint8 g, uint8 b) {
+	if (r == g && g == b)
 		return r;
-	} else {
+	else
 		return (r * 3 + g * 6 + b) / 10;
-	}
 }
 
 
 void 
-GraphicsDriver::rgb32_to_gray(void* src, void* dst, int width) {
+GraphicsDriver::_ConvertRGB32ToGray(const void* src, void* dst, int width) {
 	uint8* d = (uint8*)dst;
-	rgb_color* s = (rgb_color*)src;
-	for (int i = width; i > 0; i --) {
-		*d ++ = gray(s->red, s->green, s->blue);
-		s++;
-	}
+	const rgb_color* s = static_cast<const rgb_color*>(src);
+	for (int i = width; i > 0; i--, s++, d++)
+		*d = _ConvertToGray(s->red, s->green, s->blue);
 }
 
+
 void 
-GraphicsDriver::cmap8_to_gray(void* src, void* dst, int width) {
+GraphicsDriver::_ConvertCMAP8ToGray(const void* src, void* dst, int width) {
 	uint8* d = (uint8*)dst;
-	uint8* s = (uint8*)src;
+	const uint8* s = static_cast<const uint8*>(src);
 	const color_map* cmap = system_colors();
-	for (int i = width; i > 0; i --) {
+	for (int i = width; i > 0; i--, s++, d++) {
 		const rgb_color* rgb = &cmap->color_list[*s];
-		*d ++ = gray(rgb->red, rgb->green, rgb->blue);
-		s ++;		
+		*d = _ConvertToGray(rgb->red, rgb->green, rgb->blue);
 	}
 }
 
+
 void 
-GraphicsDriver::convert_to_gray(void* src, void* dst, int width, color_space cs) {
-	if (cs == B_RGB32) rgb32_to_gray(src, dst, width);
-	else if (cs == B_CMAP8) cmap8_to_gray(src, dst, width);
+GraphicsDriver::ConvertToGray(const void* src, void* dst, int width,
+	color_space cs) {
+	if (cs == B_RGB32)
+		_ConvertRGB32ToGray(src, dst, width);
+	else if (cs == B_CMAP8)
+		_ConvertCMAP8ToGray(src, dst, width);
 	else {
 		DBGMSG(("color_space %d not supported", cs));
 	}

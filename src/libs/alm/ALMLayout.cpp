@@ -14,12 +14,11 @@
 
 #include "ViewLayoutItem.h"
 
-#include "ResultType.h"
+
+using namespace LinearProgramming;
 
 
 const BSize kUnsetSize(B_SIZE_UNSET, B_SIZE_UNSET);
-const BSize kMinSize(0, 0);
-const BSize kMaxSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED);
 
 
 /*!
@@ -41,7 +40,8 @@ BALMLayout::BALMLayout(float spacing, BALMLayout* friendLayout)
 	fTop = AddYTab();
 	fBottom = AddYTab();
 
-	// the Left tab is always at x-position 0, and the Top tab is always at y-position 0
+	// the Left tab is always at x-position 0, and the Top tab is always at
+	// y-position 0
 	fLeft->SetRange(0, 0);
 	fTop->SetRange(0, 0);
 
@@ -53,15 +53,19 @@ BALMLayout::BALMLayout(float spacing, BALMLayout* friendLayout)
 
 	fPerformancePath = NULL;
 
+#if USE_SCALE_VARIABLE
 	fScaleWidth = fSolver->AddVariable();
 	fScaleHeight = fSolver->AddVariable();
+#endif
 }
 
 
 BALMLayout::~BALMLayout()
 {
+#if USE_SCALE_VARIABLE
 	delete fScaleWidth;
 	delete fScaleHeight;
+#endif
 }
 
 
@@ -73,7 +77,7 @@ BALMLayout::~BALMLayout()
 XTab*
 BALMLayout::AddXTab()
 {
-	XTab* tab = new XTab(fSolver);
+	XTab* tab = new(std::nothrow) XTab(fSolver);
 	if (!tab)
 		return NULL;
 	if (!fSolver->AddVariable(tab)) {
@@ -93,7 +97,7 @@ BALMLayout::AddXTab()
 YTab*
 BALMLayout::AddYTab()
 {
-	YTab* tab = new YTab(fSolver);
+	YTab* tab = new(std::nothrow) YTab(fSolver);
 	if (!tab)
 		return NULL;
 	if (!fSolver->AddVariable(tab)) {
@@ -113,7 +117,7 @@ BALMLayout::AddYTab()
 Row*
 BALMLayout::AddRow()
 {
-	return new Row(this);
+	return new(std::nothrow) Row(this);
 }
 
 
@@ -127,7 +131,7 @@ BALMLayout::AddRow()
 Row*
 BALMLayout::AddRow(YTab* top, YTab* bottom)
 {
-	Row* row = new Row(this);
+	Row* row = new(std::nothrow) Row(this);
 	if (top != NULL)
 		row->Constraints()->AddItem(row->Top()->IsEqual(top));
 	if (bottom != NULL)
@@ -144,7 +148,7 @@ BALMLayout::AddRow(YTab* top, YTab* bottom)
 Column*
 BALMLayout::AddColumn()
 {
-	return new Column(this);
+	return new(std::nothrow) Column(this);
 }
 
 
@@ -158,7 +162,7 @@ BALMLayout::AddColumn()
 Column*
 BALMLayout::AddColumn(XTab* left, XTab* right)
 {
-	Column* column = new Column(this);
+	Column* column = new(std::nothrow) Column(this);
 	if (left != NULL)
 		column->Constraints()->AddItem(column->Left()->IsEqual(left));
 	if (right != NULL)
@@ -483,7 +487,11 @@ BALMLayout::AddItem(BLayoutItem* item, XTab* left, YTab* top, XTab* right,
 		return NULL;
 	fCurrentArea = area;
 
+#if USE_SCALE_VARIABLE
 	area->_Init(fSolver, left, top, right, bottom, fScaleWidth, fScaleHeight);
+#else
+	area->_Init(fSolver, left, top, right, bottom);
+#endif
 	return area;
 }
 
@@ -498,7 +506,11 @@ BALMLayout::AddItem(BLayoutItem* item, Row* row, Column* column)
 		return NULL;
 	fCurrentArea = area;
 
+#if USE_SCALE_VARIABLE
 	area->_Init(fSolver, row, column, fScaleWidth, fScaleHeight);
+#else
+	area->_Init(fSolver, row, column);
+#endif
 	return area;
 }
 
@@ -700,13 +712,13 @@ BALMLayout::DerivedLayoutItems()
 	Right()->SetRange(area.right, area.right);
 	Bottom()->SetRange(area.bottom, area.bottom);
 
-	_SolveLayout();
+	fSolver->Solve();
 
 	// if new layout is infeasible, use previous layout
-	if (fSolver->Result() == INFEASIBLE)
+	if (fSolver->Result() == kInfeasible)
 		return;
 
-	if (fSolver->Result() != OPTIMAL) {
+	if (fSolver->Result() != kOptimal) {
 		fSolver->Save("failed-layout.txt");
 		printf("Could not solve the layout specification (%d). ",
 			fSolver->Result());
@@ -785,36 +797,6 @@ BALMLayout::_CreateLayoutItem(BView* view)
 }
 
 
-void
-BALMLayout::_SolveLayout()
-{
-	// Try to solve the layout until the result is OPTIMAL or INFEASIBLE,
-	// maximally 15 tries sometimes the solving algorithm encounters numerical
-	// problems (NUMFAILURE), and repeating the solving often helps to overcome
-	// them.
-	BFile* file = NULL;
-	if (fPerformancePath != NULL) {
-		file = new BFile(fPerformancePath,
-			B_READ_WRITE | B_CREATE_FILE | B_OPEN_AT_END);
-	}
-
-	ResultType result;
-	for (int32 tries = 0; tries < 15; tries++) {
-		result = fSolver->Solve();
-		if (fPerformancePath != NULL) {
-			/*char buffer [100];
-			file->Write(buffer, sprintf(buffer, "%d\t%fms\t#vars=%ld\t"
-				"#constraints=%ld\n", result, fSolver->SolvingTime(),
-				fSolver->Variables()->CountItems(),
-				fSolver->Constraints()->CountItems()));*/
-		}
-		if (result == OPTIMAL || result == INFEASIBLE)
-			break;
-	}
-	delete file;
-}
-
-
 /**
  * Caculates the miminum size.
  */
@@ -823,24 +805,7 @@ BALMLayout::_CalculateMinSize()
 {
 	_UpdateAreaConstraints();
 
-	SummandList* newObjFunction = new SummandList(2);
-	newObjFunction->AddItem(new Summand(1.0, fRight));
-	newObjFunction->AddItem(new Summand(1.0, fBottom));
-	SummandList* oldObjFunction = fSolver->SwapObjectiveFunction(
-		newObjFunction);
-	_SolveLayout();
-	fSolver->SetObjectiveFunction(oldObjFunction);
-
-	if (fSolver->Result() == UNBOUNDED)
-		return kMinSize;
-	if (fSolver->Result() != OPTIMAL) {
-		fSolver->Save("failed-layout.txt");
-		printf("Could not solve the layout specification (%d). "
-			"Saved specification in file failed-layout.txt", fSolver->Result());
-	}
-
-	return BSize(Right()->Value() - Left()->Value(),
-		Bottom()->Value() - Top()->Value());
+	return fSolver->MinSize(Right(), Bottom());
 }
 
 
@@ -852,24 +817,7 @@ BALMLayout::_CalculateMaxSize()
 {
 	_UpdateAreaConstraints();
 
-	SummandList* newObjFunction = new SummandList(2);
-	newObjFunction->AddItem(new Summand(-1.0, fRight));
-	newObjFunction->AddItem(new Summand(-1.0, fBottom));
-	SummandList* oldObjFunction = fSolver->SwapObjectiveFunction(
-		newObjFunction);
-	_SolveLayout();
-	fSolver->SetObjectiveFunction(oldObjFunction);
-
-	if (fSolver->Result() == UNBOUNDED)
-		return kMaxSize;
-	if (fSolver->Result() != OPTIMAL) {
-		fSolver->Save("failed-layout.txt");
-		printf("Could not solve the layout specification (%d). "
-			"Saved specification in file failed-layout.txt", fSolver->Result());
-	}
-
-	return BSize(Right()->Value() - Left()->Value(),
-		Bottom()->Value() - Top()->Value());
+	return fSolver->MaxSize(Right(), Bottom());
 }
 
 
@@ -881,8 +829,8 @@ BALMLayout::_CalculatePreferredSize()
 {
 	_UpdateAreaConstraints();
 
-	_SolveLayout();
-	if (fSolver->Result() != OPTIMAL) {
+	fSolver->Solve();
+	if (fSolver->Result() != kOptimal) {
 		fSolver->Save("failed-layout.txt");
 		printf("Could not solve the layout specification (%d). "
 			"Saved specification in file failed-layout.txt", fSolver->Result());

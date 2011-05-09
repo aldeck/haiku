@@ -1,4 +1,5 @@
 /*
+ * Copyright 2011, Jérôme Duval, korli@users.berlios.de.
  * Copyright 2008-2010, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
@@ -33,7 +34,7 @@ public:
 			bool				IsValidSuperBlock();
 			bool				IsReadOnly() const
 									{ return (fFlags & VOLUME_READ_ONLY) != 0; }
-
+			mutex&				Lock();
 			bool				HasExtendedAttributes() const;
 
 			Inode*				RootNode() const { return fRootNode; }
@@ -43,12 +44,13 @@ public:
 									{ return fFSVolume ? fFSVolume->id : -1; }
 			fs_volume*			FSVolume() const { return fFSVolume; }
 			const char*			Name() const;
+			void				SetName(const char* name);
 
 			uint32				NumInodes() const
 									{ return fNumInodes; }
 			uint32				NumGroups() const
 									{ return fNumGroups; }
-			off_t				NumBlocks() const
+			fsblock_t			NumBlocks() const
 									{ return fSuperBlock.NumBlocks(
 										Has64bitFeature()); }
 			off_t				NumFreeBlocks() const
@@ -76,17 +78,29 @@ public:
 			Journal*			GetJournal() { return fJournal; }
 
 			bool				IndexedDirectories() const
-									{ return (fSuperBlock.CompatibleFeatures()
-										& EXT2_FEATURE_DIRECTORY_INDEX) != 0; }
+								{ return (fSuperBlock.CompatibleFeatures()
+									& EXT2_FEATURE_DIRECTORY_INDEX) != 0; }
 			bool				Has64bitFeature() const
-									{ return (fSuperBlock.CompatibleFeatures()
-										& EXT2_INCOMPATIBLE_FEATURE_64BIT) != 0; }
+								{ return (fSuperBlock.CompatibleFeatures()
+									& EXT2_INCOMPATIBLE_FEATURE_64BIT) != 0; }
+			bool				HasExtentsFeature() const
+								{ return (fSuperBlock.IncompatibleFeatures()
+									& EXT2_INCOMPATIBLE_FEATURE_EXTENTS)
+									!= 0; }
+			bool				HasChecksumFeature() const
+								{ return (fSuperBlock.ReadOnlyFeatures()
+									& EXT2_READ_ONLY_FEATURE_GDT_CSUM) != 0; }
+			bool				HasMetaGroupFeature() const
+								{ return (fSuperBlock.IncompatibleFeatures()
+									& EXT2_INCOMPATIBLE_FEATURE_META_GROUP)
+									!= 0; }
 			uint8				DefaultHashVersion() const
-									{ return fSuperBlock.default_hash_version; }
+								{ return fSuperBlock.default_hash_version; }
 			bool				HugeFiles() const
-									{ return (fSuperBlock.ReadOnlyFeatures()
-										& EXT2_READ_ONLY_FEATURE_HUGE_FILE) != 0; }
+								{ return (fSuperBlock.ReadOnlyFeatures()
+									& EXT2_READ_ONLY_FEATURE_HUGE_FILE) != 0; }
 			status_t			ActivateLargeFiles(Transaction& transaction);
+			status_t			ActivateDirNLink(Transaction& transaction);
 
 			status_t			SaveOrphan(Transaction& transaction,
 									ino_t newID, ino_t &oldID);
@@ -100,10 +114,10 @@ public:
 
 			status_t			AllocateBlocks(Transaction& transaction,
 									uint32 minimum, uint32 maximum,
-									uint32& blockGroup, off_t& start,
+									uint32& blockGroup, fsblock_t& start,
 									uint32& length);
 			status_t			FreeBlocks(Transaction& transaction,
-									off_t start, uint32 length);
+									fsblock_t start, uint32 length);
 
 			status_t			LoadSuperBlock();
 			status_t			WriteSuperBlock(Transaction& transaction);
@@ -128,6 +142,8 @@ private:
 			uint32				_GroupDescriptorBlock(uint32 blockIndex);
 			uint16				_GroupDescriptorSize() 
 									{ return fGroupDescriptorSize; }
+			uint16				_GroupCheckSum(ext2_block_group *group,
+									int32 index);
 
 private:
 			mutex				fLock;
@@ -158,5 +174,12 @@ private:
 			void*				fBlockCache;
 			Inode*				fRootNode;
 };
+
+
+inline mutex&
+Volume::Lock()
+{
+	 return fLock;
+}
 
 #endif	// VOLUME_H

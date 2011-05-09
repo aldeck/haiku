@@ -1,4 +1,5 @@
 /*
+ * Copyright 2011, Jérôme Duval, korli@users.berlios.de.
  * Copyright 2008, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
@@ -13,6 +14,7 @@
 #include "CachedBlock.h"
 #include "DataStream.h"
 #include "DirectoryIterator.h"
+#include "ExtentStream.h"
 #include "HTree.h"
 #include "Utility.h"
 
@@ -224,127 +226,14 @@ Inode::CheckPermissions(int accessMode) const
 
 
 status_t
-Inode::FindBlock(off_t offset, off_t& block, uint32 *_count)
+Inode::FindBlock(off_t offset, fsblock_t& block, uint32 *_count)
 {
-	uint32 perBlock = fVolume->BlockSize() / 4;
-	uint32 perIndirectBlock = perBlock * perBlock;
-	uint32 index = offset >> fVolume->BlockShift();
-
-	if (offset >= Size()) {
-		TRACE("FindBlock: offset larger than inode size\n");
-		return B_ENTRY_NOT_FOUND;
+	if (Flags() & EXT2_INODE_EXTENTS) {
+		ExtentStream stream(fVolume, &fNode.extent_stream, Size());
+		return stream.FindBlock(offset, block, _count);
 	}
-
-	// TODO: we could return the size of the sparse range, as this might be more
-	// than just a block
-
-	if (index < EXT2_DIRECT_BLOCKS) {
-		// direct blocks
-		block = B_LENDIAN_TO_HOST_INT32(Node().stream.direct[index]);
-		ASSERT(block != 0);
-		if (_count) {
-			*_count = 1;
-			uint32 nextBlock = block;
-			while (++index < EXT2_DIRECT_BLOCKS
-				&& Node().stream.direct[index] == ++nextBlock)
-				(*_count)++;
-		}
-	} else if ((index -= EXT2_DIRECT_BLOCKS) < perBlock) {
-		// indirect blocks
-		CachedBlock cached(fVolume);
-		uint32* indirectBlocks = (uint32*)cached.SetTo(B_LENDIAN_TO_HOST_INT32(
-			Node().stream.indirect));
-		if (indirectBlocks == NULL)
-			return B_IO_ERROR;
-
-		block = B_LENDIAN_TO_HOST_INT32(indirectBlocks[index]);
-		ASSERT(block != 0);
-		if (_count) {
-			*_count = 1;
-			uint32 nextBlock = block;
-			while (++index < perBlock
-				&& indirectBlocks[index] == ++nextBlock)
-				(*_count)++;
-		}
-	} else if ((index -= perBlock) < perIndirectBlock) {
-		// double indirect blocks
-		CachedBlock cached(fVolume);
-		uint32* indirectBlocks = (uint32*)cached.SetTo(B_LENDIAN_TO_HOST_INT32(
-			Node().stream.double_indirect));
-		if (indirectBlocks == NULL)
-			return B_IO_ERROR;
-
-		uint32 indirectIndex
-			= B_LENDIAN_TO_HOST_INT32(indirectBlocks[index / perBlock]);
-		if (indirectIndex == 0) {
-			// a sparse indirect block
-			block = 0;
-		} else {
-			indirectBlocks = (uint32*)cached.SetTo(indirectIndex);
-			if (indirectBlocks == NULL)
-				return B_IO_ERROR;
-
-			block = B_LENDIAN_TO_HOST_INT32(
-				indirectBlocks[index & (perBlock - 1)]);
-			if (_count) {
-				*_count = 1;
-				uint32 nextBlock = block;
-				while (((++index & (perBlock - 1)) != 0)
-					&& indirectBlocks[index & (perBlock - 1)] == ++nextBlock)
-					(*_count)++;
-			}
-		}
-		ASSERT(block != 0);
-	} else if ((index -= perIndirectBlock) / perBlock < perIndirectBlock) {
-		// triple indirect blocks
-		CachedBlock cached(fVolume);
-		uint32* indirectBlocks = (uint32*)cached.SetTo(B_LENDIAN_TO_HOST_INT32(
-			Node().stream.triple_indirect));
-		if (indirectBlocks == NULL)
-			return B_IO_ERROR;
-
-		uint32 indirectIndex
-			= B_LENDIAN_TO_HOST_INT32(indirectBlocks[index / perIndirectBlock]);
-		if (indirectIndex == 0) {
-			// a sparse indirect block
-			block = 0;
-		} else {
-			indirectBlocks = (uint32*)cached.SetTo(indirectIndex);
-			if (indirectBlocks == NULL)
-				return B_IO_ERROR;
-
-			indirectIndex = B_LENDIAN_TO_HOST_INT32(
-				indirectBlocks[(index / perBlock) & (perBlock - 1)]);
-			if (indirectIndex == 0) {
-				// a sparse indirect block
-				block = 0;
-			} else {
-				indirectBlocks = (uint32*)cached.SetTo(indirectIndex);
-				if (indirectBlocks == NULL)
-					return B_IO_ERROR;
-
-				block = B_LENDIAN_TO_HOST_INT32(
-					indirectBlocks[index & (perBlock - 1)]);
-				if (_count) {
-					*_count = 1;
-					uint32 nextBlock = block;
-					while (((++index & (perBlock - 1)) != 0)
-						&& indirectBlocks[index & (perBlock - 1)]
-							== ++nextBlock)
-						(*_count)++;
-				}
-			}
-		}
-		ASSERT(block != 0);
-	} else {
-		// Outside of the possible data stream
-		dprintf("ext2: block outside datastream!\n");
-		return B_ERROR;
-	}
-
-	TRACE("inode %Ld: FindBlock(offset %lld): %lld %ld\n", ID(), offset, block,
-		_count != NULL ? *_count : 1);
-	return B_OK;
+	DataStream stream(fVolume, &fNode.stream, Size());
+	return stream.FindBlock(offset, block, _count);
 }
 
 
@@ -524,8 +413,14 @@ Inode::InitDirectory(Transaction& transaction, Inode* parent)
 	if (status != B_OK)
 		return status;
 
-	off_t blockNum;
-	status = FindBlock(0, blockNum);
+	fsblock_t blockNum;
+	if (Flags() & EXT2_INODE_EXTENTS) {
+		ExtentStream stream(fVolume, &fNode.extent_stream, Size());
+		status = stream.FindBlock(0, blockNum);
+	} else {
+		DataStream stream(fVolume, &fNode.stream, Size());
+		status = stream.FindBlock(0, blockNum);
+	}
 	if (status != B_OK)
 		return status;
 
@@ -546,7 +441,7 @@ Inode::InitDirectory(Transaction& transaction, Inode* parent)
 	root->dotdot_entry_name[0] = '.';
 	root->dotdot_entry_name[1] = '.';
 
-	parent->Node().SetNumLinks(parent->Node().NumLinks() + 1);
+	parent->IncrementNumLinks(transaction);
 
 	return parent->WriteBack(transaction);
 }
@@ -729,6 +624,14 @@ Inode::Create(Transaction& transaction, Inode* parent, const char* name,
 	inode->SetAccessTime(&timespec);
 	inode->SetCreationTime(&timespec);
 	inode->SetModificationTime(&timespec);
+	node.SetFlags(parent->Flags() & EXT2_INODE_INHERITED);
+	if (volume->HasExtentsFeature() 
+		&& (inode->IsDirectory() || inode->IsFile())) {
+		node.SetFlag(EXT2_INODE_EXTENTS);
+		ExtentStream stream(volume, &node.extent_stream, 0);
+		stream.Init();
+		ASSERT(stream.Check());
+	}
 
 	if (sizeof(ext2_inode) < volume->InodeSize())
 		node.SetExtraInodeSize(sizeof(ext2_inode) - EXT2_INODE_NORMAL_SIZE);
@@ -741,6 +644,7 @@ Inode::Create(Transaction& transaction, Inode* parent, const char* name,
 		status = inode->InitDirectory(transaction, parent);
 		if (status != B_OK) {
 			ERROR("Inode::Create(): InitDirectory() failed\n");
+			delete inode;
 			return status;
 		}
 	}
@@ -768,8 +672,10 @@ Inode::Create(Transaction& transaction, Inode* parent, const char* name,
 
 	TRACE("Inode::Create(): Saving inode\n");
 	status = inode->WriteBack(transaction);
-	if (status != B_OK)
+	if (status != B_OK) {
+		delete inode;
 		return status;
+	}
 
 	TRACE("Inode::Create(): Creating vnode\n");
 
@@ -919,9 +825,14 @@ Inode::_EnlargeDataStream(Transaction& transaction, off_t size)
 	}
 
 	off_t end = size == 0 ? 0 : (size - 1) / fVolume->BlockSize() + 1;
-	DataStream stream(fVolume, &fNode.stream, oldSize);
-	stream.Enlarge(transaction, end);
-
+	if (Flags() & EXT2_INODE_EXTENTS) {
+		ExtentStream stream(fVolume, &fNode.extent_stream, Size());
+		stream.Enlarge(transaction, end);
+		ASSERT(stream.Check());
+	} else {
+		DataStream stream(fVolume, &fNode.stream, oldSize);
+		stream.Enlarge(transaction, end);
+	}
 	TRACE("Inode::_EnlargeDataStream(): Setting size to %lld\n", size);
 	fNode.SetSize(size);
 	TRACE("Inode::_EnlargeDataStream(): Setting allocated block count to %llu\n",
@@ -953,8 +864,14 @@ Inode::_ShrinkDataStream(Transaction& transaction, off_t size)
 	}
 
 	off_t end = size == 0 ? 0 : (size - 1) / fVolume->BlockSize() + 1;
-	DataStream stream(fVolume, &fNode.stream, oldSize);
-	stream.Shrink(transaction, end);
+	if (Flags() & EXT2_INODE_EXTENTS) {
+		ExtentStream stream(fVolume, &fNode.extent_stream, Size());
+		stream.Shrink(transaction, end);
+		ASSERT(stream.Check());
+	} else {
+		DataStream stream(fVolume, &fNode.stream, oldSize);
+		stream.Shrink(transaction, end);
+	}
 
 	fNode.SetSize(size);
 	return _SetNumBlocks(_NumBlocks() - end * (fVolume->BlockSize() / 512));
@@ -993,5 +910,17 @@ Inode::_SetNumBlocks(uint64 numBlocks)
 
 	fNode.SetNumBlocks64(numBlocks);
 	return B_OK;
+}
+
+
+void
+Inode::IncrementNumLinks(Transaction& transaction)
+{
+	fNode.SetNumLinks(fNode.NumLinks() + 1);
+	if (IsIndexed() && (fNode.NumLinks() >= EXT2_INODE_MAX_LINKS
+		|| fNode.NumLinks() == 2)) {
+		fNode.SetNumLinks(1);
+		fVolume->ActivateDirNLink(transaction);
+	}
 }
 

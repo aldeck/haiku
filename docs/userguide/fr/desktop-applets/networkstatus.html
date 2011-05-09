@@ -4,10 +4,11 @@
 <head>
 <!-- 
  *
- * Copyright 2008, Haiku. All rights reserved.
+ * Copyright 2010, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
+ *		Maciej Bałuta  (Google Code-In student)
  *		Humdinger <humdingerb@gmail.com>
  * Translators:
  *		Loïc
@@ -49,6 +50,7 @@
 
 <div id="content">
 <div>
+<div class="box-info">Cette page n'est pas encore entièrement traduite. Les parties non encore traduites seront en anglais.</div>
 
 <h2><img src="../../images/desktop-applets-images/networkstatus-icon_64.png" alt="networkstatus-icon_64.png" width="64" height="64" />NetworkStatus</h2>
 <table summary="quickinfo" border="0" cellspacing="0" cellpadding="2">
@@ -56,7 +58,21 @@
 <tr><td>Localisation :</td><td></td><td><span class="path">/boot/system/apps/NetworkStatus</span></td></tr>
 <tr><td>Réglages :</td><td></td><td><i>aucun</i></td></tr>
 </table>
-<p>Ce document est manquant. Si vous voulez travailler dessus, veuillez en faire l'annonce dans <a href="http://www.freelists.org/list/haiku-doc">liste de diffusion consacrée à la documentation</a> pour éviter les doublons.</p>
+<p>NetworkStatus shows the status of your network connections. If not yet running, launching the applet will ask if it should open in window mode or live in the Deskbar. In window mode you're able to resize the icon by resizing the window and use the <a href="../gui.html#replicants">Replicant</a> handle to drag it to the Desktop.<br />
+Wherever installed, it's operated via a right-click context menu.</p>
+<p><img src="../images/networkstatus-images/applet.png" alt="NetworkStatus applet" /><br />
+The first section contains all network devices' names and their state. Clicking on such an entry brings up a window showing its IP, broadcast and netmask address.<br />
+Below is a list of all wireless networks found by the first wireless adapter and an indicator of their signal strength.<br />
+Lastly, you can <span class="menu">Open network preferences...</span> to change your <a href="../preferences/network.html">network configuration</a> or <span class="menu">Quit</span> the applet.</p>
+
+<h2>Icônes d'état</h2>
+<table summary="status icons" border="0" cellspacing="0" cellpadding="2">
+	<tr><td><img src="../images/networkstatus-images/icon-ready.png" /></td><td style="width:15px;"></td><td>Prêt</td><td>La connexion est établie.</td></tr>
+	<tr><td><img src="../images/networkstatus-images/icon-connecting.png" /></td><td></td><td>Configuration</td><td>Connexion en cours.</td></tr>
+	<tr><td><img src="../images/networkstatus-images/icon-nosettings.png" /></td><td></td><td>Pas de configuration utilisable</td><td>Certains paramètres sont manquants (Vérifiez la <a href="../preferences/network.html">configuration IP</a>).</td></tr>
+	<tr><td><img src="../images/networkstatus-images/icon-noconnection.png" /></td><td></td><td>Déconnecté</td><td>Il n'y a pas de connexion physique (Le câble réseau est probablement débranché, ou aucun réseau sans fil n'est disponible).</td></tr>
+	<tr><td><img src="../images/networkstatus-images/icon-nodevices.png" /></td><td></td><td>-</td><td>Aucun adaptateur réseau n'est disponible (Si vous êtes sûr qu'au moins adaptateur est connecté, il est probable qu'il n'existe pas encore de pilote).</td></tr>
+</table>
 
 </div>
 </div>

@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2001-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -382,7 +382,7 @@ FileSystem::Mount(fs_volume* fsVolume, const char* device, uint32 flags,
 		MutexLocker locker(fVolumeLock);
 		fVolumes.Remove(volume);
 		locker.Unlock();
-		volume->RemoveReference();
+		volume->ReleaseReference();
 		return error;
 	}
 
@@ -442,7 +442,7 @@ FileSystem::GetVolume(dev_t id)
 		 it++) {
 		 Volume* volume = *it;
 		 if (volume->GetID() == id) {
-		 	volume->AddReference();
+		 	volume->AcquireReference();
 		 	return volume;
 		 }
 	}
@@ -732,7 +732,7 @@ FileSystem::_NodeListenerEventOccurred(NodeListenerProxy* proxy,
 	if (error != B_OK)
 		return;
 
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 	request->team = thread->team->id;
 	request->thread = thread->id;
 	request->user = geteuid();

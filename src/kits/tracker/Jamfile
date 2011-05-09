@@ -3,9 +3,7 @@ SubDir HAIKU_TOP src kits tracker ;
 SetSubDirSupportedPlatformsBeOSCompatible ;
 AddSubDirSupportedPlatforms libbe_test ;
 
-UsePrivateHeaders interface mount shared storage tracker ;
-
-UseLibraryHeaders icon ;
+UsePrivateHeaders interface mount shared storage support tracker ;
 
 AddResources libtracker.so : TrackerIcons.rdef libtracker.rdef ;
 

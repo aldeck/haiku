@@ -339,6 +339,16 @@ ATAChannel::ExecuteIO(scsi_ccb *ccb)
 
 
 status_t
+ATAChannel::Control(uint8 targetID, uint32 opcode, void *buffer, size_t length)
+{
+	if (targetID < fDeviceCount && fDevices[targetID] != NULL)
+		return fDevices[targetID]->Control(opcode, buffer, length);
+
+	return B_BAD_VALUE;
+}
+
+
+status_t
 ATAChannel::SelectDevice(uint8 device)
 {
 	TRACE_FUNCTION("device: %u\n", device);
@@ -1000,7 +1010,7 @@ ATAChannel::_TransferPIOPhysical(ATARequest *request, addr_t physicalAddress,
 	// we must split up chunk into B_PAGE_SIZE blocks as we can map only
 	// one page into address space at once
 	while (length > 0) {
-		struct thread *thread = thread_get_current_thread();
+		Thread *thread = thread_get_current_thread();
 		thread_pin_to_current_cpu(thread);
 
 		void *handle;

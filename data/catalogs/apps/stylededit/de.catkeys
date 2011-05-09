@@ -1,60 +1,80 @@
-1	german	x-vnd.Haiku-StyledEdit	154881138
-OK	LoadAlert		OK
+1	german	x-vnd.Haiku-StyledEdit	3614078026
 ???	LoadAlert		???
-Left	Menus		Links
-Revert to the last version of \"%s\"? 	RevertToSavedAlert		Letzte Version von \"%s\" wiederherstellen? 
-Search backwards	FindandReplaceWindow		Rückwärts suchen
-Size	Menus		Größe
-Save	QuitAlert		Speichern
-Redo typing	Menus		Wiederholen: Eingabe
-Replace same	Menus		Erneut ersetzen
-Can't Undo	Menus		Rückgängig nicht möglich
-Save	Menus		Speichern
-Replace with:	FindandReplaceWindow		Ersetzen durch:
-Cannot revert, file not found: \"%s\".	RevertToSavedAlert		Rückgängig nicht möglich, Datei nicht gefunden: \"%s\".
-Case-sensitive	FindandReplaceWindow		Groß-/Kleinschreibung beachten
-Green	Menus		Grün
-Revert to saved…	Menus		Gespeicherte Version wiederherstellen…
-Yellow	Menus		Gelb
-Replace in all windows	FindandReplaceWindow		In allen Fenstern ersetzen
-Wrap lines	Menus		Zeilenumbruch
-Cancel	RevertToSavedAlert		Abbrechen
-Document	Menus		Dokument
-Save changes to the document \"%s\"? 	QuitAlert		Änderungen an Dokument \"%s\" speichern? 
-Font	Menus		Schriftart
-Replace all	FindandReplaceWindow		Alle ersetzen
-Default	Open_and_SaveAsPanel		Standard
-Cancel	FindandReplaceWindow		Abbrechen
-Error loading \"%s\":\n\tUnsupported format	LoadAlert		Fehler beim Laden von \"%s\":\n\tDateiformat nicht unterstützt
-OK	RevertToSavedAlert		OK
-Don't save	QuitAlert		Nicht speichern
 Align	Menus		Ausrichtung
-Color	Menus		Farbe
-Red	Menus		Rot
-Open…	Menus		Öffnen…
-Center	Menus		Zentriert
+Black	Menus		Schwarz
 Blue	Menus		Blau
+Bold	Menus		Fett
+Can't Undo	Menus		Rückgängig nicht möglich
+Cancel	FindandReplaceWindow		Abbrechen
+Cancel	QuitAlert		Abbrechen
+Cancel	RevertToSavedAlert		Abbrechen
+Cancel	SaveAlert		Abbrechen
+Cannot revert, file not found: \"%s\".	RevertToSavedAlert		Rückgängig machen unmöglich, die Datei wurde nicht gefunden: \"%s\".
+Case-sensitive	FindandReplaceWindow		Groß-/Kleinschreibung beachten
+Center	Menus		Zentriert
+Characters:	Statistics		Zeichen:
+Clear	Menus		Löschen
+Close	Menus		Schließen
+Color	Menus		Farbe
+Copy	Menus		Kopieren
+Cut	Menus		Ausschneiden
 Cyan	Menus		Türkis
-Magenta	Menus		Magenta
-New	Menus		Neu
-Wrap-around search	FindandReplaceWindow		Gesamtes Dokument durchsuchen
+Default	Open_and_SaveAsPanel		Standard
+Document	Menus		Dokument
+Document statistics	Statistics		Dokument-Statistik
+Don't save	QuitAlert		Verwerfen
+Don't save	SaveAlert		Verwerfen
+Edit	Menus		Bearbeiten
+Encoding	Open_and_SaveAsPanel		Kodierung
+Error loading \"%s\":\n\t%s	LoadAlert		Fehler beim Laden von "%s":\n\t%s
+Error loading \"%s\":\n\tUnsupported format	LoadAlert		Fehler beim Öffnen von \"%s\":\n\tDas Dateiformat wird nicht unterstützt.
+Error saving \"%s\":\n%s	SaveAlert		Fehler beim Speichern von "%s":\n%s
+File	Menus		Datei
+Find	FindandReplaceWindow		Suchen
+Find again	Menus		Weitersuchen
 Find selection	Menus		Auswahl suchen
 Find:	FindandReplaceWindow		Suche:
-Error saving \"%s\":\n%s	SaveAlert		Fehler beim Speichern von "%s":\n%s
-Replace	FindandReplaceWindow		Ersetze
-Undo typing	Menus		Rückgängig: Eingabe
-Find again	Menus		Weitersuchen
-Cancel	QuitAlert		Abbrechen
 Find…	Menus		Suchen…
-Error loading \"%s\":\n\t%s	LoadAlert		Fehler beim Laden von "%s":\n\t%s
-Black	Menus		Schwarz
-Untitled 	StyledEditWindow		Unbenannt
+Font	Menus		Schrift
+Green	Menus		Grün
+Italic	Menus		Kursiv
+Left	Menus		Links
+Lines:	Statistics		Zeilen:
+Magenta	Menus		Magenta
+New	Menus		Neu
+OK	LoadAlert		OK
+OK	RevertToSavedAlert		OK
 OK	SaveAlert		OK
-Find	FindandReplaceWindow		Finden
-Encoding	Open_and_SaveAsPanel		Kodierung
+OK	Statistics		OK
+Open…	Menus		Öffnen…
+Page setup…	Menus		Seite einrichten...
+Paste	Menus		Einfügen
+Print…	Menus		Drucken...
+Quit	Menus		Beenden
+Red	Menus		Rot
+Redo typing	QuitAlert		Wiederholen: Eingabe
+Replace	FindandReplaceWindow		Ersetzen
+Replace all	FindandReplaceWindow		Alle ersetzen
+Replace in all windows	FindandReplaceWindow		In allen Fenstern ersetzen
+Replace same	Menus		Weiter ersetzen
+Replace with:	FindandReplaceWindow		Ersetzen durch:
 Replace…	Menus		Ersetzen…
+Revert to saved…	Menus		Gespeicherte Version herstellen…
+Revert to the last version of \"%s\"? 	RevertToSavedAlert		Letzte Version von \"%s\" wiederherstellen? 
 Right	Menus		Rechts
-Cancel	SaveAlert		Abbrechen
+Save	Menus		Speichern
+Save	QuitAlert		Speichern
 Save	SaveAlert		Speichern
-Don't save	SaveAlert		Nicht speichern
-This file is marked Read-Only. Save changes to the document \"%s\"? 	SaveAlert		Diese Datei ist schreibgeschützt. Änderungen am Dokument \"%s\" speichern? 
+Save as…	Menus		Speichern unter...
+Save changes to the document \"%s\"? 	QuitAlert		Änderungen an Dokument \"%s\" speichern? 
+Search backwards	FindandReplaceWindow		Rückwärts suchen
+Select all	Menus		Alles auswählen
+Size	Menus		Größe
+Statistics…	Menus		Statistik...
+This file is marked Read-Only. Save changes to the document \"%s\"? 	SaveAlert		Diese Datei ist als schreibgeschützt gekennzeichnet. Änderungen am Dokument \"%s\" speichern?
+Undo typing	QuitAlert		Rückgängig: Eingabe
+Untitled 	StyledEditWindow		Unbenannt
+Words:	Statistics		Wörter:
+Wrap lines	Menus		Zeilenumbruch
+Wrap-around search	FindandReplaceWindow		Gesamtes Dokument durchsuchen
+Yellow	Menus		Gelb

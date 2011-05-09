@@ -7,10 +7,15 @@
  */
 
 
+#include "DeviceACPI.h"
+
 #include <sstream>
 #include <stdlib.h>
 
-#include "DeviceACPI.h"
+#include <Catalog.h>
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "DeviceACPI"
 
 
 DeviceACPI::DeviceACPI(Device* parent)
@@ -44,20 +49,26 @@ DeviceACPI::InitFromAttributes()
 
 	// Identify Predefined root namespaces (ACPI Spec 4.0a, p162)
 	if (rootACPIPath == "\\_SB_") {
-		outlineName = "ACPI System Bus";
+		outlineName = B_TRANSLATE("ACPI System Bus");
 	} else if (rootACPIPath == "\\_TZ_") {
-		outlineName = "ACPI Thermal Zone";
+		outlineName = B_TRANSLATE("ACPI Thermal Zone");
 	} else if (rootACPIPath == "\\_PR_.") {
+		// This allows to localize apostrophes, too
+		BString string(B_TRANSLATE("ACPI Processor Namespace '%2'"));
+		string.ReplaceFirst("%2", nodeACPIPath);
 		// each CPU node is considered a root node
-		outlineName << "ACPI Processor Namespace '" << nodeACPIPath << "'";
+		outlineName << string.String();
 	} else if (rootACPIPath == "\\_SI_") {
-		outlineName = "ACPI System Indicator";
+		outlineName = B_TRANSLATE("ACPI System Indicator");
 	} else {
-		outlineName << "ACPI node '" << nodeACPIPath << "'";
+		// This allows to localize apostrophes, too
+		BString string(B_TRANSLATE("ACPI node '%1'"));
+		string.ReplaceFirst("%1", nodeACPIPath);
+		outlineName << string.String();
 	}
 
-	SetAttribute("Device name", outlineName.String());
-	SetAttribute("Manufacturer", "Not implimented");
+	SetAttribute(B_TRANSLATE("Device name"), outlineName.String());
+	SetAttribute(B_TRANSLATE("Manufacturer"), B_TRANSLATE("Not implemented"));
 
 	SetText(outlineName.String());
 }
@@ -78,7 +89,16 @@ DeviceACPI::GetBusAttributes()
 BString
 DeviceACPI::GetBusStrings()
 {
-	BString str;
-	str << "Class Info:\t\t\t\t: " << fAttributeMap["Class Info"];
+	BString str(B_TRANSLATE("Class Info:\t\t\t\t: %classInfo%"));
+	str.ReplaceFirst("%classInfo%", fAttributeMap["Class Info"]);
+	
 	return str;
 }
+	
+
+BString
+DeviceACPI::GetBusTabName()
+{
+	return B_TRANSLATE("ACPI Information");
+}
+

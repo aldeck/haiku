@@ -25,6 +25,7 @@
 
 #include <LinkReceiver.h>
 #include <OffsetFile.h>
+#include <ObjectListPrivate.h>
 #include <PicturePlayer.h>
 #include <PictureProtocol.h>
 #include <PortLink.h>
@@ -920,7 +921,7 @@ ServerPicture::~ServerPicture()
 
 		delete fPictures;
 	}
-	
+
 	if (fPushed != NULL) {
 		fPushed->SetOwner(NULL);
 		fPushed->ReleaseReference();
@@ -938,7 +939,7 @@ ServerPicture::SetOwner(ServerApp* owner)
 	// May remove the last reference and then we will self-destruct right then.
 	// Setting fOwner to NULL would access free'd memory. If owner is another
 	// ServerApp, it's expected to already have a reference of course.
-	Reference<ServerPicture> _(this);
+	BReference<ServerPicture> _(this);
 
 	if (fOwner != NULL)
 		fOwner->RemovePicture(this);
@@ -1071,7 +1072,7 @@ ServerPicture::Play(View* view)
 		return;
 
 	BPrivate::PicturePlayer player(mallocIO->Buffer(),
-		mallocIO->BufferLength(), fPictures->AsBList());
+		mallocIO->BufferLength(), PictureList::Private(fPictures).AsBList());
 	player.Play(const_cast<void**>(kTableEntries),
 		sizeof(kTableEntries) / sizeof(void*), view);
 }

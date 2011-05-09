@@ -511,7 +511,7 @@ DwarfFile::ResolveRangeList(CompilationUnit* unit, uint64 offset) const
 		ERROR("Out of memory.\n");
 		return NULL;
 	}
-	Reference<TargetAddressRangeList> rangesReference(ranges, true);
+	BReference<TargetAddressRangeList> rangesReference(ranges, true);
 
 	target_addr_t baseAddress = unit->AddressRangeBase();
 	target_addr_t maxAddress = unit->MaxAddress();
@@ -619,8 +619,8 @@ DwarfFile::UnwindCallFrame(CompilationUnit* unit,
 			if (location >= initialLocation
 				&& location < initialLocation + addressRange) {
 				// This is the FDE we're looking for.
-				off_t remaining = (off_t)length
-					- (dataReader.Offset() - lengthOffset);
+				off_t remaining = lengthOffset + length
+					- dataReader.Offset();
 				if (remaining < 0)
 					return B_BAD_DATA;
 
@@ -635,7 +635,7 @@ DwarfFile::UnwindCallFrame(CompilationUnit* unit,
 					cieID = lengthOffset - cieID;
 				}
 
-				TRACE_CFI("  found fde: length: %llu (%lld), CIE offset: %llu, "
+				TRACE_CFI("  found fde: length: %llu (%lld), CIE offset: %#llx, "
 					"location: %#llx, range: %#llx\n", length, remaining, cieID,
 					initialLocation, addressRange);
 
@@ -645,18 +645,9 @@ DwarfFile::UnwindCallFrame(CompilationUnit* unit,
 				if (error != B_OK)
 					return error;
 
-				// Init the initial register rules. The DWARF 3 specs on the
-				// matter: "The default rule for all columns before
-				// interpretation of the initial instructions is the undefined
-				// rule. However, an ABI authoring body or a compilation system
-				// authoring body may specify an alternate default value for any
-				// or all columns."
-				// GCC's assumes the "same value" rule for all callee preserved
-				// registers. We set them respectively.
-				for (uint32 i = 0; i < registerCount; i++) {
-					if (outputInterface->IsCalleePreservedRegister(i))
-						context.RegisterRule(i)->SetToSameValue();
-				}
+				error = outputInterface->InitRegisterRules(context);
+				if (error != B_OK)
+					return error;
 
 				// process the CIE
 				CIEAugmentation cieAugmentation;
@@ -672,13 +663,19 @@ DwarfFile::UnwindCallFrame(CompilationUnit* unit,
 					TRACE_CFI("  failed to read FDE augmentation data!\n");
 					return error;
 				}
+				// adjust remaining byte count to take augmentation bytes
+				// (if any) into account.
+				remaining = lengthOffset + length
+					- dataReader.Offset();
 
 				error = context.SaveInitialRuleSet();
 				if (error != B_OK)
 					return error;
 
+				DataReader restrictedReader =
+					dataReader.RestrictedReader(remaining);
 				error = _ParseFrameInfoInstructions(unit, context,
-					dataReader.Offset(), remaining);
+					restrictedReader);
 				if (error != B_OK)
 					return error;
 
@@ -1577,8 +1574,8 @@ DwarfFile::_ParseCIE(CompilationUnit* unit, CfaContext& context,
 
 	uint8 version = dataReader.Read<uint8>(0);
 	if (version != 1) {
-		TRACE_CFI("  cie: length: %llu, version: %u -- unsupported\n",
-			length, version);
+		TRACE_CFI("  cie: length: %llu, offset: %#llx, version: %u "
+			"-- unsupported\n",	length, cieOffset, version);
 		return B_UNSUPPORTED;
 	}
 
@@ -1589,10 +1586,11 @@ DwarfFile::_ParseCIE(CompilationUnit* unit, CfaContext& context,
 	context.SetDataAlignment(dataReader.ReadSignedLEB128(0));
 	context.SetReturnAddressRegister(dataReader.ReadUnsignedLEB128(0));
 
-	TRACE_CFI("  cie: length: %llu, version: %u, augmentation: \"%s\", "
-		"aligment: code: %lu, data: %ld, return address reg: %lu\n", length,
-		version, cieAugmentation.String(), context.CodeAlignment(),
-		context.DataAlignment(), context.ReturnAddressRegister());
+	TRACE_CFI("  cie: length: %llu, offset: %#llx, version: %u, augmentation: "
+		"\"%s\", aligment: code: %lu, data: %ld, return address reg: %lu\n",
+		length, cieOffset, version, cieAugmentation.String(),
+		context.CodeAlignment(), context.DataAlignment(),
+		context.ReturnAddressRegister());
 
 	status_t error = cieAugmentation.Read(dataReader);
 	if (error != B_OK) {
@@ -1608,22 +1606,15 @@ DwarfFile::_ParseCIE(CompilationUnit* unit, CfaContext& context,
 	if (remaining < 0)
 		return B_BAD_DATA;
 
-	return _ParseFrameInfoInstructions(unit, context, dataReader.Offset(),
-		remaining);
+	DataReader restrictedReader = dataReader.RestrictedReader(remaining);
+	return _ParseFrameInfoInstructions(unit, context, restrictedReader);
 }
 
 
 status_t
 DwarfFile::_ParseFrameInfoInstructions(CompilationUnit* unit,
-	CfaContext& context, off_t instructionOffset, off_t instructionSize)
+	CfaContext& context, DataReader& dataReader)
 {
-	if (instructionSize <= 0)
-		return B_OK;
-
-	DataReader dataReader(
-		(uint8*)fDebugFrameSection->Data() + instructionOffset,
-		instructionSize, unit->AddressSize());
-
 	while (dataReader.BytesRemaining() > 0) {
 		TRACE_CFI("    [%2lld]", dataReader.BytesRemaining());
 

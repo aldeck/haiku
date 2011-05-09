@@ -19,6 +19,7 @@
 
 
 using namespace BPrivate;
+using namespace LinearProgramming;
 
 
 const uint32 kExtentPenalty = 10;
@@ -63,35 +64,35 @@ GroupCookie::DoGroupLayout(SATWindow* triggerWindow)
 		return;
 
 	BRect frame = triggerWindow->CompleteWindowFrame();
+	// Make it also work for solver which don't support negative variables
+	frame.OffsetBy(kMakePositiveOffset, kMakePositiveOffset);
 
 	// adjust window size soft constraints
 	fWidthConstraint->SetRightSide(frame.Width());
 	fHeightConstraint->SetRightSide(frame.Height());
 
+	LinearSpec* linearSpec = fSATGroup->GetLinearSpec();
+	fLeftConstraint = linearSpec->AddConstraint(1.0, fLeftBorder, kEQ,
+		frame.left);
+	fTopConstraint  = linearSpec->AddConstraint(1.0, fTopBorder, kEQ,
+		frame.top);
+
 	// adjust window position soft constraints
 	// (a bit more penalty for them so they take precedence)
-	fLeftConstraint->SetRightSide(frame.left);
-	fTopConstraint->SetRightSide(frame.top);
-
-	fWidthConstraint->SetPenaltyNeg(110);
-	fWidthConstraint->SetPenaltyPos(110);
-	fHeightConstraint->SetPenaltyNeg(110);
-	fHeightConstraint->SetPenaltyPos(110);
-
-	fLeftConstraint->SetPenaltyNeg(100);
-	fLeftConstraint->SetPenaltyPos(100);
-	fTopConstraint->SetPenaltyNeg(100);
-	fTopConstraint->SetPenaltyPos(100);
+	fWidthConstraint->SetPenaltyNeg(-1);
+	fWidthConstraint->SetPenaltyPos(-1);
+	fHeightConstraint->SetPenaltyNeg(-1);
+	fHeightConstraint->SetPenaltyPos(-1);
 
 	// After we set the new parameter solve and apply the new layout.
 	ResultType result;
 	for (int32 tries = 0; tries < 15; tries++) {
 		result = fSATGroup->GetLinearSpec()->Solve();
-		if (result == INFEASIBLE) {
+		if (result == kInfeasible) {
 			debug_printf("can't solve constraints!\n");
 			break;
 		}
-		if (result == OPTIMAL) {
+		if (result == kOptimal) {
 			fSATGroup->AdjustWindows(triggerWindow);
 			_UpdateWindowSize(frame);
 			break;
@@ -104,10 +105,10 @@ GroupCookie::DoGroupLayout(SATWindow* triggerWindow)
 	fHeightConstraint->SetPenaltyNeg(kExtentPenalty);
 	fHeightConstraint->SetPenaltyPos(kExtentPenalty);
 
-	fLeftConstraint->SetPenaltyNeg(1);
-	fLeftConstraint->SetPenaltyPos(1);
-	fTopConstraint->SetPenaltyNeg(1);
-	fTopConstraint->SetPenaltyPos(1);
+	linearSpec->RemoveConstraint(fLeftConstraint);
+	fLeftConstraint = NULL;
+	linearSpec->RemoveConstraint(fTopConstraint);
+	fTopConstraint = NULL;
 }
 
 
@@ -118,14 +119,19 @@ GroupCookie::MoveWindow(int32 workspace)
 	Desktop* desktop = window->Desktop();
 
 	BRect frame = fSATWindow->CompleteWindowFrame();
-	desktop->MoveWindowBy(window, round(fLeftBorder->Value() - frame.left),
-		round(fTopBorder->Value() - frame.top), workspace);
+	BRect frameSAT(fLeftBorder->Value() - kMakePositiveOffset,
+		fTopBorder->Value() - kMakePositiveOffset,
+		fRightBorder->Value() - kMakePositiveOffset,
+		fBottomBorder->Value() - kMakePositiveOffset);
+
+	desktop->MoveWindowBy(window, round(frameSAT.left - frame.left),
+		round(frameSAT.top - frame.top), workspace);
 
 	// Update frame to the new position
-	frame.OffsetBy(round(fLeftBorder->Value() - frame.left),
-		round(fTopBorder->Value() - frame.top));
-	desktop->ResizeWindowBy(window, round(fRightBorder->Value() - frame.right),
-		round(fBottomBorder->Value() - frame.bottom));
+	frame.OffsetBy(round(frameSAT.left - frame.left),
+		round(frameSAT.top - frame.top));
+	desktop->ResizeWindowBy(window, round(frameSAT.right - frame.right),
+		round(frameSAT.bottom - frame.bottom));
 
 	_UpdateWindowSize(frame);
 }
@@ -163,30 +169,26 @@ GroupCookie::Init(SATGroup* group, WindowArea* area)
 
 	// create constraints
 	BRect frame = fSATWindow->CompleteWindowFrame();
-	fLeftConstraint = linearSpec->AddConstraint(1.0, fLeftBorder,
-		OperatorType(EQ), frame.left, 1, 1);
-	fTopConstraint  = linearSpec->AddConstraint(1.0, fTopBorder,
-		OperatorType(EQ), frame.top, 1, 1);
 
 	int32 minWidth, maxWidth, minHeight, maxHeight;
 	fSATWindow->GetSizeLimits(&minWidth, &maxWidth, &minHeight,
 		&maxHeight);
 	fMinWidthConstraint = linearSpec->AddConstraint(1.0, fRightBorder, -1.0,
-		fLeftBorder, OperatorType(GE), minWidth);
+		fLeftBorder, kGE, minWidth);
 	fMinHeightConstraint = linearSpec->AddConstraint(1.0, fBottomBorder, -1.0,
-		fTopBorder, OperatorType(GE), minHeight);
+		fTopBorder, kGE, minHeight);
 
 	// The width and height constraints have higher penalties than the
 	// position constraints (left, top), so a window will keep its size
 	// unless explicitly resized.
 	fWidthConstraint = linearSpec->AddConstraint(-1.0, fLeftBorder, 1.0,
-		fRightBorder, OperatorType(EQ), frame.Width(), kExtentPenalty,
+		fRightBorder, kEQ, frame.Width(), kExtentPenalty,
 		kExtentPenalty);
 	fHeightConstraint = linearSpec->AddConstraint(-1.0, fTopBorder, 1.0,
-		fBottomBorder, OperatorType(EQ), frame.Height(), kExtentPenalty,
+		fBottomBorder, kEQ, frame.Height(), kExtentPenalty,
 		kExtentPenalty);
 
-	if (!fLeftConstraint || !fTopConstraint || !fMinWidthConstraint
+	if (!fMinWidthConstraint
 		|| !fMinHeightConstraint || !fWidthConstraint || !fHeightConstraint) {
 		// clean up
 		Uninit();
@@ -400,28 +402,14 @@ SATWindow::AddedToGroup(SATGroup* group, WindowArea* area)
 
 
 bool
-SATWindow::RemovedFromGroup(SATGroup* group)
+SATWindow::RemovedFromGroup(SATGroup* group, bool stayBelowMouse)
 {
 	STRACE_SAT("SATWindow::RemovedFromGroup group: %p window %s\n", group,
 		fWindow->Title());
 
-	fWindow->SetSizeLimits(fOriginalMinWidth, fOriginalMaxWidth,
-		fOriginalMinHeight, fOriginalMaxHeight);
-	BRect frame = fWindow->Frame();
-	float x = 0, y = 0;
-	if (fWindow->Look() == B_MODAL_WINDOW_LOOK
-		|| fWindow->Look() == B_BORDERED_WINDOW_LOOK
-		|| fWindow->Look() == B_NO_BORDER_WINDOW_LOOK
-		|| (fWindow->Flags() & B_NOT_RESIZABLE) != 0) {
-		x = fOriginalWidth - frame.Width();
-		y = fOriginalHeight - frame.Height();
-	} else {
-		if ((fWindow->Flags() & B_NOT_H_RESIZABLE) != 0)
-			x = fOriginalWidth - frame.Width();
-		if ((fWindow->Flags() & B_NOT_V_RESIZABLE) != 0)
-			y = fOriginalHeight - frame.Height();
-	}
-	fDesktop->ResizeWindowBy(fWindow, x, y);
+	_RestoreOriginalSize(stayBelowMouse);
+	if (group->CountItems() == 1)
+		group->WindowAt(0)->_RestoreOriginalSize(false);
 
 	if (fShutdown) {
 		fGroupCookie->Uninit();
@@ -472,9 +460,16 @@ void
 SATWindow::FindSnappingCandidates()
 {
 	fOngoingSnapping = NULL;
+
+	if (fWindow->Feel() != B_NORMAL_WINDOW_FEEL)
+		return;
+
 	GroupIterator groupIterator(fStackAndTile, GetWindow()->Desktop());
 	for (SATGroup* group = groupIterator.NextGroup(); group;
 		group = groupIterator.NextGroup()) {
+		if (group->CountItems() == 1
+			&& group->WindowAt(0)->GetWindow()->Feel() != B_NORMAL_WINDOW_FEEL)
+			continue;
 		for (int i = 0; i < fSATSnappingBehaviourList.CountItems(); i++) {
 			if (fSATSnappingBehaviourList.ItemAt(i)->FindSnappingCandidates(
 				group)) {
@@ -594,51 +589,32 @@ SATWindow::HighlightTab(bool active)
 	if (!decorator)
 		return false;
 
-	if (IsTabHighlighted() == active)
-		return false;
-
 	BRegion dirty;
-	decorator->HighlightTab(active, &dirty);
-	fWindow->ProcessDirtyRegion(dirty);
+	uint8 highlight = active ?  SATDecorator::HIGHLIGHT_STACK_AND_TILE : 0;
+	decorator->SetRegionHighlight(SATDecorator::REGION_TAB, highlight, &dirty);
+	decorator->SetRegionHighlight(SATDecorator::REGION_CLOSE_BUTTON, highlight,
+		&dirty);
+	decorator->SetRegionHighlight(SATDecorator::REGION_ZOOM_BUTTON, highlight,
+		&dirty);
 
+	fWindow->ProcessDirtyRegion(dirty);
 	return true;
 }
 
 
 bool
-SATWindow::HighlightBorders(bool active)
+SATWindow::HighlightBorders(Decorator::Region region, bool active)
 {
 	SATDecorator* decorator = GetDecorator();
 	if (!decorator)
 		return false;
 
-	if (IsBordersHighlighted() == active)
-		return false;
-
 	BRegion dirty;
-	decorator->HighlightBorders(active, &dirty);
+	uint8 highlight = active ? SATDecorator::HIGHLIGHT_STACK_AND_TILE : 0;
+	decorator->SetRegionHighlight(region, highlight, &dirty);
+
 	fWindow->ProcessDirtyRegion(dirty);
 	return true;
-}
-
-
-bool
-SATWindow::IsTabHighlighted()
-{
-	SATDecorator* decorator = GetDecorator();
-	if (decorator)
-		return decorator->IsTabHighlighted();
-	return false;
-}
-
-
-bool
-SATWindow::IsBordersHighlighted()
-{
-	SATDecorator* decorator = GetDecorator();
-	if (decorator)
-		return decorator->IsBordersHighlighted();
-	return false;
 }
 
 
@@ -789,4 +765,67 @@ SATWindow::_GenerateId()
 	srand(time);
 	int16 randNumber = rand();
 	return (time & ~0xFFFF) | randNumber;
+}
+
+void
+SATWindow::_RestoreOriginalSize(bool stayBelowMouse)
+{
+	// restore size
+	fWindow->SetSizeLimits(fOriginalMinWidth, fOriginalMaxWidth,
+		fOriginalMinHeight, fOriginalMaxHeight);
+	BRect frame = fWindow->Frame();
+	float x = 0, y = 0;
+	if (fWindow->Look() == B_MODAL_WINDOW_LOOK
+		|| fWindow->Look() == B_BORDERED_WINDOW_LOOK
+		|| fWindow->Look() == B_NO_BORDER_WINDOW_LOOK
+		|| (fWindow->Flags() & B_NOT_RESIZABLE) != 0) {
+		x = fOriginalWidth - frame.Width();
+		y = fOriginalHeight - frame.Height();
+	} else {
+		if ((fWindow->Flags() & B_NOT_H_RESIZABLE) != 0)
+			x = fOriginalWidth - frame.Width();
+		if ((fWindow->Flags() & B_NOT_V_RESIZABLE) != 0)
+			y = fOriginalHeight - frame.Height();
+	}
+	fDesktop->ResizeWindowBy(fWindow, x, y);
+
+	if (!stayBelowMouse)
+		return;
+	// verify that the window stays below the mouse
+	BPoint mousePosition;
+	int32 buttons;
+	fDesktop->GetLastMouseState(&mousePosition, &buttons);
+	SATDecorator* decorator = GetDecorator();
+	if (decorator == NULL)
+		return;
+	BRect tabRect = decorator->TabRect();
+	if (mousePosition.y < tabRect.bottom && mousePosition.y > tabRect.top
+		&& mousePosition.x <= frame.right + decorator->BorderWidth() +1
+		&& mousePosition.x >= frame.left + decorator->BorderWidth()) {
+		// verify mouse stays on the tab
+		float deltaX = 0;
+		if (tabRect.right < mousePosition.x)
+			deltaX = mousePosition.x - tabRect.right + 20;
+		else if (tabRect.left > mousePosition.x)
+			deltaX = mousePosition.x - tabRect.left - 20;
+		fDesktop->MoveWindowBy(fWindow, deltaX, 0);
+	} else {
+		// verify mouse stays on the border
+		float deltaX = 0;
+		float deltaY = 0;
+		BRect newFrame = fWindow->Frame();
+		if (x != 0 && mousePosition.x > frame.left
+			&& mousePosition.x > newFrame.right) {
+			deltaX = mousePosition.x - newFrame.right;
+			if (mousePosition.x > frame.right)
+				deltaX -= mousePosition.x - frame.right;
+		}
+		if (y != 0 && mousePosition.y > frame.top
+			&& mousePosition.y > newFrame.bottom) {
+			deltaY = mousePosition.y - newFrame.bottom;
+			if (mousePosition.y > frame.bottom)
+				deltaY -= mousePosition.y - frame.bottom;
+		}
+			fDesktop->MoveWindowBy(fWindow, deltaX, deltaY);
+	}
 }

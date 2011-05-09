@@ -20,6 +20,7 @@
 #include "ALMLayout.h"
 
 
+using namespace LinearProgramming;
 using namespace std;
 
 
@@ -361,7 +362,7 @@ Area::SetContentAspectRatio(double ratio)
 		fContentAspectRatioC = NULL;
 	} else if (fContentAspectRatioC == NULL) {
 		fContentAspectRatioC = fLS->AddConstraint(-1.0, fLeft, 1.0, fRight,
-			ratio, fTop, -ratio, fBottom, OperatorType(EQ), 0.0);
+			ratio, fTop, -ratio, fBottom, kEQ, 0.0);
 		fConstraints.AddItem(fContentAspectRatioC);
 	} else {
 		fContentAspectRatioC->SetLeftSide(-1.0, fLeft, 1.0, fRight, ratio,
@@ -513,7 +514,7 @@ Constraint*
 Area::SetWidthAs(Area* area, float factor)
 {
 	return fLS->AddConstraint(-1.0, fLeft, 1.0, fRight, factor, area->Left(),
-		-factor, area->Right(), OperatorType(EQ), 0.0);
+		-factor, area->Right(), kEQ, 0.0);
 }
 
 
@@ -528,7 +529,7 @@ Constraint*
 Area::SetHeightAs(Area* area, float factor)
 {
 	return fLS->AddConstraint(-1.0, fTop, 1.0, fBottom, factor, area->Top(),
-		-factor, area->Bottom(), OperatorType(EQ), 0.0);
+		-factor, area->Bottom(), kEQ, 0.0);
 }
 
 
@@ -598,49 +599,57 @@ Area::Area(BLayoutItem* item)
 /**
  * Initialize variables.
  */
+#if USE_SCALE_VARIABLE
 void
 Area::_Init(LinearSpec* ls, XTab* left, YTab* top, XTab* right, YTab* bottom,
 	Variable* scaleWidth, Variable* scaleHeight)
 {
+	fScaleWidth = scaleWidth;
+	fScaleHeight = scaleHeight;
+#else
+void
+Area::_Init(LinearSpec* ls, XTab* left, YTab* top, XTab* right, YTab* bottom)
+{
+#endif
 	fLS = ls;
 	fLeft = left;
 	fRight = right;
 	fTop = top;
 	fBottom = bottom;
 
-	fScaleWidth = scaleWidth;
-	fScaleHeight = scaleHeight;
-
 	// adds the two essential constraints of the area that make sure that the
 	// left x-tab is really to the left of the right x-tab, and the top y-tab
 	// really above the bottom y-tab
-	fMinContentWidth = ls->AddConstraint(-1.0, fLeft, 1.0, fRight,
-		OperatorType(GE), 0);
-	fMinContentHeight = ls->AddConstraint(-1.0, fTop, 1.0, fBottom,
-		OperatorType(GE), 0);
+	fMinContentWidth = ls->AddConstraint(-1.0, fLeft, 1.0, fRight, kGE, 0);
+	fMinContentHeight = ls->AddConstraint(-1.0, fTop, 1.0, fBottom, kGE, 0);
 
 	fConstraints.AddItem(fMinContentWidth);
 	fConstraints.AddItem(fMinContentHeight);
 
-	fPreferredContentWidth = fLS->AddConstraint(-1.0, fLeft, 1.0, fRight, -1.0,
-		fScaleWidth, OperatorType(EQ), 0, fShrinkPenalties.Height(),
-		fGrowPenalties.Width());
+	_SetupPreferredConstraints();
 
-	fPreferredContentHeight = fLS->AddConstraint(-1.0, fTop, 1.0, fBottom, -1.0,
-		fScaleHeight, OperatorType(EQ), 0, fShrinkPenalties.Height(),
-		fGrowPenalties.Height());
+	BSize preferredSize = fLayoutItem->PreferredSize();
+	_UpdatePreferredWidthConstraint(preferredSize);
+	_UpdatePreferredHeightConstraint(preferredSize);
 
 	fConstraints.AddItem(fPreferredContentWidth);
 	fConstraints.AddItem(fPreferredContentHeight);
 }
 
 
+#if USE_SCALE_VARIABLE
 void
 Area::_Init(LinearSpec* ls, Row* row, Column* column, Variable* scaleWidth,
 	Variable* scaleHeight)
 {
 	_Init(ls, column->Left(), row->Top(), column->Right(), row->Bottom(),
 		scaleWidth, scaleHeight);
+#else
+void
+Area::_Init(LinearSpec* ls, Row* row, Column* column)
+{
+	_Init(ls, column->Left(), row->Top(), column->Right(), row->Bottom());
+#endif
 	fRow = row;
 	fColumn = column;
 }
@@ -694,7 +703,7 @@ Area::_UpdateMaxSizeConstraint(BSize max)
 	if (alignment.Vertical() == B_ALIGN_USE_FULL_HEIGHT) {
 		if (fMaxContentHeight == NULL) {
 			fMaxContentHeight = fLS->AddConstraint(-1.0, fTop, 1.0, fBottom,
-				OperatorType(LE), max.Height());
+				kLE, max.Height());
 			fConstraints.AddItem(fMaxContentHeight);
 		} else
 			fMaxContentHeight->SetRightSide(max.Height());
@@ -707,8 +716,8 @@ Area::_UpdateMaxSizeConstraint(BSize max)
 
 	if (alignment.Horizontal() == B_ALIGN_USE_FULL_WIDTH) {
 		if (fMaxContentWidth == NULL) {
-			fMaxContentWidth = fLS->AddConstraint(-1.0, fLeft, 1.0, fRight,
-				OperatorType(LE), max.Width());
+			fMaxContentWidth = fLS->AddConstraint(-1.0, fLeft, 1.0, fRight, kLE,
+				max.Width());
 			fConstraints.AddItem(fMaxContentWidth);
 		} else
 			fMaxContentWidth->SetRightSide(max.Width());
@@ -724,22 +733,72 @@ Area::_UpdateMaxSizeConstraint(BSize max)
 void
 Area::_UpdatePreferredWidthConstraint(BSize& preferred)
 {
-	float width = 32000;
+	if (preferred.width == -1) {
+		delete fPreferredContentWidth;
+		fPreferredContentWidth = NULL;
+		return;
+	}
+
+	float width = 0;
 	if (preferred.width > 0)
-		width = preferred.Width() + LeftInset() + RightInset();
-	
+		width = preferred.width + LeftInset() + RightInset();
+
+	_SetupPreferredConstraints();
+
+#if USE_SCALE_VARIABLE
 	fPreferredContentWidth->SetLeftSide(-1.0, fLeft, 1.0, fRight, -width,
 		fScaleWidth);
+#else
+	fPreferredContentWidth->SetRightSide(width);
+#endif
 }
 
 
 void
 Area::_UpdatePreferredHeightConstraint(BSize& preferred)
 {
-	float height = 32000;
-	if (preferred.height > 0)
-		height = preferred.Height() + TopInset() + BottomInset();
+	if (preferred.height == -1) {
+		delete fPreferredContentHeight;
+		fPreferredContentHeight = NULL;
+		return;
+	}
 
+	float height = 0;
+	if (preferred.height > 0)
+		height = preferred.height + TopInset() + BottomInset();
+
+	_SetupPreferredConstraints();
+#if USE_SCALE_VARIABLE
 	fPreferredContentHeight->SetLeftSide(-1.0, fTop, 1.0, fBottom, -height,
 		fScaleHeight);
+#else
+	fPreferredContentHeight->SetRightSide(height);
+#endif
+}
+
+
+void
+Area::_SetupPreferredConstraints()
+{
+#if USE_SCALE_VARIABLE
+	if (!fPreferredContentWidth) {
+		fPreferredContentWidth = fLS->AddConstraint(-1.0, fLeft, 1.0, fRight,
+			-1.0, fScaleWidth, kEQ, 0, fShrinkPenalties.Width(),
+			fGrowPenalties.Width());
+	}
+	if (!fPreferredContentHeight) {
+		fPreferredContentHeight = fLS->AddConstraint(-1.0, fTop, 1.0, fBottom,
+			-1.0, fScaleHeight, kEQ, 0, fShrinkPenalties.Height(),
+			fGrowPenalties.Height());
+	}
+#else
+	if (!fPreferredContentWidth) {
+		fPreferredContentWidth = fLS->AddConstraint(-1.0, fLeft, 1.0, fRight,
+			kEQ, 0, fShrinkPenalties.Width(), fGrowPenalties.Width());
+	}
+	if (!fPreferredContentHeight) {
+		fPreferredContentHeight = fLS->AddConstraint(-1.0, fTop, 1.0, fBottom,
+			kEQ, 0, fShrinkPenalties.Height(), fGrowPenalties.Height());
+	}
+#endif
 }

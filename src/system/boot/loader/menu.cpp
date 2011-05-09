@@ -50,7 +50,8 @@ MenuItem::MenuItem(const char *label, Menu *subMenu)
 	fMenu(NULL),
 	fSubMenu(subMenu),
 	fData(NULL),
-	fHelpText(NULL)
+	fHelpText(NULL),
+	fShortcut(0)
 {
 	if (subMenu != NULL)
 		subMenu->fSuperItem = this;
@@ -733,7 +734,7 @@ add_save_debug_syslog_menu()
 
 			char name[B_FILE_NAME_LENGTH];
 			if (volume->GetName(name, sizeof(name)) != B_OK)
-				strcpy(name, "unnamed");
+				strlcpy(name, "unnamed", sizeof(name));
 
 			// append offset, size, and type to the name
 			size_t len = strlen(name);

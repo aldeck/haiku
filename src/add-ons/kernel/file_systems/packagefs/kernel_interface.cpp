@@ -25,6 +25,10 @@
 #include "Volume.h"
 
 
+using BPackageKit::BHPKG::BBufferDataReader;
+using BPackageKit::BHPKG::BFDDataReader;
+
+
 static const uint32 kOptimalIOSize = 64 * 1024;
 
 
@@ -113,7 +117,7 @@ packagefs_mount(fs_volume* fsVolume, const char* device, uint32 flags,
 		RETURN_ERROR(B_NO_MEMORY);
 	ObjectDeleter<Volume> volumeDeleter(volume);
 
-	status_t error = volume->Mount();
+	status_t error = volume->Mount(parameters);
 	if (error != B_OK)
 		return error;
 
@@ -143,13 +147,16 @@ packagefs_unmount(fs_volume* fsVolume)
 static status_t
 packagefs_read_fs_info(fs_volume* fsVolume, struct fs_info* info)
 {
-	FUNCTION("volume: %p, info: %p\n", fsVolume->private_volume, info);
+	Volume* volume = (Volume*)fsVolume->private_volume;
+
+	FUNCTION("volume: %p, info: %p\n", volume, info);
 
 	info->flags = B_FS_IS_READONLY;
 	info->block_size = 4096;
 	info->io_size = kOptimalIOSize;
 	info->total_blocks = info->free_blocks = 1;
-	strlcpy(info->volume_name, "Package FS", sizeof(info->volume_name));
+	strlcpy(info->volume_name, volume->RootDirectory()->Name(),
+		sizeof(info->volume_name));
 	return B_OK;
 }
 
@@ -338,6 +345,7 @@ packagefs_read_stat(fs_volume* fsVolume, fs_vnode* fsNode, struct stat* st)
 	st->st_ctim = st->st_mtim;
 		// TODO: Perhaps manage a changed time (particularly for directories)?
 	st->st_crtim = st->st_mtim;
+	st->st_blocks = (st->st_size + 511) / 512;
 
 	return B_OK;
 }
@@ -935,16 +943,16 @@ packagefs_free_attr_cookie(fs_volume* fsVolume, fs_vnode* fsNode, void* _cookie)
 
 
 static status_t
-read_package_data(const PackageData& data, DataReader* dataReader, off_t offset,
+read_package_data(const BPackageData& data, BDataReader* dataReader, off_t offset,
 	void* buffer, size_t* bufferSize)
 {
-	// create a PackageDataReader
-	PackageDataReader* reader;
+	// create a BPackageDataReader
+	BPackageDataReader* reader;
 	status_t error = GlobalFactory::Default()->CreatePackageDataReader(
 		dataReader, data, reader);
 	if (error != B_OK)
 		RETURN_ERROR(error);
-	ObjectDeleter<PackageDataReader> readerDeleter(reader);
+	ObjectDeleter<BPackageDataReader> readerDeleter(reader);
 
 	// check the offset
 	if (offset < 0 || (uint64)offset > data.UncompressedSize())
@@ -979,10 +987,10 @@ packagefs_read_attr(fs_volume* fsVolume, fs_vnode* fsNode, void* _cookie,
 	TOUCH(volume);
 	TOUCH(node);
 
-	const PackageData& data = cookie->attribute->Data();
+	const BPackageData& data = cookie->attribute->Data();
 	if (data.IsEncodedInline()) {
 		// inline data
-		BufferDataReader dataReader(data.InlineData(), data.CompressedSize());
+		BBufferDataReader dataReader(data.InlineData(), data.CompressedSize());
 		return read_package_data(data, &dataReader, offset, buffer, bufferSize);
 	}
 
@@ -992,7 +1000,7 @@ packagefs_read_attr(fs_volume* fsVolume, fs_vnode* fsNode, void* _cookie,
 		RETURN_ERROR(fd);
 	PackageCloser packageCloser(cookie->package);
 
-	FDDataReader dataReader(fd);
+	BFDDataReader dataReader(fd);
 	return read_package_data(data, &dataReader, offset, buffer, bufferSize);
 }
 

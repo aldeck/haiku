@@ -14,7 +14,7 @@ class BStringView;
 class BCheckBox;
 class BSlider;
 class BButton;
-
+class BMenuField;
 
 class SettingsWindow : public BWindow {
 	public:
@@ -27,14 +27,17 @@ class SettingsWindow : public BWindow {
 	private:
 		void _Update();
 		status_t _GetSwapFileLimits(off_t& minSize, off_t& maxSize);
+		void _SetSwapDefaults();
 
 		BCheckBox*		fSwapEnabledCheckBox;
 		BSlider*		fSizeSlider;
 		BButton*		fDefaultsButton;
 		BButton*		fRevertButton;
 		BStringView*	fWarningStringView;
-
+		BMenuField*		fVolumeMenuField;
 		Settings		fSettings;
+		
+		bool 			fLocked;
 };
 
 #endif	/* SETTINGS_WINDOW_H */

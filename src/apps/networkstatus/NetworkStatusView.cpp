@@ -11,6 +11,8 @@
 
 #include "NetworkStatusView.h"
 
+#include <set>
+
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <stdio.h>
@@ -43,6 +45,7 @@
 #include "NetworkStatus.h"
 #include "NetworkStatusIcons.h"
 #include "RadioView.h"
+#include "WirelessNetworkMenuItem.h"
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -50,11 +53,11 @@
 
 
 static const char *kStatusDescriptions[] = {
-	B_TRANSLATE_MARK("Unknown"),
-	B_TRANSLATE_MARK("No link"),
-	B_TRANSLATE_MARK("No stateful configuration"),
-	B_TRANSLATE_MARK("Configuring"),
-	B_TRANSLATE_MARK("Ready")
+	B_TRANSLATE("Unknown"),
+	B_TRANSLATE("No link"),
+	B_TRANSLATE("No stateful configuration"),
+	B_TRANSLATE("Configuring"),
+	B_TRANSLATE("Ready")
 };
 
 extern "C" _EXPORT BView *instantiate_deskbar_item(void);
@@ -62,34 +65,10 @@ extern "C" _EXPORT BView *instantiate_deskbar_item(void);
 
 const uint32 kMsgShowConfiguration = 'shcf';
 const uint32 kMsgOpenNetworkPreferences = 'onwp';
+const uint32 kMsgJoinNetwork = 'join';
 
 const uint32 kMinIconWidth = 16;
 const uint32 kMinIconHeight = 16;
-
-
-class WirelessNetworkMenuItem : public BMenuItem {
-public:
-								WirelessNetworkMenuItem(const char* name,
-									int32 signalQuality, bool encrypted,
-									BMessage* message);
-	virtual						~WirelessNetworkMenuItem();
-
-			void				SetSignalQuality(int32 quality);
-			int32				SignalQuality() const
-									{ return fQuality; }
-			bool				IsEncrypted() const
-									{ return fIsEncrypted; }
-
-protected:
-	virtual	void				DrawContent();
-	virtual	void				Highlight(bool isHighlighted);
-	virtual	void				GetContentSize(float* width, float* height);
-			void				DrawRadioIcon();
-
-private:
-			int32				fQuality;
-			bool				fIsEncrypted;
-};
 
 
 class SocketOpener {
@@ -117,66 +96,6 @@ public:
 private:
 	int	fSocket;
 };
-
-
-// #pragma mark - WirelessNetworkMenuItem
-
-
-WirelessNetworkMenuItem::WirelessNetworkMenuItem(const char* name,
-	int32 signalQuality, bool encrypted, BMessage* message)
-	:
-	BMenuItem(name, message),
-	fQuality(signalQuality),
-	fIsEncrypted(encrypted)
-{
-}
-
-
-WirelessNetworkMenuItem::~WirelessNetworkMenuItem()
-{
-}
-
-
-void
-WirelessNetworkMenuItem::SetSignalQuality(int32 quality)
-{
-	fQuality = quality;
-}
-
-
-void
-WirelessNetworkMenuItem::DrawContent()
-{
-	DrawRadioIcon();
-	BMenuItem::DrawContent();
-}
-
-
-void
-WirelessNetworkMenuItem::Highlight(bool isHighlighted)
-{
-	BMenuItem::Highlight(isHighlighted);
-}
-
-
-void
-WirelessNetworkMenuItem::GetContentSize(float* width, float* height)
-{
-	BMenuItem::GetContentSize(width, height);
-	*width += *height + 4;
-}
-
-
-void
-WirelessNetworkMenuItem::DrawRadioIcon()
-{
-	BRect bounds = Frame();
-	bounds.left = bounds.right - 4 - bounds.Height();
-	bounds.right -= 4;
-	bounds.bottom -= 2;
-
-	RadioView::Draw(Menu(), bounds, fQuality, RadioView::DefaultMax());
-}
 
 
 //	#pragma mark -
@@ -348,6 +267,27 @@ NetworkStatusView::MessageReceived(BMessage* message)
 			_OpenNetworksPreferences();
 			break;
 
+		case kMsgJoinNetwork:
+		{
+			const char* deviceName;
+			const char* name;
+			if (message->FindString("device", &deviceName) == B_OK
+				&& message->FindString("name", &name) == B_OK) {
+				BNetworkDevice device(deviceName);
+				status_t status = device.JoinNetwork(name);
+				if (status != B_OK) {
+					BString text
+						= B_TRANSLATE("Could not join wireless network:\n");
+					text << strerror(status);
+					BAlert* alert = new BAlert(name, text.String(),
+						B_TRANSLATE("OK"), NULL, NULL, B_WIDTH_AS_USUAL,
+						B_STOP_ALERT);
+					alert->Go(NULL);
+				}
+			}
+			break;
+		}
+
 		case B_ABOUT_REQUESTED:
 			_AboutRequested();
 			break;
@@ -389,9 +329,9 @@ NetworkStatusView::_ShowConfiguration(BMessage* message)
 		const char*	label;
 		int32		control;
 	} kInformationEntries[] = {
-		{ "Address", SIOCGIFADDR },
-		{ "Broadcast", SIOCGIFBRDADDR },
-		{ "Netmask", SIOCGIFNETMASK },
+		{ B_TRANSLATE("Address"), SIOCGIFADDR },
+		{ B_TRANSLATE("Broadcast"), SIOCGIFBRDADDR },
+		{ B_TRANSLATE("Netmask"), SIOCGIFNETMASK },
 		{ NULL }
 	};
 
@@ -407,15 +347,8 @@ NetworkStatusView::_ShowConfiguration(BMessage* message)
 	if (!_PrepareRequest(request, name))
 		return;
 
-	BString text = NULL;
-	if (strncmp("Address", name, strlen(name)) == 0)
-		text = B_TRANSLATE("Address information:\n");
-
-	if (strncmp("Broadcast", name, strlen(name)) == 0)
-		text = B_TRANSLATE("Broadcast information:\n");
-
-	if (strncmp("Netmask", name, strlen(name)) == 0)
-		text = B_TRANSLATE("Netmask information:\n");
+	BString text(B_TRANSLATE("%ifaceName information:\n"));
+	text.ReplaceFirst("%ifaceName", name);
 
 	size_t boldLength = text.Length();
 
@@ -441,22 +374,7 @@ NetworkStatusView::_ShowConfiguration(BMessage* message)
 			return;
 		}
 
-		text += "\n";
-
-		if (strncmp("Address", kInformationEntries[i].label,
-			strlen(kInformationEntries[i].label)) == 0)
-			text += B_TRANSLATE("Address");
-
-		if (strncmp("Broadcast", kInformationEntries[i].label,
-			strlen(kInformationEntries[i].label)) == 0)
-			text += B_TRANSLATE("Broadcast");
-
-		if (strncmp("Netmask", kInformationEntries[i].label,
-			strlen(kInformationEntries[i].label)) == 0)
-			text += B_TRANSLATE("Netmask");
-
-		text += ": ";
-		text += address;
+		text << "\n" << kInformationEntries[i].label << ": " << address;
 	}
 
 	BAlert* alert = new BAlert(name, text.String(), B_TRANSLATE("OK"));
@@ -503,13 +421,27 @@ NetworkStatusView::MouseDown(BPoint point)
 		if (!device.IsWireless())
 			continue;
 
+		std::set<BNetworkAddress> associated;
+		BNetworkAddress address;
+		uint32 cookie = 0;
+		while (device.GetNextAssociatedNetwork(cookie, address) == B_OK)
+			associated.insert(address);
+
 		wireless_network network;
 		int32 count = 0;
-		for (int32 i = 0; device.GetScanResultAt(i, network) == B_OK; i++) {
-			printf("%s: noise %u : rssi %u\n", network.name,
-				network.noise_level, network.signal_strength);
-			menu->AddItem(new WirelessNetworkMenuItem(network.name,
-				network.signal_strength, false, NULL));
+		cookie = 0;
+		while (device.GetNextNetwork(cookie, network) == B_OK) {
+			BMessage* message = new BMessage(kMsgJoinNetwork);
+			message->AddString("device", device.Name());
+			message->AddString("name", network.name);
+
+			BMenuItem* item = new WirelessNetworkMenuItem(network.name,
+				network.signal_strength,
+				(network.flags & B_NETWORK_IS_ENCRYPTED) != 0, message);
+			menu->AddItem(item);
+			if (associated.find(network.address) != associated.end())
+				item->SetMarked(true);
+
 			count++;
 		}
 		if (count == 0) {

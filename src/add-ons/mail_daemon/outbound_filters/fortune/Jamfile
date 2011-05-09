@@ -1,12 +1,7 @@
 SubDir HAIKU_TOP src add-ons mail_daemon outbound_filters fortune ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
 
-if $(TARGET_PLATFORM) != haiku {
-	UsePublicHeaders mail ;
-}
-
-UsePrivateHeaders mail ;
+UsePrivateHeaders mail shared ;
 UsePublicHeaders [ FDirName add-ons mail_daemon ] ;
 
 SubDirHdrs [ FDirName $(HAIKU_TOP) headers os add-ons mail_daemon ] ;
@@ -17,7 +12,3 @@ Addon Fortune :
 
 LinkAgainst Fortune :
 	 be libmail.so $(TARGET_LIBSUPC++) ;
-
-Package haiku-maildaemon-cvs :
-	Fortune :
-	boot home config add-ons mail_daemon outbound_filters ;

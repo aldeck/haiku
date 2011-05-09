@@ -8,7 +8,20 @@
 
 #include <stdio.h>
 
+#include <Node.h>
+
+#include <E-mail.h>
+
+
+#define R5_COMPATIBLE 1
+
+
 class BString;
+
+
+status_t write_read_attr(BNode& node, read_flags flag);
+status_t read_read_attr(BNode& node, read_flags& flag);
+
 
 // The next couple of functions are our wrapper around convert_to_utf8 and
 // convert_from_utf8 so that they can also convert from UTF-8 to UTF-8 by
@@ -72,6 +85,8 @@ ssize_t readfoldedline(BPositionIO &in, char **buffer, size_t *buflen);
 //   start with a buffer of size *buflen
 
 status_t parse_header(BMessage &headers, BPositionIO &input);
+status_t extract_from_header(const BString& header, const BString& field,
+	BString& target);
 
 void extract_address(BString &address);
 	// retrieves the mail address only from an address header formatted field

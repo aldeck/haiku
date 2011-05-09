@@ -5,6 +5,7 @@ SetSubDirSupportedPlatformsBeOSCompatible ;
 SubDirHdrs [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;
 SubDirHdrs [ FDirName $(SUBDIR) webp ] ;
 
+AddResources WebPTranslator : WebPTranslator.rdef ;
 
 Translator WebPTranslator :
 
@@ -25,5 +26,13 @@ Translator WebPTranslator :
 	: be translation libtranslatorsutils.a $(TARGET_LIBSUPC++)
 	$(HAIKU_LOCALE_LIBS)
 	: true
+;
+
+DoCatalogs WebPTranslator :
+	x-vnd.Haiku-WebPTranslator
+	:
+	main.cpp
+	ConfigView.cpp
+	WebPTranslator.cpp
 ;
 

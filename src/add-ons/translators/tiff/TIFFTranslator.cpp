@@ -13,13 +13,18 @@
 
 #include "tiffio.h"
 
+#include <Catalog.h>
 #include <stdio.h>
 #include <string.h>
 
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "TIFFTranslator"
+
+
 /*!
 	How this works:
-	
+
 	libtiff has a special version of TIFFOpen() that gets passed custom
 	functions for reading writing etc. and a handle. This handle in our case
 	is a BPositionIO object, which libtiff passes on to the functions for reading
@@ -30,7 +35,7 @@
 
 
 // The input formats that this translator supports.
-translation_format gInputFormats[] = {
+static const translation_format sInputFormats[] = {
 	{
 		B_TRANSLATOR_BITMAP,
 		B_TRANSLATOR_BITMAP,
@@ -50,7 +55,7 @@ translation_format gInputFormats[] = {
 };
 
 // The output formats that this translator supports.
-translation_format gOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	{
 		B_TRANSLATOR_BITMAP,
 		B_TRANSLATOR_BITMAP,
@@ -70,12 +75,17 @@ translation_format gOutputFormats[] = {
 };
 
 // Default settings for the Translator
-TranSetting gDefaultSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{B_TRANSLATOR_EXT_HEADER_ONLY, TRAN_SETTING_BOOL, false},
 	{B_TRANSLATOR_EXT_DATA_ONLY, TRAN_SETTING_BOOL, false},
 	{TIFF_SETTING_COMPRESSION, TRAN_SETTING_INT32, COMPRESSION_LZW}
 		// Compression is LZW by default
 };
+
+const uint32 kNumInputFormats = sizeof(sInputFormats) / sizeof(translation_format);
+const uint32 kNumOutputFormats = sizeof(sOutputFormats) / sizeof(translation_format);
+const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting);
+
 
 // ---------------------------------------------------------------
 // make_nth_translator
@@ -118,7 +128,7 @@ tiff_get_pio(thandle_t stream)
 	pio = static_cast<BPositionIO *>(stream);
 	if (!pio)
 		debugger("pio is NULL");
-		
+
 	return pio;
 }
 
@@ -155,7 +165,7 @@ tiff_size_proc(thandle_t stream)
 	cur = pio->Position();
 	end = pio->Seek(0, SEEK_END);
 	pio->Seek(cur, SEEK_SET);
-	
+
 	return end;
 }
 
@@ -177,10 +187,10 @@ status_t
 identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 	translator_info *outInfo, uint32 outType, TIFF **poutTIFF = NULL)
 {
-	// get TIFF handle	
+	// get TIFF handle
 	TIFF* tif = TIFFClientOpen("TIFFTranslator", "r", inSource,
 		tiff_read_proc, tiff_write_proc, tiff_seek_proc, tiff_close_proc,
-		tiff_size_proc, tiff_map_file_proc, tiff_unmap_file_proc); 
+		tiff_size_proc, tiff_map_file_proc, tiff_unmap_file_proc);
 	if (!tif)
 		return B_NO_TRANSLATOR;
 
@@ -197,7 +207,8 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 
 		if (documentIndex < 1 || documentIndex > documentCount) {
 			// document index is invalid
-			fprintf(stderr, "identify_tiff_header: invalid document index\n");
+			fprintf(stderr, B_TRANSLATE("identify_tiff_header: invalid "
+				"document index\n"));
 			return B_NO_TRANSLATOR;
 		}
 	}
@@ -205,7 +216,8 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 	// identify the document the user specified or the first document
 	// if the user did not specify which document they wanted to identify
 	if (!TIFFSetDirectory(tif, documentIndex - 1)) {
-		fprintf(stderr, "identify_tiff_header: couldn't set directory\n");
+		fprintf(stderr, B_TRANSLATE("identify_tiff_header: couldn't set "
+			"directory\n"));
 		return B_NO_TRANSLATOR;
 	}
 
@@ -221,7 +233,8 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 		outInfo->quality = TIFF_IN_QUALITY;
 		outInfo->capability = TIFF_IN_CAPABILITY;
 		strcpy(outInfo->MIME, "image/tiff");
-		sprintf(outInfo->name, "TIFF image");
+		snprintf(outInfo->name, sizeof(outInfo->name),
+			B_TRANSLATE("TIFF image"));
 	}
 
 	if (!poutTIFF) {
@@ -234,7 +247,7 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 
 	return B_OK;
 }
-	
+
 
 // How this works:
 // Following are a couple of functions,
@@ -253,8 +266,8 @@ identify_tiff_header(BPositionIO *inSource, BMessage *ioExtension,
 
 // convert_buffer_bgra_rgba
 inline void
-convert_buffer_bgra_rgba(uint8* buffer,
-						 uint32 rows, uint32 width, uint32 bytesPerRow)
+convert_buffer_bgra_rgba(uint8* buffer, uint32 rows, uint32 width,
+	uint32 bytesPerRow)
 {
 	for (uint32 y = 0; y < rows; y++) {
 		uint8* handle = buffer;
@@ -270,8 +283,8 @@ convert_buffer_bgra_rgba(uint8* buffer,
 
 // convert_buffer_argb_rgba
 inline void
-convert_buffer_argb_rgba(uint8* buffer,
-						 uint32 rows, uint32 width, uint32 bytesPerRow)
+convert_buffer_argb_rgba(uint8* buffer, uint32 rows, uint32 width,
+	uint32 bytesPerRow)
 {
 	for (uint32 y = 0; y < rows; y++) {
 		uint8* handle = buffer;
@@ -289,8 +302,8 @@ convert_buffer_argb_rgba(uint8* buffer,
 
 // convert_buffers_bgra_rgba
 inline void
-convert_buffers_bgra_rgba(uint8* inBuffer, uint8* outBuffer,
-						  uint32 rows, uint32 width, uint32 bytesPerRow)
+convert_buffers_bgra_rgba(uint8* inBuffer, uint8* outBuffer, uint32 rows,
+	uint32 width, uint32 bytesPerRow)
 {
 	for (uint32 y = 0; y < rows; y++) {
 		uint8* inHandle = inBuffer;
@@ -310,8 +323,8 @@ convert_buffers_bgra_rgba(uint8* inBuffer, uint8* outBuffer,
 
 // convert_buffers_argb_rgba
 inline void
-convert_buffers_argb_rgba(uint8* inBuffer, uint8* outBuffer,
-						  uint32 rows, uint32 width, uint32 bytesPerRow)
+convert_buffers_argb_rgba(uint8* inBuffer, uint8* outBuffer, uint32 rows,
+	uint32 width, uint32 bytesPerRow)
 {
 	for (uint32 y = 0; y < rows; y++) {
 		uint8* inHandle = inBuffer;
@@ -331,8 +344,8 @@ convert_buffers_argb_rgba(uint8* inBuffer, uint8* outBuffer,
 
 // convert_buffers_bgrX_rgb
 inline void
-convert_buffers_bgrX_rgb(uint8* inBuffer, uint8* outBuffer,
-						 uint32 rows, uint32 width, uint32 bytesPerRow, uint32 samplesPerPixel)
+convert_buffers_bgrX_rgb(uint8* inBuffer, uint8* outBuffer, uint32 rows,
+	uint32 width, uint32 bytesPerRow, uint32 samplesPerPixel)
 {
 	for (uint32 y = 0; y < rows; y++) {
 		uint8* inHandle = inBuffer;
@@ -354,8 +367,8 @@ convert_buffers_bgrX_rgb(uint8* inBuffer, uint8* outBuffer,
 
 // convert_buffers_rgbX_rgb
 inline void
-convert_buffers_rgbX_rgb(uint8* inBuffer, uint8* outBuffer,
-						 uint32 rows, uint32 width, uint32 bytesPerRow, uint32 samplesPerPixel)
+convert_buffers_rgbX_rgb(uint8* inBuffer, uint8* outBuffer, uint32 rows,
+	uint32 width, uint32 bytesPerRow, uint32 samplesPerPixel)
 {
 	for (uint32 y = 0; y < rows; y++) {
 		uint8* inHandle = inBuffer;
@@ -375,8 +388,8 @@ convert_buffers_rgbX_rgb(uint8* inBuffer, uint8* outBuffer,
 
 // convert_buffers_cmap
 inline void
-convert_buffers_cmap(uint8* inBuffer, uint8* outBuffer,
-					 uint32 rows, uint32 width, uint32 bytesPerRow)
+convert_buffers_cmap(uint8* inBuffer, uint8* outBuffer, uint32 rows,
+	uint32 width, uint32 bytesPerRow)
 {
 	// compensate for bytesPerRow != width (padding bytes)
 	// this function will not be called if bytesPerRow == width, btw
@@ -389,8 +402,8 @@ convert_buffers_cmap(uint8* inBuffer, uint8* outBuffer,
 
 // convert_buffer
 inline void
-convert_buffer(color_space format,
-			   uint8* buffer, uint32 rows, uint32 width, uint32 bytesPerRow)
+convert_buffer(color_space format, uint8* buffer, uint32 rows, uint32 width,
+	uint32 bytesPerRow)
 {
 	switch (format) {
 		case B_RGBA32:
@@ -420,9 +433,8 @@ convert_buffer(color_space format,
 
 // convert_buffers
 inline void
-convert_buffers(color_space format,
-				uint8* inBuffer, uint8* outBuffer,
-				uint32 rows, uint32 width, uint32 bytesPerRow)
+convert_buffers(color_space format, uint8* inBuffer, uint8* outBuffer,
+	uint32 rows, uint32 width, uint32 bytesPerRow)
 {
 	switch (format) {
 		case B_RGBA32:
@@ -591,12 +603,13 @@ write_tif_stream(TIFF* tif, BPositionIO* inSource, color_space format,
 
 
 TIFFTranslator::TIFFTranslator()
-	: BaseTranslator("TIFF images", "TIFF image translator",
+	: BaseTranslator(B_TRANSLATE("TIFF images"), 
+		B_TRANSLATE("TIFF image translator"),
 		TIFF_TRANSLATOR_VERSION,
-		gInputFormats, sizeof(gInputFormats) / sizeof(translation_format),
-		gOutputFormats, sizeof(gOutputFormats) / sizeof(translation_format),
+		sInputFormats, kNumInputFormats,
+		sOutputFormats, kNumOutputFormats,
 		"TIFFTranslator_Settings",
-		gDefaultSettings, sizeof(gDefaultSettings) / sizeof(TranSetting),
+		sDefaultSettings, kNumDefaultSettings,
 		B_TRANSLATOR_BITMAP, B_TIFF_FORMAT)
 {
 	// TODO: for now!
@@ -630,15 +643,15 @@ TIFFTranslator::translate_from_bits(BPositionIO *inSource, uint32 outType,
 	result = identify_bits_header(inSource, NULL, &bitsHeader);
 	if (result != B_OK)
 		return result;
-		
+
 	// Translate B_TRANSLATOR_BITMAP to B_TIFF_FORMAT
 	if (outType == B_TIFF_FORMAT) {
 		// Set up TIFF header
 
-		// get TIFF handle	
+		// get TIFF handle
 		TIFF* tif = TIFFClientOpen("TIFFTranslator", "w", outDestination,
 			tiff_read_proc, tiff_write_proc, tiff_seek_proc, tiff_close_proc,
-			tiff_size_proc, tiff_map_file_proc, tiff_unmap_file_proc); 
+			tiff_size_proc, tiff_map_file_proc, tiff_unmap_file_proc);
 	    if (!tif)
 	    	return B_NO_TRANSLATOR;
 
@@ -769,7 +782,7 @@ printf("using unkown compression (%ld).\n", compression);
 			default:
 				ret = B_NO_TRANSLATOR;
 		}
-		// Close the handle 
+		// Close the handle
 		TIFFClose(tif);
 		return ret;
 
@@ -787,16 +800,16 @@ TIFFTranslator::translate_from_tiff(BPositionIO *inSource, BMessage *ioExtension
 		// Always write out the entire image. Some programs
 		// fail when given "headerOnly", even though they requested it.
 		// These settings are not applicable when outputting TIFFs
-	
+
 	// variables needing cleanup
 	TIFF *ptif = NULL;
 	uint32 *praster = NULL;
-	
+
 	status_t ret;
 	ret = identify_tiff_header(inSource, ioExtension, NULL, outType, &ptif);
 
 	if (outType == B_TIFF_FORMAT && ret == B_OK && ptif) {
-		// if translating from TIFF to TIFF, 
+		// if translating from TIFF to TIFF,
 		// just write out the entire TIFF
 		TIFFClose(ptif);
 		translate_direct_copy(inSource, outDestination);
@@ -804,12 +817,12 @@ TIFFTranslator::translate_from_tiff(BPositionIO *inSource, BMessage *ioExtension
 	}
 
 	while (ret == B_OK && ptif) {
-		// use while / break not for looping, but for 
+		// use while / break not for looping, but for
 		// cleaner goto like capability
-		
+
 		ret = B_ERROR;
 			// make certain there is no looping
-			
+
 		uint32 width = 0, height = 0;
 		if (!TIFFGetField(ptif, TIFFTAG_IMAGEWIDTH, &width)) {
 			result = B_NO_TRANSLATOR;
@@ -841,7 +854,7 @@ TIFFTranslator::translate_from_tiff(BPositionIO *inSource, BMessage *ioExtension
 				}
 				outDestination->Write(&bitsHeader, sizeof(TranslatorBitmap));
 			}
-			
+
 			if (!bheaderonly) {
 				// Convert raw RGBA data to B_RGBA32 colorspace
 				// and write out the results
@@ -855,7 +868,7 @@ TIFFTranslator::translate_from_tiff(BPositionIO *inSource, BMessage *ioExtension
 					uint8 *pbits, *prgba;
 					pbits = pbitsrow;
 					prgba = pras8 + ((height - (i + 1)) * width * 4);
-					
+
 					for (uint32 k = 0; k < width; k++) {
 						pbits[0] = prgba[2];
 						pbits[1] = prgba[1];
@@ -875,7 +888,7 @@ TIFFTranslator::translate_from_tiff(BPositionIO *inSource, BMessage *ioExtension
 			break;
 
 		} // if (praster && TIFFReadRGBAImage(ptif, width, height, praster, 0))
-		
+
 	} // while (ret == B_OK && ptif)
 
 	if (praster) {
@@ -899,7 +912,7 @@ TIFFTranslator::translate_from_tiff(BPositionIO *inSource, BMessage *ioExtension
 // Preconditions:
 //
 // Parameters:	inSource,	the data to be translated
-// 
+//
 //				inInfo,	hint about the data in inSource (not used)
 //
 //				ioExtension,	configuration options for the
@@ -945,5 +958,6 @@ TIFFTranslator::DerivedTranslate(BPositionIO *inSource,
 BView *
 TIFFTranslator::NewConfigView(TranslatorSettings *settings)
 {
-	return new TIFFView("TIFFTranslator Settings", B_WILL_DRAW, settings);
+	return new TIFFView(B_TRANSLATE("TIFFTranslator Settings"), 
+		B_WILL_DRAW, settings);
 }

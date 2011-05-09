@@ -22,6 +22,7 @@ class Summand;
 class Variable {
 public:
 			int32				Index() const;
+			int32				GlobalIndex() const;
 			LinearSpec*			LS() const;
 			double				Value() const;
 			void				SetValue(double value);
@@ -58,11 +59,12 @@ public:
 protected:
 								Variable(LinearSpec* ls);
 
+			//! returns the ref count
+			int32				AddReference();
+			int32				RemoveReference();
 private:
 			LinearSpec*			fLS;
 
-			BObjectList<Summand>	fUsingSummands;
-				// All Summands that link to this Variable
 			double				fValue;
 			double				fMin;
 			double				fMax;
@@ -70,9 +72,9 @@ private:
 
 			bool				fIsValid;
 
+			int32				fReferenceCount;
 public:
 	friend class		LinearSpec;
-	friend class		Summand;
 };
 
 

@@ -467,14 +467,14 @@ Tab::~Tab()
 float
 Tab::Position() const
 {
-	return (float)fVariable->Value();
+	return (float)fVariable->Value() - kMakePositiveOffset;
 }
 
 
 void
 Tab::SetPosition(float position)
 {
-	fVariable->SetValue(position);
+	fVariable->SetValue(position + kMakePositiveOffset);
 }
 
 
@@ -710,7 +710,7 @@ SATGroup::AddWindow(SATWindow* window, WindowArea* area, SATWindow* after)
 
 
 bool
-SATGroup::RemoveWindow(SATWindow* window)
+SATGroup::RemoveWindow(SATWindow* window, bool stayBelowMouse)
 {
 	if (!fSATWindowList.RemoveItem(window))
 		return false;
@@ -722,7 +722,7 @@ SATGroup::RemoveWindow(SATWindow* window)
 	for (int i = 0; i < CountItems(); i++)
 		WindowAt(i)->DoGroupLayout();
 
-	window->RemovedFromGroup(this);
+	window->RemovedFromGroup(this, stayBelowMouse);
 	// Do nothing after removing the window from the group because this
 	// could have released the last reference and destroyed ourself.
 	return true;
@@ -994,12 +994,8 @@ SATGroup::_SplitGroupIfNecessary(WindowArea* removedArea)
 	bool ownGroupProcessed = false;
 	WindowAreaList newGroup;
 	while (_FindConnectedGroup(neighbourWindows, removedArea, newGroup)) {
-		STRACE_SAT("Connected group found; %i windows:\n",
+		STRACE_SAT("Connected group found; %i window(s)\n",
 			(int)newGroup.CountItems());
-		for (int i = 0; i < newGroup.CountItems(); i++) {
-			STRACE_SAT("\t%s\n", newGroup.ItemAt(i)->WindowList().ItemAt(0)
-				->GetWindow()->Title());
-		}
 
 		if (newGroup.CountItems() == 1
 			&& newGroup.ItemAt(0)->WindowList().CountItems() == 1) {

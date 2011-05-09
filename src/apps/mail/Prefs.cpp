@@ -96,7 +96,7 @@ add_menu_to_layout(BMenuField* menu, BGridLayout* layout, int32& row)
 
 
 TPrefsWindow::TPrefsWindow(BRect rect, BFont* font, int32* level, bool* wrap,
-	bool* attachAttributes, bool* cquotes, uint32* account, int32* replyTo,
+	bool* attachAttributes, bool* cquotes, int32* account, int32* replyTo,
 	char** preamble, char** sig, uint32* encoding, bool* warnUnencodable,
 	bool* spellCheckStartOn, bool* autoMarkRead, uint8* buttonBar)
 	:
@@ -140,7 +140,7 @@ TPrefsWindow::TPrefsWindow(BRect rect, BFont* font, int32* level, bool* wrap,
 	fSpellCheckStartOn(*fNewSpellCheckStartOn),
 
 	fNewAutoMarkRead(autoMarkRead),
-	fAutoMarkRead(*fNewAutoMarkRead)
+	fAutoMarkRead(*autoMarkRead)
 {
 	strcpy(fSignature, *fNewSignature);
 
@@ -385,7 +385,7 @@ TPrefsWindow::MessageReceived(BMessage* msg)
 				if ((item = fReplyToMenu->FindItem(label)) != NULL)
 					item->SetMarked(true);
 
-				strcpy(label, fWrap ? "On" : "Off");
+				strcpy(label, fWrap ? B_TRANSLATE("On") : B_TRANSLATE("Off"));
 				if ((item = fWrapMenu->FindItem(label)) != NULL)
 					item->SetMarked(true);
 
@@ -395,7 +395,7 @@ TPrefsWindow::MessageReceived(BMessage* msg)
 				if ((item = fAttachAttributesMenu->FindItem(label)) != NULL)
 					item->SetMarked(true);
 
-				strcpy(label, fColoredQuotes ? "On" : "Off");
+				strcpy(label, fColoredQuotes ? B_TRANSLATE("On") : B_TRANSLATE("Off"));
 				if ((item = fColoredQuotesMenu->FindItem(label)) != NULL)
 					item->SetMarked(true);
 
@@ -420,11 +420,11 @@ TPrefsWindow::MessageReceived(BMessage* msg)
 					}
 				}
 
-				strcpy(label, fWarnUnencodable ? "On" : "Off");
+				strcpy(label, fWarnUnencodable ? B_TRANSLATE("On") : B_TRANSLATE("Off"));
 				if ((item = fWarnUnencodableMenu->FindItem(label)) != NULL)
 					item->SetMarked(true);
 
-				strcpy(label, fSpellCheckStartOn ? "On" : "Off");
+				strcpy(label, fSpellCheckStartOn ? B_TRANSLATE("On") : B_TRANSLATE("Off"));
 				if ((item = fSpellCheckStartOnMenu->FindItem(label)) != NULL)
 					item->SetMarked(true);
 			} else
@@ -622,31 +622,30 @@ TPrefsWindow::_BuildLevelMenu(int32 level)
 
 
 BPopUpMenu*
-TPrefsWindow::_BuildAccountMenu(uint32 account)
+TPrefsWindow::_BuildAccountMenu(int32 account)
 {
 	BPopUpMenu* menu = new BPopUpMenu("");
 	BMenuItem* item;
 
 	//menu->SetRadioMode(true);
-	BList chains;
-	if (GetOutboundMailChains(&chains) < B_OK) {
+	BMailAccounts accounts;
+	if (accounts.CountAccounts()) {
 		menu->AddItem(item = new BMenuItem("<no account found>", NULL));
 		item->SetEnabled(false);
 		return menu;
 	}
 
 	BMessage* msg;
-	for (int32 i = 0; i < chains.CountItems(); i++) {
-		BMailChain* chain = (BMailChain*)chains.ItemAt(i);
-		item = new BMenuItem(chain->Name(), msg = new BMessage(P_ACCOUNT));
+	for (int32 i = 0; i < accounts.CountAccounts(); i++) {
+		BMailAccountSettings* settings = accounts.AccountAt(i);
+		item = new BMenuItem(settings->Name(), msg = new BMessage(P_ACCOUNT));
 
-		msg->AddInt32("id",chain->ID());
+		msg->AddInt32("id", settings->AccountID());
 
-		if (account == chain->ID())
+		if (account == settings->AccountID())
 			item->SetMarked(true);
 
 		menu->AddItem(item);
-		delete chain;
 	}
 	return menu;
 }
@@ -788,13 +787,13 @@ TPrefsWindow::_BuildBoolMenu(uint32 what, const char* boolItem, bool isTrue)
 	menu = new BPopUpMenu("");
 	msg = new BMessage(what);
 	msg->AddBool(boolItem, true);
-	menu->AddItem(item = new BMenuItem("On", msg));
+	menu->AddItem(item = new BMenuItem(B_TRANSLATE("On"), msg));
 	if (isTrue)
 		item->SetMarked(true);
 
 	msg = new BMessage(what);
 	msg->AddInt32(boolItem, false);
-	menu->AddItem(item = new BMenuItem("Off", msg));
+	menu->AddItem(item = new BMenuItem(B_TRANSLATE("Off"), msg));
 	if (!isTrue)
 		item->SetMarked(true);
 

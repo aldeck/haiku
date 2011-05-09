@@ -8,12 +8,10 @@
 
 #include <stdlib.h>
 
-#include <Alert.h>
+#include <AboutWindow.h>
 #include <Application.h>
-#include <TextView.h>
 
 #include "ActivityWindow.h"
-
 
 const char* kSignature = "application/x-vnd.Haiku-ActivityMonitor";
 
@@ -61,20 +59,13 @@ ActivityMonitor::AboutRequested()
 /*static*/ void
 ActivityMonitor::ShowAbout()
 {
-	BAlert *alert = new BAlert("about", "ActivityMonitor\n"
-		"\twritten by Axel Dörfler\n"
-		"\tCopyright 2008, Haiku Inc.\n", "OK");
-	BTextView *view = alert->TextView();
-	BFont font;
+	const char* kAuthors[] = {
+		"Axel Dörfler",
+		NULL
+	};
 
-	view->SetStylable(true);
-
-	view->GetFont(&font);
-	font.SetSize(18);
-	font.SetFace(B_BOLD_FACE);
-	view->SetFontAndColor(0, 15, &font);
-
-	alert->Go();
+	BAboutWindow aboutWindow(kAppName, 2008, kAuthors);
+	aboutWindow.Show();
 }
 
 

@@ -670,7 +670,8 @@ DefaultAttributeMenu::MimeTypesChanged()
 	BPath path;
 	if (poseView->TargetModel() != NULL) {
 		poseView->TargetModel()->GetPath(&path);
-		if (strstr(path.Path(), "/" kQueryTemplates "/") != NULL) {
+		if (path.InitCheck() == B_OK
+			&& strstr(path.Path(), "/" kQueryTemplates "/") != NULL) {
 			// demangle MIME type name
 			BString name(poseView->TargetModel()->Name());
 			name.ReplaceFirst('_', '/');
@@ -821,6 +822,8 @@ BMenu*
 DefaultAttributeMenu::_AddMimeMenu(const BMimeType& mimeType, bool isSuperType,
 	BMenu* menu, int32 start)
 {
+	AutoLock<BLooper> _(menu->Looper());
+	
 	if (!mimeType.IsValid())
 		return NULL;
 

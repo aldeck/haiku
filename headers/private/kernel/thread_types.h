@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2010, Haiku Inc.
+ * Copyright 2004-2011, Haiku, Inc.
  * Distributed under the terms of the MIT License.
  *
  * Thread definition and structures
@@ -10,13 +10,17 @@
 
 #ifndef _ASSEMBLER
 
+#include <Referenceable.h>
+
 #include <arch/thread_types.h>
 #include <condition_variable.h>
+#include <lock.h>
 #include <signal.h>
 #include <smp.h>
 #include <thread_defs.h>
 #include <timer.h>
 #include <user_debugger.h>
+#include <util/DoublyLinkedList.h>
 #include <util/list.h>
 
 
@@ -54,12 +58,21 @@ typedef enum job_control_state {
 } job_control_state;
 
 
+struct cpu_ent;
 struct image;					// defined in image.c
 struct io_context;
 struct realtime_sem_context;	// defined in realtime_sem.cpp
+struct scheduler_thread_data;
 struct select_info;
 struct user_thread;				// defined in libroot/user_thread.h
+struct VMAddressSpace;
 struct xsi_sem_context;			// defined in xsi_semaphore.cpp
+
+namespace BKernel {
+	struct Team;
+	struct Thread;
+}
+
 
 struct death_entry {
 	struct list_link	link;
@@ -83,12 +96,12 @@ struct process_group {
 	struct process_session *session;
 	pid_t				id;
 	int32				refs;
-	struct team			*teams;
+	BKernel::Team		*teams;
 	bool				orphaned;
 };
 
 struct team_loading_info {
-	struct thread		*thread;	// the waiting thread
+	Thread*				thread;	// the waiting thread
 	status_t			result;		// the result of the loading
 	bool				done;		// set when loading is done/aborted
 };
@@ -105,16 +118,6 @@ struct team_watcher {
 #define MAX_DEAD_THREADS	32
 	// this is a soft limit for the number of thread death entries in a team
 
-typedef struct team_dead_children team_dead_children;
-typedef struct team_job_control_children  team_job_control_children;
-typedef struct job_control_entry job_control_entry;
-
-
-#ifdef __cplusplus
-
-#include <condition_variable.h>
-#include <util/DoublyLinkedList.h>
-
 
 struct job_control_entry : DoublyLinkedListLinkImpl<job_control_entry> {
 	job_control_state	state;		// current team job control state
@@ -122,7 +125,7 @@ struct job_control_entry : DoublyLinkedListLinkImpl<job_control_entry> {
 	bool				has_group_ref;
 
 	// valid while state != JOB_CONTROL_STATE_DEAD
-	struct team*		team;
+	BKernel::Team*		team;
 
 	// valid when state == JOB_CONTROL_STATE_DEAD
 	pid_t				group_id;
@@ -158,22 +161,66 @@ struct team_death_entry {
 };
 
 
-#endif	// __cplusplus
-
-
 struct free_user_thread {
 	struct free_user_thread*	next;
 	struct user_thread*			thread;
 };
 
-struct scheduler_thread_data;
 
-struct team {
-	struct team		*next;			// next in hash
-	struct team		*siblings_next;
-	struct team		*parent;
-	struct team		*children;
-	struct team		*group_next;
+class AssociatedDataOwner;
+
+class AssociatedData : public BReferenceable,
+	public DoublyLinkedListLinkImpl<AssociatedData> {
+public:
+								AssociatedData();
+	virtual						~AssociatedData();
+
+			AssociatedDataOwner* Owner() const
+									{ return fOwner; }
+			void				SetOwner(AssociatedDataOwner* owner)
+									{ fOwner = owner; }
+
+	virtual	void				OwnerDeleted(AssociatedDataOwner* owner);
+
+private:
+			AssociatedDataOwner* fOwner;
+};
+
+
+class AssociatedDataOwner {
+public:
+								AssociatedDataOwner();
+								~AssociatedDataOwner();
+
+			bool				AddData(AssociatedData* data);
+			bool				RemoveData(AssociatedData* data);
+
+			void				PrepareForDeletion();
+
+private:
+			typedef DoublyLinkedList<AssociatedData> DataList;
+
+private:
+
+			mutex				fLock;
+			DataList			fList;
+};
+
+
+typedef int32 (*thread_entry_func)(thread_func, void *);
+
+typedef bool (*page_fault_callback)(addr_t address, addr_t faultAddress,
+	bool isWrite);
+
+
+namespace BKernel {
+
+struct Team : AssociatedDataOwner {
+	Team			*next;			// next in hash
+	Team			*siblings_next;
+	Team			*parent;
+	Team			*children;
+	Team			*group_next;
 	team_id			id;
 	pid_t			group_id;
 	pid_t			session_id;
@@ -190,14 +237,14 @@ struct team {
 	struct list		dead_threads;
 	int				dead_threads_count;
 
-	team_dead_children *dead_children;
-	team_job_control_children *stopped_children;
-	team_job_control_children *continued_children;
+	team_dead_children dead_children;
+	team_job_control_children stopped_children;
+	team_job_control_children continued_children;
 	struct job_control_entry* job_control_entry;
 
-	struct VMAddressSpace *address_space;
-	struct thread	*main_thread;
-	struct thread	*thread_list;
+	VMAddressSpace	*address_space;
+	Thread			*main_thread;
+	Thread			*thread_list;
 	struct team_loading_info *loading_info;
 	struct list		image_list;
 	struct list		watcher_list;
@@ -226,18 +273,14 @@ struct team {
 	int				supplementary_group_count;
 };
 
-typedef int32 (*thread_entry_func)(thread_func, void *);
 
-typedef bool (*page_fault_callback)(addr_t address, addr_t faultAddress,
-	bool isWrite);
-
-struct thread {
+struct Thread {
 	int32			flags;			// summary of events relevant in interrupt
 									// handlers (signals pending, user debugging
 									// enabled, etc.)
-	struct thread	*all_next;
-	struct thread	*team_next;
-	struct thread	*queue_next;	/* i.e. run queue, release queue, etc. */
+	Thread			*all_next;
+	Thread			*team_next;
+	Thread			*queue_next;	/* i.e. run queue, release queue, etc. */
 	timer			alarm;
 	thread_id		id;
 	char			name[B_OS_NAME_LENGTH];
@@ -299,7 +342,7 @@ struct thread {
 
 	thread_entry_func entry;
 	void			*args1, *args2;
-	struct team		*team;
+	BKernel::Team	*team;
 
 	struct {
 		sem_id		sem;
@@ -337,9 +380,15 @@ struct thread {
 	struct arch_thread arch_info;
 };
 
+}	// namespace BKernel
+
+using BKernel::Team;
+using BKernel::Thread;
+
+
 struct thread_queue {
-	struct thread *head;
-	struct thread *tail;
+	Thread*	head;
+	Thread*	tail;
 };
 
 

@@ -62,7 +62,8 @@ InodeJournal::InodeJournal(Inode* inode)
 				if (fInitStatus == B_OK) {
 					fRevokeManager = revokeManager;
 					fInitStatus = _LoadSuperBlock();
-				}
+				} else
+					delete revokeManager;
 			}
 		}
 	}
@@ -84,7 +85,7 @@ InodeJournal::InitCheck()
 
 
 status_t
-InodeJournal::MapBlock(off_t logical, off_t& physical)
+InodeJournal::MapBlock(off_t logical, fsblock_t& physical)
 {
 	TRACE("InodeJournal::MapBlock()\n");
 	return fInode->FindBlock(logical * fBlockSize, physical);

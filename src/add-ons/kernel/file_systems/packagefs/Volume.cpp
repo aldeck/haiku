@@ -15,6 +15,7 @@
 #include <new>
 
 #include <AppDefs.h>
+#include <driver_settings.h>
 #include <KernelExport.h>
 #include <NodeMonitor.h>
 
@@ -22,11 +23,10 @@
 
 #include <Notifications.h>
 
-#include "ErrorOutput.h"
-#include "FDCloser.h"
-#include "PackageEntry.h"
-#include "PackageEntryAttribute.h"
-#include "PackageReader.h"
+#include <package/hpkg/ErrorOutput.h>
+#include <package/hpkg/PackageEntry.h>
+#include <package/hpkg/PackageEntryAttribute.h>
+#include <package/hpkg/PackageReaderImpl.h>
 
 #include "DebugSupport.h"
 #include "Directory.h"
@@ -35,6 +35,10 @@
 #include "PackageDirectory.h"
 #include "PackageFile.h"
 #include "PackageSymlink.h"
+
+
+using namespace BPackageKit::BHPKG;
+using BPackageKit::BHPKG::BPrivate::PackageReaderImpl;
 
 
 // node ID of the root directory
@@ -82,7 +86,6 @@ struct Volume::AddPackageDomainJob : Job {
 	virtual void Do()
 	{
 		fVolume->_AddPackageDomain(fDomain, true);
-		fDomain = NULL;
 	}
 
 private:
@@ -128,7 +131,7 @@ private:
 // #pragma mark - PackageLoaderErrorOutput
 
 
-struct Volume::PackageLoaderErrorOutput : ErrorOutput {
+struct Volume::PackageLoaderErrorOutput : BErrorOutput {
 	PackageLoaderErrorOutput(Package* package)
 		:
 		fPackage(package)
@@ -148,7 +151,7 @@ private:
 // #pragma mark - PackageLoaderContentHandler
 
 
-struct Volume::PackageLoaderContentHandler : PackageContentHandler {
+struct Volume::PackageLoaderContentHandler : BPackageContentHandler {
 	PackageLoaderContentHandler(Package* package)
 		:
 		fPackage(package),
@@ -161,7 +164,7 @@ struct Volume::PackageLoaderContentHandler : PackageContentHandler {
 		return B_OK;
 	}
 
-	virtual status_t HandleEntry(PackageEntry* entry)
+	virtual status_t HandleEntry(BPackageEntry* entry)
 	{
 		if (fErrorOccurred)
 			return B_OK;
@@ -225,8 +228,8 @@ struct Volume::PackageLoaderContentHandler : PackageContentHandler {
 		return B_OK;
 	}
 
-	virtual status_t HandleEntryAttribute(PackageEntry* entry,
-		PackageEntryAttribute* attribute)
+	virtual status_t HandleEntryAttribute(BPackageEntry* entry,
+		BPackageEntryAttribute* attribute)
 	{
 		if (fErrorOccurred)
 			return B_OK;
@@ -249,8 +252,15 @@ struct Volume::PackageLoaderContentHandler : PackageContentHandler {
 		return B_OK;
 	}
 
-	virtual status_t HandleEntryDone(PackageEntry* entry)
+	virtual status_t HandleEntryDone(BPackageEntry* entry)
 	{
+		return B_OK;
+	}
+
+	virtual status_t HandlePackageAttribute(
+		const BPackageInfoAttributeValue& value)
+	{
+		// TODO!
 		return B_OK;
 	}
 
@@ -336,22 +346,42 @@ Volume::~Volume()
 
 
 status_t
-Volume::Mount()
+Volume::Mount(const char* parameterString)
 {
 	// init the node table
 	status_t error = fNodes.Init();
 	if (error != B_OK)
 		RETURN_ERROR(error);
 
+	const char* packages = NULL;
+	const char* volumeName = NULL;
+	void* parameterHandle = parse_driver_settings_string(parameterString);
+	if (parameterHandle != NULL) {
+		packages
+			= get_driver_parameter(parameterHandle, "packages", NULL, NULL);
+		volumeName
+			= get_driver_parameter(parameterHandle, "volume-name", NULL, NULL);
+		delete_driver_settings(parameterHandle);
+	}
+	if (packages == NULL || packages[0] == '\0') {
+		ERROR("need package folder ('packages' parameter)!\n");
+		RETURN_ERROR(B_BAD_VALUE);
+	}
+
+	struct stat st;
+	if (stat(packages, &st) < 0)
+		RETURN_ERROR(B_ERROR);
+
 	// create the root node
-	fRootDirectory = new(std::nothrow) Directory(kRootDirectoryID);
+	fRootDirectory
+		= new(std::nothrow) ::RootDirectory(kRootDirectoryID, st.st_mtim);
 	if (fRootDirectory == NULL)
 		RETURN_ERROR(B_NO_MEMORY);
+	fRootDirectory->Init(NULL, volumeName != NULL ? volumeName : "Package FS");
 	fNodes.Insert(fRootDirectory);
 
-	// create default package domains
-// TODO: Get them from the mount parameters instead!
-	error = _AddInitialPackageDomain("/boot/common/packages");
+	// create default package domain
+	error = _AddInitialPackageDomain(packages);
 	if (error != B_OK)
 		RETURN_ERROR(error);
 
@@ -554,7 +584,11 @@ Volume::_AddPackageDomain(PackageDomain* domain, bool notify)
 			Package* package = it.Next();) {
 		error = _AddPackageContent(package, notify);
 		if (error != B_OK) {
-// TODO: Remove the already added packages!
+			for (it.Rewind(); Package* activePackage = it.Next();) {
+				if (activePackage == package)
+					break;
+				_RemovePackageContent(activePackage, NULL, notify);
+			}
 			return error;
 		}
 	}
@@ -577,7 +611,7 @@ Volume::_LoadPackage(Package* package)
 
 	// initialize package reader
 	PackageLoaderErrorOutput errorOutput(package);
-	PackageReader packageReader(&errorOutput);
+	PackageReaderImpl packageReader(&errorOutput);
 	status_t error = packageReader.Init(fd, false);
 	if (error != B_OK)
 		return error;
@@ -601,6 +635,9 @@ Volume::_AddPackageContent(Package* package, bool notify)
 {
 	for (PackageNodeList::Iterator it = package->Nodes().GetIterator();
 			PackageNode* node = it.Next();) {
+		// skip over ".PackageInfo" file, it isn't part of the package content
+		if (strcmp(node->Name(), B_HPKG_PACKAGE_INFO_FILE_NAME) == 0)
+			continue;
 		status_t error = _AddPackageContentRootNode(package, node, notify);
 		if (error != B_OK) {
 			_RemovePackageContent(package, node, notify);
@@ -620,6 +657,10 @@ Volume::_RemovePackageContent(Package* package, PackageNode* endNode,
 	while (node != NULL) {
 		if (node == endNode)
 			break;
+
+		// skip over ".PackageInfo" file, it isn't part of the package content
+		if (strcmp(node->Name(), B_HPKG_PACKAGE_INFO_FILE_NAME) == 0)
+			continue;
 
 		PackageNode* nextNode = package->Nodes().GetNext(node);
 		_RemovePackageContentRootNode(package, node, NULL, notify);

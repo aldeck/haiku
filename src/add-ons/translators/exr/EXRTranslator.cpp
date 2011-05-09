@@ -5,6 +5,8 @@
  * Distributed under the terms of the MIT License.
  */
 
+#include <Catalog.h>
+
 #include "ConfigView.h"
 #include "EXRGamma.h"
 #include "EXRTranslator.h"
@@ -14,9 +16,12 @@
 #include "ImfRgbaFile.h"
 #include "IStreamWrapper.h"
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "EXRTranslator"
+
 
 // The input formats that this translator supports.
-translation_format sInputFormats[] = {
+static const translation_format sInputFormats[] = {
 	{
 		EXR_IMAGE_FORMAT,
 		B_TRANSLATOR_BITMAP,
@@ -28,7 +33,7 @@ translation_format sInputFormats[] = {
 };
 
 // The output formats that this translator supports.
-translation_format sOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	{
 		B_TRANSLATOR_BITMAP,
 		B_TRANSLATOR_BITMAP,
@@ -40,7 +45,7 @@ translation_format sOutputFormats[] = {
 };
 
 // Default settings for the Translator
-static TranSetting sDefaultSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{B_TRANSLATOR_EXT_HEADER_ONLY, TRAN_SETTING_BOOL, false},
 	{B_TRANSLATOR_EXT_DATA_ONLY, TRAN_SETTING_BOOL, false}
 };
@@ -56,7 +61,8 @@ const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting
 
 
 EXRTranslator::EXRTranslator()
-	: BaseTranslator("EXR Images", "EXR image translator",
+	: BaseTranslator(B_TRANSLATE("EXR Images"), 
+		B_TRANSLATE("EXR image translator"),
 		EXR_TRANSLATOR_VERSION,
 		sInputFormats, kNumInputFormats,
 		sOutputFormats, kNumOutputFormats,
@@ -85,14 +91,14 @@ EXRTranslator::DerivedIdentify(BPositionIO *stream,
 	try {
 		IStreamWrapper istream("filename", stream);
 		RgbaInputFile inputFile(istream);
-	
+
 		if (outInfo) {
 			outInfo->type = EXR_IMAGE_FORMAT;
 			outInfo->group = B_TRANSLATOR_BITMAP;
 			outInfo->quality = EXR_IN_QUALITY;
 			outInfo->capability = EXR_IN_CAPABILITY;
 			strcpy(outInfo->MIME, "image/exr");
-			strcpy(outInfo->name, "EXR image");
+			strcpy(outInfo->name, B_TRANSLATE("EXR image"));
 		}
 	} catch (const std::exception &e) {
 		return B_NO_TRANSLATOR;
@@ -125,7 +131,7 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 		int dataHeight = dataWindow.max.y - dataWindow.min.y + 1;
 		int displayWidth = displayWindow.max.x - displayWindow.min.x + 1;
 		int displayHeight = displayWindow.max.y - displayWindow.min.y + 1;
-		
+
 		// Write out the data to outDestination
 		// Construct and write Be bitmap header
 		TranslatorBitmap bitsHeader;
@@ -142,11 +148,11 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 			return B_ERROR;
 		}
 		target->Write(&bitsHeader, sizeof(TranslatorBitmap));
-	
+
 		Array2D <Rgba> pixels(dataHeight, dataWidth);
 		in.setFrameBuffer (&pixels[0][0] - dataWindow.min.y * dataWidth - dataWindow.min.x, 1, dataWidth);
 		in.readPixels (dataWindow.min.y, dataWindow.max.y);
-	
+
 		float	_gamma = 0.4545f;
 		float	_exposure = 0.0f;
 		float	_defog = 0.0f;
@@ -156,7 +162,7 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 		float	_fogR = 0.0f;
 		float	_fogG = 0.0f;
 		float	_fogB = 0.0f;
-		
+
 		halfFunction<float>
 		rGamma (Gamma (_gamma,
 					_exposure,
@@ -165,7 +171,7 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 					_kneeHigh),
 			-HALF_MAX, HALF_MAX,
 			0.f, 255.f, 0.f, 0.f);
-		
+
 		halfFunction<float>
 		gGamma (Gamma (_gamma,
 					_exposure,
@@ -174,7 +180,7 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 					_kneeHigh),
 			-HALF_MAX, HALF_MAX,
 			0.f, 255.f, 0.f, 0.f);
-		
+
 		halfFunction<float>
 		bGamma (Gamma (_gamma,
 					_exposure,
@@ -183,7 +189,7 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 					_kneeHigh),
 			-HALF_MAX, HALF_MAX,
 			0.f, 255.f, 0.f, 0.f);
-		
+
 		for (int y = displayWindow.min.y; y <= displayWindow.max.y; ++y) {
 			if (y < dataWindow.min.y
 				|| y > dataWindow.max.y) {
@@ -197,7 +203,7 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 				}
 				continue;
 			}
-			
+
 			for (int x = displayWindow.min.x; x <= displayWindow.max.x; ++x) {
 				unsigned char sp[4];
 				if (x < dataWindow.min.x
@@ -208,7 +214,7 @@ EXRTranslator::DerivedTranslate(BPositionIO* source,
 					sp[3] = 255;
 				} else {
 					const Imf::Rgba &rp = pixels[y][x];
-						
+
 					sp[0] = (unsigned char)bGamma(rp.b);
 					sp[1] = (unsigned char)gGamma(rp.g);
 					sp[2] = (unsigned char)rGamma(rp.r);

@@ -69,6 +69,8 @@ All rights reserved.
 #include <Volume.h>
 #include <Window.h>
 
+#include <ObjectListPrivate.h>
+
 #include "Attributes.h"
 #include "AttributeStream.h"
 #include "AutoLock.h"
@@ -3073,7 +3075,7 @@ BPoseView::NewFileFromTemplate(const BMessage *message)
 		return;
 
 	char fileName[B_FILE_NAME_LENGTH] = "New ";
-	strcat(fileName, message->FindString("name"));
+	strlcat(fileName, message->FindString("name"), sizeof(fileName));
 	FSMakeOriginalName(fileName, &destDir, " copy");
 
 	entry_ref srcRef;
@@ -4431,7 +4433,8 @@ BPoseView::HandleDropCommon(BMessage *message, Model *targetModel, BPose *target
 		poseView->ResetPosePlacementHint();
 	}
 
-	if (srcWindow == containerWindow && DragSelectionContains(targetPose, message)) {
+	if (srcWindow == containerWindow && DragSelectionContains(targetPose,
+		message)) {
 		// drop on self
 		targetModel = NULL;
 	}
@@ -4439,7 +4442,7 @@ BPoseView::HandleDropCommon(BMessage *message, Model *targetModel, BPose *target
 	bool wasHandled = false;
 	bool ignoreTypes = (modifiers() & B_CONTROL_KEY) != 0;
 
-	if (targetModel) {
+	if (targetModel && containerWindow != NULL) {
 		// TODO: pick files to drop/launch on a case by case basis
 		if (targetModel->IsDirectory()) {
 			MoveSelectionInto(targetModel, srcWindow, containerWindow, buttons, dropPt,
@@ -6111,6 +6114,21 @@ BPoseView::KeyDown(const char *bytes, int32 count)
 			SelectPose(pose, index);
 			break;
 		}
+
+		case B_FUNCTION_KEY:
+			if (BMessage *message = Window()->CurrentMessage()) {
+				int32 key;
+				if (message->FindInt32("key", &key) == B_OK) {
+					switch (key) {
+						case B_F2_KEY:
+							Window()->PostMessage(kEditItem, this);
+							break;
+						default:
+							break;
+					}
+				}
+			}
+			break;
 
 		case B_INSERT:
 			break;
@@ -8604,10 +8622,12 @@ BPoseView::SortPoses()
 	PRINT(("===================\n"));
 #endif
 
-	BPose **poses = reinterpret_cast<BPose **>(fPoseList->AsBList()->Items());
+	BPose **poses = reinterpret_cast<BPose **>(
+		PoseList::Private(fPoseList).AsBList()->Items());
 	std::stable_sort(poses, &poses[fPoseList->CountItems()], PoseComparator(this));
 	if (fFiltering) {
-		poses = reinterpret_cast<BPose **>(fFilteredPoseList->AsBList()->Items());
+		poses = reinterpret_cast<BPose **>(
+			PoseList::Private(fFilteredPoseList).AsBList()->Items());
 		std::stable_sort(poses, &poses[fPoseList->CountItems()],
 			PoseComparator(this));
 	}

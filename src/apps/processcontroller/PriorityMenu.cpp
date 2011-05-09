@@ -21,11 +21,14 @@
 #include "PriorityMenu.h"
 #include "ProcessController.h"
 
+#include <Catalog.h>
 #include <MenuItem.h>
 #include <Window.h>
 
 #include <stdio.h>
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "ProcessController"
 
 PriorityMenu::PriorityMenu(thread_id thread, int32 priority)
 	: BMenu(B_EMPTY_STRING),
@@ -48,24 +51,24 @@ PriorityMenu::Update(int32 priority)
 
 
 typedef struct {
-	char	name[32];
-	long	priority;
+	const char*	name;
+	long		priority;
 } PriorityRec;
 
 static PriorityRec	priorities[] = {
-	{"Idle", 	0},
-	{"Lowest active",	1},
-	{"Low",	5},
-	{"Normal", 10},
-	{"Display", 15},
-	{"Urgent display", 20},
-	{"Real-time display", 100},
-	{"Urgent", 110},
-	{"Real-time", 120},
-	{"",	-1}
+	{ B_TRANSLATE("Idle priority"),	0 },
+	{ B_TRANSLATE("Lowest active priority"), 1 },
+	{ B_TRANSLATE("Low priority"), 5 },
+	{ B_TRANSLATE("Normal priority"), 10 },
+	{ B_TRANSLATE("Display priority"), 15 },
+	{ B_TRANSLATE("Urgent display priority"), 20 },
+	{ B_TRANSLATE("Real-time display priority"), 100 },
+	{ B_TRANSLATE("Urgent priority"), 110 },
+	{ B_TRANSLATE("Real-time priority"), 120 },
+	{ "",	-1 }
 };
 
-PriorityRec customPriority = { "Custom", 0 };
+PriorityRec customPriority = {"Custom", 0 };
 
 
 void
@@ -88,7 +91,8 @@ PriorityMenu::BuildMenu()
 		message = new BMessage('PrTh');
 		message->AddInt32("thread", fThreadID);
 		message->AddInt32("priority", priority->priority);
-		sprintf(name, "%s priority [%d]", priority->name, (int)priority->priority);
+		sprintf(name, B_TRANSLATE("%s [%d]"), priority->name, 
+			(int)priority->priority);
 		item = new BMenuItem(name, message);
 		item->SetTarget(gPCView);
 		if (fPriority == priority->priority)

@@ -1,13 +1,13 @@
-1	ukrainian	x-vnd.Be-MAIL	3027629068
+1	ukrainian	x-vnd.Be-MAIL	1685878103
 %d - Date	Mail		%d - Дата
 Attach attributes:	Mail		Додати атрибути:
-Inconsistency occurred in the undo/redo buffer.	Mail		Невідповідність У буфері відміни/заміни
+Inconsistency occurred in the undo/redo buffer.	Mail		Невідповідність у буфері відміни/заміни.
 An error occurred trying to save the attachment.	Mail		Сталася помилка при збереженні вкладення.
 Copy to new	Mail		Копіювати до нового
 Edit	Mail		Редагувати
 Print	Mail		Друкувати
 New mail message	Mail		Новий лист
-Automatically mark mail as read:	Mail		Автоматично помітити як прочитане
+Automatically mark mail as read:	Mail		Автоматично помітити як прочитане:
 Colored quotes:	Mail		Забарвлення цитат:
 Subject:	Mail		Тема:
 Reply to all	Mail		Відповісти всім
@@ -15,9 +15,9 @@ Show icons & labels	Mail		Показати іконки і мітки
 Remove attachment	Mail		Видалити вкладення
 Button bar:	Mail		Панель кнопок:
 Beginner	Mail		Початківець
-Don't save	Mail		Не збережено
+Don't save	Mail		Не зберігати
 Expert	Mail		Експерт
-Reply account:	Mail		Аккаунт для відповіді
+Reply account:	Mail		Аккаунт для відповіді:
 Discard	Mail		Завершити
 Message	Mail		Повідомлення
 Reply to sender	Mail		Відповісти відправникові
@@ -25,21 +25,21 @@ There is no installed handler for URL links.	Mail		Не встановлено �
 Signature	Mail		Підпис
 Find again	Mail		Повторний пошук
 Bcc:	Mail		Bcc:
-Your main text contains %ld unencodable characters. Perhaps a different character set would work better? Hit Send to send it anyway (a substitute character will be used in place of the unencodable ones), or choose Cancel to go back and try fixing it up.	Mail		Ваш основний текст містить  %ld нерозкодованих символів. Можливо інше кодування спрацює краще? Виберіть Відправити якщо хочете  зробити це не зважаючи(нерозкодований символ буде замінено таким що ситуативно підходить), або натисніть Відмінити щоб п.овернутися назад і виправити ситуацію
+Your main text contains %ld unencodable characters. Perhaps a different character set would work better? Hit Send to send it anyway (a substitute character will be used in place of the unencodable ones), or choose Cancel to go back and try fixing it up.	Mail		Ваш основний текст містить  %ld нерозкодованих символів. Можливо інше кодування спрацює краще? Виберіть Відправити якщо хочете  зробити це не зважаючи(нерозкодований символ буде замінено таким що ситуативно підходить), або натисніть Відмінити щоб п.овернутися назад і виправити ситуацію.
 Signature:	Mail		Підпис
 Save changes to this signature?	Mail		Зберегти зміни в цьому підписі?
 Cc:	Mail		Cc:
 Find	Mail		Знайти
 Preferences…	Mail		Настройки…
 Undo	Mail		Відмінити
-Leave as New	Mail		Зберегти як нове
+Leave as New	Mail		Зберегти як новий
 An error occurred trying to open this signature.	Mail		Помилка при спробі відкрити цей підпис.
 No file attributes, just plain data	Mail		Жодних атрибутів,тільки чисті дані
 Edit queries…	Mail		Редагувати запити…
 Paste	Mail		Вставити
 Save attachment…	Mail		Зберегти вкладення…
 Include file attributes in attachments	Mail		Включити файлові атрибути у вкладеннях
-OK	Mail		OK
+OK	Mail		Гаразд
 Send	Mail		Відіслати
 Show icons only	Mail		Показувати тільки іконки
 Removing attachments from a forwarded mail is not yet implemented!\nIt will not yet work correctly.	Mail		Видалення вкладень з листа що пересилається не підтримується!\nЦе не працюватиме правильно.
@@ -52,13 +52,14 @@ Print…	Mail		Друкувати…
 Warn unencodable:	Mail		Увага нерозкодоване:
 Quit	Mail		Завершити
 %n - Full name	Mail		%n - Повне ім'я
+Read 	Mail		 Читати 
 Trash	Mail		Кошик
 Default account:	Mail		Аккаунт по замовчуванню:
 Size:	Mail		Розмір:
 Account from mail	Mail		Аккаунт для пошти
 Edit signatures…	Mail		Редагувати підписи…
 New	Mail		Новий
-Attachments: 	Mail		Вкладення: 
+Attachments: 	Mail		Вкладення:  
 Set to %s	Mail		Встановити в %s
 Forward	Mail		Переслати
 E-mail draft could not be saved!	Mail		Чорновик листа не збережено!
@@ -74,13 +75,13 @@ Leave same	Mail		Зберегти саме це
 About Mail…	Mail		Про Пошту…
 Page setup…	Mail		Налаштувати сторінку…
 Revert	Mail		Повернути
-None	Mail		Не вибрано
+None	Mail		Жоден
 Copy link location	Mail		Скопіювати розміщення посилання
 Show header	Mail		Показати заголовок
 %e - E-mail address	Mail		%e - поштова адреса
 Resend	Mail		Відіслати повторно
 Show raw message	Mail		Показати лист
-\\n - Newline	Mail		\\n - Нова лінія
+\\n - Newline	Mail		\\n - Нова стрічка
 Start now	Mail		Запустити зараз
 Close	Mail		Закрити
 The mail_daemon is not running. The message is queued and will be sent when the mail_daemon is started.	Mail		 Mail_daemon не запущено. Лист стоїть в черзі і буде відправлений після запуску демона.
@@ -113,7 +114,7 @@ Queries	Mail		Запити
 Do you wish to save this message as a draft before closing?	Mail		Бажаєте зберегти цей лист як чорновик перед закриттям?
 Save	Mail		Зберегти
 Random	Mail		Випадковий
-Close and 	Mail		Закрити і
+Close and 	Mail		Закрити і 
 Save as draft	Mail		Зберегти як чорновик
 The mail_daemon could not be started:\n\t	Mail		 Mail_daemon не запущено:\n\t
 Open attachment	Mail		Відкрити вкладення
@@ -136,3 +137,8 @@ Select all	Mail		Виділити все
 An error occurred trying to save this signature.	Mail		Помилка при збереженні цього підпису.
 View	Mail		Вигляд
 Mail couldn't find its dictionary.	Mail		Пошта не може знайти цього словника.
+Mail\n\n	Mail		Пошта\n\n
+Written by Robert Polic.\nEnhanced by the Dr. Zoidberg crew.\n\nCopyright 1991-2001, Be Incorporated.\nCopyright 2005-2010 Haiku, Inc.\n	Mail		Автор Robert Polic.\nПокращення команди Dr. Zoidberg .\n\nCopyright 1991-2001, Be Incorporated.\nCopyright 2005-2010 Haiku, Inc.\n
+Text wrapping:	Mail		Обтікання тексту:
+File	Mail		Файл
+Mail	Mail		Пошта

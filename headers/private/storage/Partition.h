@@ -11,7 +11,6 @@
 #include <DiskDeviceDefs.h>
 #include <Messenger.h>
 #include <Mime.h>
-#include <ObjectList.h>
 
 
 class BBitmap;
@@ -20,6 +19,7 @@ class BPartitionParameterEditor;
 class BDiskDeviceVisitor;
 class BDiskSystem;
 class BMutablePartition;
+template <class T> class BObjectList;
 class BPartitioningInfo;
 class BPath;
 class BVolume;

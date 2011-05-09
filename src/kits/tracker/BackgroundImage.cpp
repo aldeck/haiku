@@ -66,7 +66,7 @@ BackgroundImage::GetBackgroundImage(const BNode *node, bool isDesktop)
 	attr_info info;
 	if (node->GetAttrInfo(kBackgroundImageInfo, &info) != B_OK)
 		return NULL;
-	
+
 	BMessage container;
 	char *buffer = new char [info.size];
 
@@ -88,7 +88,7 @@ BackgroundImage::GetBackgroundImage(const BNode *node, bool isDesktop)
 		BPoint offset;
 		BBitmap *bitmap = NULL;
 
-		if (container.FindString(kBackgroundImageInfoPath, index, &path) == B_OK) {	
+		if (container.FindString(kBackgroundImageInfoPath, index, &path) == B_OK) {
 			bitmap = BTranslationUtils::GetBitmap(path);
 			if (!bitmap) {
 				PRINT(("failed to load background bitmap from path\n"));
@@ -146,14 +146,14 @@ BackgroundImage::~BackgroundImage()
 }
 
 
-void 
+void
 BackgroundImage::Add(BackgroundImageInfo *info)
 {
 	fBitmapForWorkspaceList.AddItem(info);
 }
 
 
-void 
+void
 BackgroundImage::Show(BView *view, int32 workspace)
 {
 	fView = view;
@@ -167,7 +167,7 @@ BackgroundImage::Show(BView *view, int32 workspace)
 	}
 }
 
-void 
+void
 BackgroundImage::Show(BackgroundImageInfo *info, BView *view)
 {
 	BPoseView *poseView = dynamic_cast<BPoseView *>(view);
@@ -199,7 +199,18 @@ BackgroundImage::Show(BackgroundImageInfo *info, BView *view)
 			// else fall thru
 		case kScaledToFit:
 			if (fIsDesktop) {
-				destinationBitmapBounds = viewBounds;
+				if (BRectRatio(destinationBitmapBounds)
+						>= BRectRatio(viewBounds)) {
+					float overlap = BRectHorizontalOverlap(viewBounds,
+						destinationBitmapBounds);
+					destinationBitmapBounds.Set(-overlap, 0,
+						viewBounds.Width() + overlap, viewBounds.Height());
+				} else {
+					float overlap = BRectVerticalOverlap(viewBounds,
+						destinationBitmapBounds);
+					destinationBitmapBounds.Set(0, -overlap,
+						viewBounds.Width(), viewBounds.Height() + overlap);
+				}
 				followFlags = B_FOLLOW_ALL;
 				break;
 			}
@@ -216,7 +227,7 @@ BackgroundImage::Show(BackgroundImageInfo *info, BView *view)
 			tile = B_TILE_BITMAP;
 			break;
 	}
-	
+
 	// switch to the bitmap and force a redraw
 	view->SetViewBitmap(info->fBitmap, bitmapBounds, destinationBitmapBounds,
 		followFlags, tile);
@@ -224,7 +235,31 @@ BackgroundImage::Show(BackgroundImageInfo *info, BView *view)
 	fShowingBitmap = info;
 }
 
-void 
+
+float
+BackgroundImage::BRectRatio(BRect rect)
+{
+	return rect.Width() / rect.Height();
+}
+
+
+float
+BackgroundImage::BRectHorizontalOverlap(BRect hostRect, BRect resizedRect)
+{
+	return ((hostRect.Height() / resizedRect.Height() * resizedRect.Width())
+		- hostRect.Width()) / 2;
+}
+
+
+float
+BackgroundImage::BRectVerticalOverlap(BRect hostRect, BRect resizedRect)
+{
+	return ((hostRect.Width() / resizedRect.Width() * resizedRect.Height())
+		- hostRect.Height()) / 2;
+}
+
+
+void
 BackgroundImage::Remove()
 {
 	if (fShowingBitmap) {
@@ -245,7 +280,7 @@ BackgroundImage::ImageInfoForWorkspace(int32 workspace) const
 
 	for ( ; workspace; workspace--)
 		workspaceMask *= 2;
-	
+
 	int32 count = fBitmapForWorkspaceList.CountItems();
 
 	// do a simple lookup for the most likely candidate bitmap -
@@ -259,11 +294,11 @@ BackgroundImage::ImageInfoForWorkspace(int32 workspace) const
 		if (info->fWorkspace & workspaceMask)
 			result = info;
 	}
-	
+
 	return result;
 }
 
-void 
+void
 BackgroundImage::WorkspaceActivated(BView *view, int32 workspace, bool state)
 {
 	if (!fIsDesktop)
@@ -273,7 +308,7 @@ BackgroundImage::WorkspaceActivated(BView *view, int32 workspace, bool state)
 	if (!state)
 		// we only care comming into a new workspace, not leaving one
 		return;
-		
+
 	BackgroundImageInfo *info = ImageInfoForWorkspace(workspace);
 
 	if (info != fShowingBitmap) {
@@ -289,12 +324,12 @@ BackgroundImage::WorkspaceActivated(BView *view, int32 workspace, bool state)
 	}
 }
 
-void 
+void
 BackgroundImage::ScreenChanged(BRect, color_space)
 {
 	if (!fIsDesktop || !fShowingBitmap)
 		return;
-	
+
 	if (fShowingBitmap->fMode == kCentered) {
 		BRect viewBounds(fView->Bounds());
 		BRect bitmapBounds(fShowingBitmap->fBitmap->Bounds());
@@ -317,7 +352,7 @@ BackgroundImage::Refresh(BackgroundImage *oldBackgroundImage,
 		oldBackgroundImage->Remove();
 		delete oldBackgroundImage;
 	}
-	
+
 	BackgroundImage *result = GetBackgroundImage(fromNode, desktop);
 	if (result && poseView->ViewMode() != kListMode)
 		result->Show(poseView, current_workspace());

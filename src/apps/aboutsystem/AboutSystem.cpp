@@ -86,10 +86,22 @@ typedef struct
 
 static const Translation gTranslations[] =
 {
+	{ "ar",
+		"Khaled Berraoui (khallebal)\n"
+	},
+	{ "be",
+		"Michael Bulash\n"
+	},
 	{ "bg",
+		"Ognyan Valeri Angelov\n"
 		"cssvb94\n"
 	},
+	{ "cs",
+		"Pavel Drotár\n"
+		"Matěj Kocián\n"
+	},
 	{ "nl",
+		"Floris Kint\n"
 		"Meanwhile\n"
 	},
 	{ "eo",
@@ -102,17 +114,27 @@ static const Translation gTranslations[] =
 	{ "fr",
 		"Jean-Loïc Charroud\n"
 		"Adrien Destugues (PulkoMandy)\n"
+		"Florent Revest\n"
 	},
 	{ "da",
 		"Brian Matzon\n"
 	},
 	{ "de",
 		"Colin Günther\n"
+		"Mirko Israel\n"
 		"leszek\n"
 		"Christian Morgenroth\n"
 		"Joachim Seemer (Humdinger)\n"
 		"Matthias Spreiter\n"
 		"svend\n"
+	},
+	{ "hi",
+		"Abhishek Arora\n"
+		"Jayneil Dalal\n"
+		"Atharva Lath\n"
+	},
+	{ "hr",
+		"zvacet\n"
 	},
 	{ "hu",
 		"Zoltán Mizsei (miqlas)\n"
@@ -120,21 +142,31 @@ static const Translation gTranslations[] =
 	},
 	{ "it",
 		"Andrea Bernardi\n"
+		"Dario Casalinuovo\n"
+		"Francesco Franchina\n"
+		"Lorenzo Frezza\n"
+		"Mometto Nicola\n"
+		"Michael Peppers\n"
 	},
 	{ "ja",
 		"Satoshi Eguchi\n"
+		"Shota Fukumori\n"
 		"Hironori Ichimiya\n"
 		"Jorge G. Mare (Koki)\n"
 		"Takashi Murai\n"
 		"SHINTA\n"
 		"Hiroyuki Tsutsumi\n"
+		"Hiromu Yakura\n"
 		"The JPBE.net user group\n"
 	},
 	{ "lt",
 		"Algirdas Buckus\n"
 	},
 	{ "pl",
+		"Szymon Barczak\n"
+		"Grzegorz Dąbrowski\n"
 		"Hubert Hareńczyk\n"
+		"Krzysztof Miemiec\n"
 		"Artur Wyszyński\n"
 	},
 	{ "pt",
@@ -142,18 +174,27 @@ static const Translation gTranslations[] =
 		"Vasco Costa (gluon)\n"
 		"Michael Vinícius de Oliveira (michaelvo)\n"
 	},
+	{ "ro",
+		"Victor Carbune\n"
+		"Florentina Mușat\n"
+	},
 	{ "ru",
 		"Tatyana Fursic (iceid)\n"
 		"StoroZ Gneva\n"
-		"Rustam Islamov (RISC aka HaikuBot)\n"
+		"Rodastahm Islamov (RISC)\n"
 		"Eugene Katashov (mrNoisy)\n"
 		"Reznikov Sergei (Diver)\n"
 		"Michael Smirnov\n"
+		"Vladimir Vasilenko\n"
 	},
 	{ "es",
+		"Pedro Arregui\n"
+		"Zola Bridges\n"
 		"Nicolás C (CapitanPico)\n"
 		"Oscar Carballal (oscarcp)\n"
 		"Miguel Zúñiga González (miguel~1.mx)\n"
+		"Luis Gustavo Lira\n"
+		"Victor Madariaga\n"
 		"César Ortiz Pantoja (ccortiz)\n"
 	},
 	{ "sv",
@@ -161,8 +202,12 @@ static const Translation gTranslations[] =
 		"Jimmy Olsson (phalax)\n"
 		"Victor Widell\n"
 	},
+	{ "tr",
+		"Aras Ergus\n"
+	},
 	{ "uk",
 		"Alex Rudyk (totish)\n"
+		"Oleg Varunok\n"
 	},
 	{ "zh",
 		"Pengfei Han (kurain)\n"
@@ -999,12 +1044,15 @@ AboutView::_CreateCreditsView()
 		"Andrea Anzani\n"
 		"Sean Bartell\n"
 		"Andre Braga\n"
+		"Michael Bulash\n"
 		"Bruce Cameron\n"
 		"Greg Crain\n"
+		"Michael Davidson\n"
 		"David Dengg\n"
 		"John Drinkwater\n"
 		"Cian Duffy\n"
 		"Vincent Duvert\n"
+		"Mikael Eiman\n"
 		"Fredrik Ekdahl\n"
 		"Joshua R. Elsasser\n"
 		"Atis Elsts\n"
@@ -1012,10 +1060,13 @@ AboutView::_CreateCreditsView()
 		"Christian Fasshauer\n"
 		"Andreas Färber\n"
 		"Janito Ferreira Filho\n"
+		"Pier Luigi Fiorini\n"
 		"Marc Flerackers\n"
 		"Michele Frau (zuMi)\n"
+		"Deyan Genovski\n"
 		"Pete Goodeve\n"
 		"Lucian Adrian Grijincu\n"
+		"Sean Healy\n"
 		"Matthijs Hollemans\n"
 		"Mathew Hounsell\n"
 		"Morgan Howe\n"
@@ -1046,6 +1097,7 @@ AboutView::_CreateCreditsView()
 		"Marius Middelthon\n"
 		"Marco Minutoli\n"
 		"Misza\n"
+		"Hamish Morrison\n"
 		"MrSiggler\n"
 		"Alan Murta\n"
 		"Raghuram Nagireddy\n"
@@ -1068,6 +1120,7 @@ AboutView::_CreateCreditsView()
 		"Reznikov Sergei\n"
 		"Zousar Shaker\n"
 		"Caitlin Shaw\n"
+		"Geoffry Song\n"
 		"Daniel Switkin\n"
 		"Atsushi Takamatsu\n"
 		"James Urquhart\n"

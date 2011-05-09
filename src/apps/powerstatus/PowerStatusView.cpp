@@ -1,10 +1,11 @@
 /*
- * Copyright 2006-2009, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2010, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Axel Dörfler, axeld@pinc-software.de
  *		Clemens Zeidler, haiku@Clemens-Zeidler.de
+ *		Alexander von Gluck, kallisti5@unixzen.com 
  */
 
 
@@ -17,6 +18,7 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Catalog.h>
 #include <ControlLook.h>
 #include <Deskbar.h>
 #include <Dragger.h>
@@ -35,7 +37,12 @@
 #include "PowerStatus.h"
 
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "PowerStatus"
+
+
 extern "C" _EXPORT BView *instantiate_deskbar_item(void);
+extern const char* kDeskbarItemName;
 
 const uint32 kMsgToggleLabel = 'tglb';
 const uint32 kMsgToggleTime = 'tgtm';
@@ -44,7 +51,6 @@ const uint32 kMsgToggleExtInfo = 'texi';
 
 const uint32 kMinIconWidth = 16;
 const uint32 kMinIconHeight = 16;
-
 
 PowerStatusView::PowerStatusView(PowerStatusDriverInterface* interface,
 		BRect frame, int32 resizingMode,  int batteryID, bool inDeskbar)
@@ -177,8 +183,10 @@ PowerStatusView::_DrawBattery(BRect rect)
 		rect.left - 1, floorf(rect.bottom - rect.Height() / 4)));
 
 	int32 percent = fPercent;
-	if (percent > 100 || percent < 0 || !fHasBattery)
+	if (percent > 100)
 		percent = 100;
+	else if (percent < 0 || !fHasBattery)
+		percent = 0;
 
 	if (percent > 0) {
 		rect.InsetBy(gap, gap);
@@ -332,18 +340,18 @@ PowerStatusView::Update(bool force)
 
 	_GetBatteryInfo(&fBatteryInfo, fBatteryID);
 
-	if (fBatteryInfo.full_capacity != 0)
+	fHasBattery = (fBatteryInfo.state & BATTERY_CRITICAL_STATE) == 0;
+
+	if (fBatteryInfo.full_capacity > 0 && fHasBattery) {
 		fPercent = (100 * fBatteryInfo.capacity) / fBatteryInfo.full_capacity;
-
-	fTimeLeft = fBatteryInfo.time_left;
-	if ((fBatteryInfo.state & BATTERY_CHARGING) != 0)
-		fOnline = true;
-	else
+		fOnline = (fBatteryInfo.state & BATTERY_CHARGING) != 0;
+		fTimeLeft = fBatteryInfo.time_left;
+	} else {
+		fPercent = 0;
 		fOnline = false;
+		fTimeLeft = false;
+	}
 
-	// TODO: if critical really means that, its name should be changed...
-	fHasBattery = (fBatteryInfo.state & BATTERY_CRITICAL_STATE) == 0
-		&& fPercent >= 0;
 
 	if (fInDeskbar) {
 		// make sure the tray icon is large enough
@@ -373,16 +381,16 @@ PowerStatusView::Update(bool force)
 
 				const char* state = NULL;
 				if ((fBatteryInfo.state & BATTERY_CHARGING) != 0)
-					state = "charging";
+					state = B_TRANSLATE("charging");
 				else if ((fBatteryInfo.state & BATTERY_DISCHARGING) != 0)
-					state = "discharging";
+					state = B_TRANSLATE("discharging");
 
 				if (state != NULL) {
 					snprintf(text + length, sizeof(text) - length, "\n%s",
 						state);
 				}
 			} else
-				strcpy(text, "no battery");
+				strcpy(text, B_TRANSLATE("no battery"));
 			SetToolTip(text);
 		}
 		if (width == 0) {
@@ -570,25 +578,27 @@ PowerStatusReplicant::MouseDown(BPoint point)
 	menu->SetFont(be_plain_font);
 
 	BMenuItem* item;
-	menu->AddItem(item = new BMenuItem("Show text label",
+	menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show text label"),
 		new BMessage(kMsgToggleLabel)));
 	if (fShowLabel)
 		item->SetMarked(true);
-	menu->AddItem(item = new BMenuItem("Show status icon",
+	menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show status icon"),
 		new BMessage(kMsgToggleStatusIcon)));
 	if (fShowStatusIcon)
 		item->SetMarked(true);
-	menu->AddItem(new BMenuItem(!fShowTime ? "Show time" : "Show percent",
+	menu->AddItem(new BMenuItem(!fShowTime ? B_TRANSLATE("Show time") :
+	B_TRANSLATE("Show percent"),
 		new BMessage(kMsgToggleTime)));
 
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem("Battery info" B_UTF8_ELLIPSIS,
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Battery info" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgToggleExtInfo)));
 
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem("About" B_UTF8_ELLIPSIS,
+	menu->AddItem(new BMenuItem(B_TRANSLATE("About" B_UTF8_ELLIPSIS),
 		new BMessage(B_ABOUT_REQUESTED)));
-	menu->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED)));
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"), 
+		new BMessage(B_QUIT_REQUESTED)));
 	menu->SetTargetForItems(this);
 
 	ConvertToScreen(&point);
@@ -599,9 +609,10 @@ PowerStatusReplicant::MouseDown(BPoint point)
 void
 PowerStatusReplicant::_AboutRequested()
 {
-	BAlert* alert = new BAlert("about", "PowerStatus\n"
-		"written by Axel Dörfler, Clemens Zeidler\n"
-		"Copyright 2006, Haiku, Inc.\n", "OK");
+	BAlert* alert = new BAlert(B_TRANSLATE("About"),
+		B_TRANSLATE("PowerStatus\n"
+			"written by Axel Dörfler, Clemens Zeidler\n"
+			"Copyright 2006, Haiku, Inc.\n"), B_TRANSLATE("OK"));
 	BTextView *view = alert->TextView();
 	BFont font;
 
@@ -610,7 +621,7 @@ PowerStatusReplicant::_AboutRequested()
 	view->GetFont(&font);
 	font.SetSize(18);
 	font.SetFace(B_BOLD_FACE);
-	view->SetFontAndColor(0, 11, &font);
+	view->SetFontAndColor(0, strlen(B_TRANSLATE("PowerStatus")), &font);
 
 	alert->Go();
 }

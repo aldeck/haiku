@@ -189,6 +189,8 @@ KeyboardFilter::Filter(BMessage* message, EventTarget** _target,
 			return B_SKIP_MESSAGE;
 		}
 
+		bool takeWindow = (modifiers & B_SHIFT_KEY) != 0
+			|| fDesktop->MouseEventWindow() != NULL;
 		if (key >= B_F1_KEY && key <= B_F12_KEY) {
 			// workspace change
 
@@ -201,15 +203,14 @@ KeyboardFilter::Filter(BMessage* message, EventTarget** _target,
 			{
 				STRACE(("Set Workspace %ld\n", key - 1));
 
-				fDesktop->SetWorkspaceAsync(key - B_F1_KEY,
-					(modifiers & B_SHIFT_KEY) != 0);
+				fDesktop->SetWorkspaceAsync(key - B_F1_KEY, takeWindow);
 				return B_SKIP_MESSAGE;
 			}
 		} if (key == 0x11
 			&& (modifiers & (B_COMMAND_KEY | B_CONTROL_KEY | B_OPTION_KEY))
 					== B_COMMAND_KEY) {
 			// switch to previous workspace (command + `)
-			fDesktop->SetWorkspaceAsync(-1, (modifiers & B_SHIFT_KEY) != 0);
+			fDesktop->SetWorkspaceAsync(-1, takeWindow);
 			return B_SKIP_MESSAGE;
 		}
 	}
@@ -220,9 +221,7 @@ KeyboardFilter::Filter(BMessage* message, EventTarget** _target,
 		|| message->what == B_INPUT_METHOD_EVENT)
 		_UpdateFocus(key, modifiers, _target);
 
-	fDesktop->KeyEvent(message->what, key, modifiers);
-
-	return B_DISPATCH_MESSAGE;
+	return fDesktop->KeyEvent(message->what, key, modifiers);
 }
 
 
@@ -413,6 +412,7 @@ Desktop::Desktop(uid_t userID, const char* targetScreen)
 	fSharedReadOnlyArea(-1),
 	fApplicationsLock("application list"),
 	fShutdownSemaphore(-1),
+	fShutdownCount(0),
 	fScreenLock("screen lock"),
 	fDirectScreenLock("direct screen lock"),
 	fDirectScreenTeam(-1),
@@ -463,6 +463,8 @@ Desktop::~Desktop()
 	delete_area(fSharedReadOnlyArea);
 	delete_port(fMessagePort);
 	gFontManager->DetachUser(fUserID);
+
+	free(fTargetScreen);
 }
 
 
@@ -577,7 +579,7 @@ Desktop::BroadcastToAllWindows(int32 code)
 }
 
 
-void
+filter_result
 Desktop::KeyEvent(uint32 what, int32 key, int32 modifiers)
 {
 	if (LockAllWindows()) {
@@ -593,7 +595,10 @@ Desktop::KeyEvent(uint32 what, int32 key, int32 modifiers)
 		UnlockAllWindows();
 	}
 
-	NotifyKeyPressed(what, key, modifiers);
+	if (NotifyKeyPressed(what, key, modifiers))
+		return B_SKIP_MESSAGE;
+
+	return B_DISPATCH_MESSAGE;
 }
 
 
@@ -671,7 +676,7 @@ Desktop::SetScreenMode(int32 workspace, int32 id, const display_mode& mode,
 	if (workspace == B_CURRENT_WORKSPACE_INDEX)
 		workspace = fCurrentWorkspace;
 
-	if (workspace < 0 || workspace > kMaxWorkspaces)
+	if (workspace < 0 || workspace >= kMaxWorkspaces)
 		return B_BAD_VALUE;
 
 	Screen* screen = fVirtualScreen.ScreenByID(id);
@@ -740,7 +745,7 @@ Desktop::GetScreenMode(int32 workspace, int32 id, display_mode& mode)
 	if (workspace == B_CURRENT_WORKSPACE_INDEX)
 		workspace = fCurrentWorkspace;
 
-	if (workspace < 0 || workspace > kMaxWorkspaces)
+	if (workspace < 0 || workspace >= kMaxWorkspaces)
 		return B_BAD_VALUE;
 
 	if (workspace == fCurrentWorkspace) {
@@ -772,7 +777,7 @@ Desktop::GetScreenFrame(int32 workspace, int32 id, BRect& frame)
 	if (workspace == B_CURRENT_WORKSPACE_INDEX)
 		workspace = fCurrentWorkspace;
 
-	if (workspace < 0 || workspace > kMaxWorkspaces)
+	if (workspace < 0 || workspace >= kMaxWorkspaces)
 		return B_BAD_VALUE;
 
 	if (workspace == fCurrentWorkspace) {
@@ -949,10 +954,13 @@ Desktop::WorkspaceFrame(int32 index) const
 		frame = fVirtualScreen.Frame();
 	else if (index >= 0 && index < fSettings->WorkspacesCount()) {
 		BMessage screenData;
-		fSettings->WorkspacesMessage(index)->FindMessage("screen", &screenData);
-		if (screenData.FindRect("frame", &frame) != B_OK)
+		if (fSettings->WorkspacesMessage(index)->FindMessage("screen",
+				&screenData) != B_OK
+			|| screenData.FindRect("frame", &frame) != B_OK) {
 			frame = fVirtualScreen.Frame();
+		}
 	}
+
 	return frame;
 }
 
@@ -3357,9 +3365,13 @@ Desktop::_SetWorkspace(int32 index, bool moveFocusWindow)
 	int32 previousIndex = fCurrentWorkspace;
 	rgb_color previousColor = fWorkspaces[fCurrentWorkspace].Color();
 	bool movedMouseEventWindow = false;
-	Window* movedWindow = fMouseEventWindow;
-	if (movedWindow == NULL && moveFocusWindow)
-		movedWindow = FocusWindow();
+	Window* movedWindow = NULL;
+	if (moveFocusWindow) {
+		if (fMouseEventWindow != NULL)
+			movedWindow = fMouseEventWindow;
+		else
+			movedWindow = FocusWindow();
+	}
 
 	if (movedWindow != NULL) {
 		if (movedWindow->IsNormal()) {

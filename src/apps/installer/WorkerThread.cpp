@@ -643,9 +643,17 @@ TargetVisitor::Visit(BPartition *partition, int32 level)
 	// TODO: After running DriveSetup and doing another scan, it would
 	// be great to pick the partition which just appeared!
 
-	// Only BFS partitions are valid targets, but we want to display the
+	bool isBootPartition = false;
+	if (partition->IsMounted()) {
+		BPath mountPoint;
+		partition->GetMountPoint(&mountPoint);
+		isBootPartition = strcmp(BOOT_PATH, mountPoint.Path()) == 0;
+	}
+
+	// Only non-boot BFS partitions are valid targets, but we want to display the
 	// other partitions as well, in order not to irritate the user.
-	bool isValidTarget = partition->ContentType() != NULL
+	bool isValidTarget = isBootPartition == false
+		&& partition->ContentType() != NULL
 		&& strcmp(partition->ContentType(), kPartitionTypeBFS) == 0;
 
 	char label[255];

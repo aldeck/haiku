@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2010, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2011, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -469,7 +469,7 @@ DHCPClient::_Negotiate(dhcp_state state)
 	BNetworkAddress local;
 	local.SetToWildcard(AF_INET, DHCP_CLIENT_PORT);
 
-	// Enable reusing the port . This is needed in case there is more
+	// Enable reusing the port. This is needed in case there is more
 	// than 1 interface that needs to be configured. Note that the only reason
 	// this works is because there is code below to bind to a specific
 	// interface.
@@ -522,8 +522,10 @@ DHCPClient::_Negotiate(dhcp_state state)
 
 	while (state != ACKNOWLEDGED) {
 		char buffer[2048];
+		struct sockaddr_in from;
+		socklen_t fromLength = sizeof(from);
 		ssize_t bytesReceived = recvfrom(socket, buffer, sizeof(buffer),
-			0, NULL, NULL);
+			0, (struct sockaddr*)&from, &fromLength);
 		if (bytesReceived < 0 && errno == B_TIMED_OUT) {
 			// depending on the state, we'll just try again
 			if (!_TimeoutShift(socket, timeout, tries)) {
@@ -551,8 +553,9 @@ DHCPClient::_Negotiate(dhcp_state state)
 			continue;
 		}
 
-		syslog(LOG_DEBUG, "DHCP received %s for %s\n",
-			dhcp_message::TypeToString(message->Type()), Device());
+		syslog(LOG_DEBUG, "Received %s from %s for %s\n",
+			dhcp_message::TypeToString(message->Type()),
+				_AddressToString(from.sin_addr.s_addr).String(), Device());
 
 		switch (message->Type()) {
 			case DHCP_NONE:
@@ -569,6 +572,8 @@ DHCPClient::_Negotiate(dhcp_state state)
 				// collect interface options
 
 				fAssignedAddress = message->your_address;
+				syslog(LOG_INFO, "  your_address: %s\n",
+						_AddressToString(fAssignedAddress).String());
 
 				fConfiguration.MakeEmpty();
 				fConfiguration.AddString("device", Device());
@@ -688,18 +693,24 @@ DHCPClient::_ParseOptions(dhcp_message& message, BMessage& address,
 		// iterate through all options
 		switch (option) {
 			case OPTION_ROUTER_ADDRESS:
+				syslog(LOG_DEBUG, "  gateway: %s\n",
+					_AddressToString(data).String());
 				address.AddString("gateway", _AddressToString(data));
 				break;
 			case OPTION_SUBNET_MASK:
+				syslog(LOG_DEBUG, "  subnet: %s\n",
+					_AddressToString(data).String());
 				address.AddString("mask", _AddressToString(data));
 				break;
 			case OPTION_BROADCAST_ADDRESS:
+				syslog(LOG_DEBUG, "  broadcast: %s\n",
+					_AddressToString(data).String());
 				address.AddString("broadcast", _AddressToString(data));
 				break;
 			case OPTION_DOMAIN_NAME_SERVER:
 			{
 				for (uint32 i = 0; i < size / 4; i++) {
-					syslog(LOG_INFO, "DHCP for %s got DNS: %s\n", Device(),
+					syslog(LOG_DEBUG, "  nameserver[%d]: %s\n", i,
 						_AddressToString(&data[i * 4]).String());
 					resolverConfiguration.AddString("nameserver",
 						_AddressToString(&data[i * 4]).String());
@@ -709,27 +720,29 @@ DHCPClient::_ParseOptions(dhcp_message& message, BMessage& address,
 				break;
 			}
 			case OPTION_SERVER_ADDRESS:
+				syslog(LOG_DEBUG, "  server: %s\n",
+					_AddressToString(data).String());
 				fServer.SetAddress(*(in_addr_t*)data);
 				break;
 
 			case OPTION_ADDRESS_LEASE_TIME:
-				syslog(LOG_INFO, "lease time of %lu seconds\n",
-					htonl(*(uint32*)data));
-				fLeaseTime = htonl(*(uint32*)data) * 1000000LL;
+				syslog(LOG_DEBUG, "  lease time: %lu seconds\n",
+					ntohl(*(uint32*)data));
+				fLeaseTime = ntohl(*(uint32*)data) * 1000000LL;
 				break;
 			case OPTION_RENEWAL_TIME:
-				syslog(LOG_INFO, "renewal time of %lu seconds\n",
-					htonl(*(uint32*)data));
-				fRenewalTime = htonl(*(uint32*)data) * 1000000LL;
+				syslog(LOG_DEBUG, "  renewal time: %lu seconds\n",
+					ntohl(*(uint32*)data));
+				fRenewalTime = ntohl(*(uint32*)data) * 1000000LL;
 				break;
 			case OPTION_REBINDING_TIME:
-				syslog(LOG_INFO, "rebinding time of %lu seconds\n",
-					htonl(*(uint32*)data));
-				fRebindingTime = htonl(*(uint32*)data) * 1000000LL;
+				syslog(LOG_DEBUG, "  rebinding time: %lu seconds\n",
+					ntohl(*(uint32*)data));
+				fRebindingTime = ntohl(*(uint32*)data) * 1000000LL;
 				break;
 
 			case OPTION_HOST_NAME:
-				syslog(LOG_INFO, "DHCP host name: \"%.*s\"\n", (int)size,
+				syslog(LOG_DEBUG, "  host name: \"%.*s\"\n", (int)size,
 					(const char*)data);
 				break;
 
@@ -739,7 +752,7 @@ DHCPClient::_ParseOptions(dhcp_message& message, BMessage& address,
 				strlcpy(domain, (const char*)data,
 					min_c(size + 1, sizeof(domain)));
 
-				syslog(LOG_INFO, "DHCP domain name: \"%s\"\n", domain);
+				syslog(LOG_DEBUG, "  domain name: \"%s\"\n", domain);
 
 				resolverConfiguration.AddString("domain", domain);
 				break;
@@ -749,12 +762,13 @@ DHCPClient::_ParseOptions(dhcp_message& message, BMessage& address,
 				break;
 
 			case OPTION_ERROR_MESSAGE:
-				syslog(LOG_INFO, "DHCP error message: \"%.*s\"\n", (int)size,
+				syslog(LOG_INFO, "  error message: \"%.*s\"\n", (int)size,
 					(const char*)data);
 				break;
 
 			default:
-				syslog(LOG_INFO, "unknown option %lu\n", (uint32)option);
+				syslog(LOG_DEBUG, "  UNKNOWN OPTION %lu (0x%x)\n",
+					(uint32)option, (uint32)option);
 				break;
 		}
 	}
@@ -839,7 +853,7 @@ DHCPClient::_TimeoutShift(int socket, time_t& timeout, uint32& tries)
 		if (++tries > 2)
 			return false;
 	}
-	syslog(LOG_DEBUG, "DHCP timeout shift for %s: %lu secs (try %lu)\n",
+	syslog(LOG_DEBUG, "Timeout shift for %s: %lu secs (try %lu)\n",
 		Device(), timeout, tries);
 
 	struct timeval value;
@@ -871,8 +885,9 @@ status_t
 DHCPClient::_SendMessage(int socket, dhcp_message& message,
 	const BNetworkAddress& address) const
 {
-	syslog(LOG_DEBUG, "DHCP send message %s for %s\n",
-		dhcp_message::TypeToString(message.Type()), Device());
+	syslog(LOG_DEBUG, "Send %s to %s on %s\n",
+		dhcp_message::TypeToString(message.Type()),
+			address.ToString().String(), Device());
 
 	ssize_t bytesSent = sendto(socket, &message, message.Size(),
 		address.IsBroadcast() ? MSG_BCAST : 0, address, address.Length());

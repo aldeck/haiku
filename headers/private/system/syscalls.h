@@ -137,7 +137,8 @@ extern status_t		_kern_wait_for_team(team_id team, status_t *_returnCode);
 extern thread_id	_kern_wait_for_child(thread_id child, uint32 flags,
 						int32 *_reason, status_t *_returnCode);
 extern status_t		_kern_exec(const char *path, const char* const* flatArgs,
-						size_t flatArgsSize, int32 argCount, int32 envCount);
+						size_t flatArgsSize, int32 argCount, int32 envCount,
+						mode_t umask);
 extern thread_id	_kern_fork(void);
 extern pid_t		_kern_process_info(pid_t process, int32 which);
 extern pid_t		_kern_setpgid(pid_t process, pid_t group);
@@ -173,6 +174,11 @@ extern status_t		_kern_get_team_usage_info(team_id team, int32 who,
 						team_usage_info *info, size_t size);
 extern status_t		_kern_get_extended_team_info(team_id teamID, uint32 flags,
 						void* buffer, size_t size, size_t* _sizeNeeded);
+
+extern status_t		_kern_start_watching_system(int32 object, uint32 flags,
+						port_id port, int32 token);
+extern status_t		_kern_stop_watching_system(int32 object, uint32 flags,
+						port_id port, int32 token);
 
 extern status_t		_kern_block_thread(uint32 flags, bigtime_t timeout);
 extern status_t		_kern_unblock_thread(thread_id thread, status_t status);

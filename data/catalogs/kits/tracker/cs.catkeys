@@ -1,0 +1,119 @@
+1	czech	x-vnd.Haiku-libtracker	4081325678
+%Ld bytes	WidgetAttributeText		%Ld bytů
+%name info	InfoWindow	InfoWindow Title	%name info
+(%SizeProcessed of %TotalSize, %BytesPerSecond/s)	StatusWindow		(%SizeProcessed z %TotalSize, %BytesPerSecond/s)
+(Finish: %time - Over %finishtime hours left)	StatusWindow		(Dokončeno: %time - Přes %finishtime hodin zbývá)
+32 x 32	ContainerWindow		32 x 32
+Add printer…	ContainerWindow		Přidat tiskárnu...
+Add-ons	FilePanelPriv		Add-ony
+Add-ons	VolumeWindow		Vylepšení
+All disks	AutoMounterSettings		Všechny disky
+Are you sure you want to move or copy the selected item(s) to this folder?	PoseView		Opravdu chcete přesunout nebo kopírovat vybrané položky do této složky?
+Cancel	FSUtils		Zrušit
+Cannot unmount the boot volume \"%name\".	FSUtils		Nelze odpojit zaváděcí svazek \"%name\".
+Clean up	DeskWindow		Vyčistit
+Close	VolumeWindow		Zavřít
+Close all in workspace	ContainerWindow		Zavřít na všech plochách
+Copy to	ContainerWindow		Kopírovat do
+Could not open \"%document\" because application \"%app\" is in the Trash. 	FSUtils		Nelze otevřít \"%document\" protože aplikace \"%app\" je v Koši.
+Could not open \"%document\" with application \"%app\" (Missing libraries: %library). \n	FSUtils		Nelze otevřít \"%document\" aplikací \"%app\" (Chybějící knihovny: %library).\n
+Create %s clipping	PoseView		Vytvořit %s výstřižek
+Create link	ContainerWindow		Vytvořit odkaz
+Create link here	ContainerWindow		Vytvořit zde odkaz
+Created	ContainerWindow		Vytvořeno
+Cut	FilePanelPriv		Vyjmout
+Decrease size	ContainerWindow		Zmenšit velikost
+Decrease size	DeskWindow		Zmenšit velikost
+Delete	ContainerWindow		Odstranit
+Delete	PoseView		Odstranit
+Desktop	Model		Plocha
+Disks	Model		Disky
+Do it	FSUtils		Provést
+Does not handle file	OpenWithWindow		Neobstarává soubor
+Edit name	ContainerWindow		Upravit jméno
+Eject when unmounting	AutoMounterSettings		Vysunout při odpojení
+Empty Trash	ContainerWindow		Vyprázdnit koš
+Emptying Trash… 	StatusWindow		Vyprazdňuji koš...
+Error %error loading Add-On %name.	ContainerWindow		Chyba %error při načítání Add-onu %name.
+Error calculating folder size.	InfoWindow		Chyba výpočtu velikosti složky.
+Favorites	FavoritesMenu		Oblíbené
+File	ContainerWindow		Soubor
+Handles any %type	OpenWithWindow		Obstarává jakýkoliv %type
+Icon view	ContainerWindow		Zobrazení Ikon
+Icon view	VolumeWindow		Zobrazení Ikon
+Identify	ContainerWindow		Rozpoznat
+If you %ifYouDoAction the config folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the config folder anyway, click \"Do it\".	FSUtils		Jestliže %ifYouDoAction konfigurační adresář, Haiku se nemusí chovat normálně! Jste si jistí, že to chcete udělat? K %toDoAction konfiguračního adresáře navzdory varování, klikněte na \"Provést\".
+Ignore case	SelectionWindow		Ignorovat velikost znaků
+Increase size	DeskWindow		Zvětšit velikost
+Invert selection	ContainerWindow		Invertovat výběr
+Invert selection	FilePanelPriv		Invertovat výběr
+Invert selection	VolumeWindow		Invertovat výběr
+KiB	WidgetAttributeText		KiB
+Kind	ContainerWindow		Druh
+Link to:	InfoWindow		Odkaz na:
+List view	VolumeWindow		Zobrazení seznamu
+Location	ContainerWindow		Umístnění
+Location	QueryPoseView		Umístnění
+Make active printer	ContainerWindow		Vytvořit aktivní tiskárnu
+MiB	WidgetAttributeText		MiB
+Mini icon view	VolumeWindow		Zobrazení mini-ikon
+Modified	PoseView		Upraveno
+Modified	QueryPoseView		Změněno
+Mount server error	AutoMounterSettings		Chyba mount serveru
+Move to	ContainerWindow		Přesunout do
+Move to Trash	ContainerWindow		Přesunout do Koše
+Moving: 	StatusWindow		Přesouvání:
+Name	OpenWithWindow		Jméno
+Name = %name	FindPanel	FindResultTitle	Jméno = %name
+New folder	ContainerWindow		Nová složka
+New folder	FilePanelPriv		Nová složka
+OK	AutoMounterSettings		OK
+OK	WidgetAttributeText		OK
+On	FindPanel		Zapnuto
+Open	ContainerWindow		Otevřít
+Open	OpenWithWindow		Otevřít
+Open	VolumeWindow		Otevřít
+Open with…	ContainerWindow		Otevřít v...
+Opens with:	InfoWindow		Otevírá v:
+Paste links	ContainerWindow		Vložit odkazy
+Permissions	InfoWindow		Oprávnění
+Preparing to empty Trash…	StatusWindow		Připrava vysypání koše...
+Recent documents	FavoritesMenu		Časté dokumenty
+Replace	FilePanelPriv		Nahradit
+Resize to fit	ContainerWindow		Vyplnit
+Save as Query template:	FindPanel		Uložit jako šablonu Dotazu:
+Search	FindPanel		Vyhledat
+Select all	ContainerWindow		Vybrat vše
+Select all	FilePanelPriv		Vybrat vše
+Select all	VolumeWindow		Vybrat vše
+Select…	ContainerWindow		Vybrat...
+Set new link target	InfoWindow		Zvolit cíl nového odkazu
+Show shared volumes on Desktop	SettingsView		Zobrazit sdílené svazky na ploše
+Show space bars on volumes	SettingsView		Zobrazit ukazatele prostoru na svazcích.
+Show volumes on Desktop	SettingsView		Zobrazit svazky na Ploše
+Size	ContainerWindow		Velikost
+Size	QueryPoseView		Velikost
+Sorry, the 'Character' attribute cannot store a multi-byte glyph.	WidgetAttributeText		Bohužel, atribut 'Písmeno' nemůže uchovávat vícebytové znaky.
+Sorry, you can't copy items to the Trash.	PoseView		Bohužel, nelze kopírovat položky do Koše.
+Sorry, you can't save things at the root of your system.	FilePanelPriv		Bohužel, nelze ukládat do kořenu systému.
+Tracker preferences	TrackerSettingsWindow		Nastavení Trackeru
+Tracker status	StatusWindow		Stav Trackeru
+Warning space color	SettingsView		Barva upozornění
+Window	ContainerWindow		Okno
+Windows	TrackerSettingsWindow		Okna
+Would you like to find some other suitable application?	FSUtils		Chcete najít nějakou jinou vhodnou aplikaci?
+Write	FilePermissionsView		Zapiš
+You cannot copy or move the root directory.	FSUtils		Nelze kopírovat nebo přesouvat kořenový adresář.
+You cannot replace a folder or a symbolic link with a file.	FSUtils		Nelze nahradit složku nebo symbolický odkaz souborem.
+You must have at least one attribute showing.	PoseView		Musí být zobrazen alespoň jeden atribut.
+before	FindPanel		před
+contains	SelectionWindow		obsahuje
+for %num files	InfoWindow		pro %num souborů
+greater than	FindPanel		větší než
+is not	FindPanel		není
+matches wildcard expression	SelectionWindow		Shoda s výrazem se zástupnými znaky
+move	FSUtils	As in 'To move ...'	přesunutí
+no items	CountView		žádné položky
+rename	TextWidget	As in 'If you rename ...'	přejmenujete
+rename	TextWidget	As in 'To rename ...'	přejmenování
+save text	FilePanelPriv		uložit text

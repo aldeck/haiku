@@ -72,7 +72,7 @@ public:
 			void				BroadcastToAllApps(int32 code);
 			void				BroadcastToAllWindows(int32 code);
 
-			void				KeyEvent(uint32 what, int32 key,
+			filter_result		KeyEvent(uint32 what, int32 key,
 									int32 modifiers);
 	// Locking
 			bool				LockSingleWindow()
@@ -301,12 +301,11 @@ private:
 	friend class LockedDesktopSettings;
 
 			uid_t				fUserID;
-			const char*			fTargetScreen;
+			char*				fTargetScreen;
 			::VirtualScreen		fVirtualScreen;
 			DesktopSettingsPrivate*	fSettings;
 			port_id				fMessagePort;
 			::EventDispatcher	fEventDispatcher;
-			port_id				fInputPort;
 			area_id				fSharedReadOnlyArea;
 			server_read_only_memory* fServerReadOnlyMemory;
 

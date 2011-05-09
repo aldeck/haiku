@@ -494,6 +494,27 @@ BMessage::GetInfo(const char *name, type_code *typeFound, bool *fixedSize)
 }
 
 
+status_t
+BMessage::GetInfo(const char *name, type_code *typeFound, int32 *countFound,
+	bool *fixedSize) const
+{
+	DEBUG_FUNCTION_ENTER;
+	field_header *field = NULL;
+	status_t result = _FindField(name, B_ANY_TYPE, &field);
+	if (result < B_OK || field == NULL)
+		return result;
+
+	if (typeFound)
+		*typeFound = field->type;
+	if (countFound)
+		*countFound = field->count;
+	if (fixedSize)
+		*fixedSize = (field->flags & FIELD_FLAG_FIXED_SIZE) != 0;
+
+	return B_OK;
+}
+
+
 int32
 BMessage::CountNames(type_code type) const
 {
@@ -674,7 +695,7 @@ BMessage::_PrintToStream(const char* indent) const
 				case B_MESSAGE_TYPE:
 				{
 					char buffer[1024];
-					sprintf(buffer, "%s        ", indent);
+					snprintf(buffer, sizeof(buffer), "%s        ", indent);
 
 					BMessage message;
 					status_t result = message.Unflatten((const char *)pointer);

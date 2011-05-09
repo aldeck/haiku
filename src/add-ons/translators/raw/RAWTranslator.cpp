@@ -8,6 +8,7 @@
 #include "ConfigView.h"
 #include "RAW.h"
 
+#include <Catalog.h>
 #include <BufferIO.h>
 #include <Messenger.h>
 #include <TranslatorRoster.h>
@@ -15,6 +16,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "RAWTranslator"
 
 
 class FreeAllocation {
@@ -45,8 +49,9 @@ const char* kDocumentIndex = "/documentIndex";
 const char* kProgressMonitor = "/progressMonitor";
 const char* kProgressMessage = "/progressMessage";
 
+
 // The input formats that this translator supports.
-translation_format sInputFormats[] = {
+static const translation_format sInputFormats[] = {
 	{
 		RAW_IMAGE_FORMAT,
 		B_TRANSLATOR_BITMAP,
@@ -62,11 +67,11 @@ translation_format sInputFormats[] = {
 		RAW_IN_CAPABILITY,
 		"image/x-vnd.photo-raw",
 		"Digital Photo RAW image"
-	},
+	}
 };
 
 // The output formats that this translator supports.
-translation_format sOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	{
 		B_TRANSLATOR_BITMAP,
 		B_TRANSLATOR_BITMAP,
@@ -74,11 +79,11 @@ translation_format sOutputFormats[] = {
 		BITS_OUT_CAPABILITY,
 		"image/x-be-bitmap",
 		"Be Bitmap Format (RAWTranslator)"
-	},
+	}
 };
 
 // Default settings for the Translator
-static TranSetting sDefaultSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{B_TRANSLATOR_EXT_HEADER_ONLY, TRAN_SETTING_BOOL, false},
 	{B_TRANSLATOR_EXT_DATA_ONLY, TRAN_SETTING_BOOL, false}
 };
@@ -87,12 +92,15 @@ const uint32 kNumInputFormats = sizeof(sInputFormats) / sizeof(translation_forma
 const uint32 kNumOutputFormats = sizeof(sOutputFormats) / sizeof(translation_format);
 const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting);
 
+const char* kShortName1 = B_TRANSLATE("RAW images");
+const char* kShortInfo1 = B_TRANSLATE("RAW image translator");
+
 
 //	#pragma mark -
 
 
 RAWTranslator::RAWTranslator()
-	: BaseTranslator("RAW images", "RAW image translator",
+	: BaseTranslator(kShortName1, kShortInfo1,
 		RAW_TRANSLATOR_VERSION,
 		sInputFormats, kNumInputFormats,
 		sOutputFormats, kNumOutputFormats,
@@ -156,7 +164,9 @@ RAWTranslator::DerivedIdentify(BPositionIO *stream,
 	info->group = B_TRANSLATOR_BITMAP;
 	info->quality = RAW_IN_QUALITY;
 	info->capability = RAW_IN_CAPABILITY;
-	snprintf(info->name, sizeof(info->name), "%s RAW image", meta.manufacturer);
+	snprintf(info->name, sizeof(info->name), 
+		B_TRANSLATE_COMMENT("%s RAW image", "Parameter (%s) is the name of "
+		"the manufacturer (like \"Canon\")"), meta.manufacturer);
 	strcpy(info->MIME, "image/x-vnd.photo-raw");
 
 	return B_OK;

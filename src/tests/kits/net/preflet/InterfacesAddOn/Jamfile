@@ -1,26 +1,35 @@
 SubDir HAIKU_TOP src tests kits net preflet InterfacesAddOn ;
 
+SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src apps networkstatus ] ;
+
 UseHeaders [ FDirName $(HAIKU_TOP) src tests kits net preflet ] ;
 UseHeaders [ FDirName $(HAIKU_TOP) src servers net ] : true ;
 
 UsePrivateHeaders net shared ;
-UseLibraryHeaders agg icon ;
+UseLibraryHeaders agg ;
 
-AddResources Interfaces : 
-       InterfacesIcons.rdef 
+
+AddResources Interfaces :
+       InterfacesIcons.rdef
 ;
 
-Addon Interfaces : 
+Addon Interfaces :
 	InterfacesAddOn.cpp
 	InterfacesListView.cpp
-	Setting.cpp
-	NetworkWindow.cpp
-	EthernetSettingsView.cpp
-	: 
-	be 
-	<nogrist>NetworkSetup 
-	$(TARGET_NETWORK_LIBS) 
-	$(TARGET_LIBSUPC++) 
+	NetworkSettings.cpp
+	InterfaceWindow.cpp
+	InterfaceAddressView.cpp
+
+	# from src/apps/networkstatus
+	RadioView.cpp
+	WirelessNetworkMenuItem.cpp
+	:
+	be
+	<nogrist>NetworkSetup
+	$(TARGET_NETWORK_LIBS)
+	libbnetapi.so
+	$(TARGET_LIBSUPC++)
+	$(TARGET_LIBSTDC++)
+	$(HAIKU_LOCALE_LIBS)
 	libicon.a libagg.a
 ;
-

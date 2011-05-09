@@ -9,16 +9,19 @@
 #include "ConfigView.h"
 #include "PCX.h"
 
+#include <Catalog.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "PCXTranslator"
 
 #define kPCXMimeType "image/x-pcx"
 
 
 // The input formats that this translator supports.
-translation_format sInputFormats[] = {
+static const translation_format sInputFormats[] = {
 	{
 		PCX_IMAGE_FORMAT,
 		B_TRANSLATOR_BITMAP,
@@ -38,7 +41,7 @@ translation_format sInputFormats[] = {
 };
 
 // The output formats that this translator supports.
-translation_format sOutputFormats[] = {
+static const translation_format sOutputFormats[] = {
 	/*{
 		PCX_IMAGE_FORMAT,
 		B_TRANSLATOR_BITMAP,
@@ -58,7 +61,7 @@ translation_format sOutputFormats[] = {
 };
 
 // Default settings for the Translator
-static TranSetting sDefaultSettings[] = {
+static const TranSetting sDefaultSettings[] = {
 	{B_TRANSLATOR_EXT_HEADER_ONLY, TRAN_SETTING_BOOL, false},
 	{B_TRANSLATOR_EXT_DATA_ONLY, TRAN_SETTING_BOOL, false}
 };
@@ -69,7 +72,7 @@ const uint32 kNumDefaultSettings = sizeof(sDefaultSettings) / sizeof(TranSetting
 
 
 PCXTranslator::PCXTranslator()
-	: BaseTranslator("PCX images", "PCX translator",
+	: BaseTranslator(B_TRANSLATE("PCX images"), B_TRANSLATE("PCX translator"),
 		PCX_TRANSLATOR_VERSION,
 		sInputFormats, kNumInputFormats,
 		sOutputFormats, kNumOutputFormats,
@@ -104,7 +107,7 @@ PCXTranslator::DerivedIdentify(BPositionIO *stream,
 	info->group = B_TRANSLATOR_BITMAP;
 	info->quality = PCX_IN_QUALITY;
 	info->capability = PCX_IN_CAPABILITY;
-	snprintf(info->name, sizeof(info->name), "PCX %lu bit image",
+	snprintf(info->name, sizeof(info->name), B_TRANSLATE("PCX %lu bit image"),
 		bitsPerPixel);
 	strcpy(info->MIME, kPCXMimeType);
 

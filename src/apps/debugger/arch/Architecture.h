@@ -15,6 +15,7 @@
 #include "Types.h"
 
 
+class CfaContext;
 class CpuState;
 class DisassembledCode;
 class FunctionDebugInfo;
@@ -30,7 +31,7 @@ class Team;
 class TeamMemory;
 
 
-class Architecture : public Referenceable {
+class Architecture : public BReferenceable {
 public:
 								Architecture(TeamMemory* teamMemory,
 									uint8 addressSize, bool bigEndian);
@@ -45,6 +46,7 @@ public:
 
 	virtual	int32				CountRegisters() const = 0;
 	virtual	const Register*		Registers() const = 0;
+	virtual status_t			InitRegisterRules(CfaContext& context) const;
 
 	virtual	status_t			GetDwarfRegisterMaps(RegisterMap** _toDwarf,
 									RegisterMap** _fromDwarf) const = 0;

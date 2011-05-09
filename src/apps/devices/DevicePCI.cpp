@@ -7,10 +7,15 @@
  */
 
 
+#include "DevicePCI.h"
+
 #include <sstream>
 #include <stdlib.h>
 
-#include "DevicePCI.h"
+#include <Catalog.h>
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "DevicePCI"
 
 extern "C" {
 #include "dm_wrapper.h"
@@ -66,7 +71,8 @@ DevicePCI::InitFromAttributes()
 
 	// Fetch ClassInfo	
 	char classInfo[64];
-	get_class_info(fClassBaseId, fClassSubId, fClassApiId, classInfo, sizeof(classInfo));
+	get_class_info(fClassBaseId, fClassSubId, fClassApiId, classInfo,
+		sizeof(classInfo));
 	
 	// Fetch ManufacturerName
 	BString ManufacturerName;
@@ -74,7 +80,7 @@ DevicePCI::InitFromAttributes()
 	const char *venFull;
 	get_vendor_info(fVendorId, &venShort, &venFull);
 	if (!venShort && !venFull) {
-		ManufacturerName << "Unknown";
+		ManufacturerName << B_TRANSLATE("Unknown");
 	} else if (venShort && venFull) {
 		ManufacturerName << venFull << "(" << venShort << ")";
 	} else {
@@ -85,20 +91,21 @@ DevicePCI::InitFromAttributes()
 	BString DeviceName;
 	const char *devShort;
 	const char *devFull;
-	get_device_info(fVendorId, fDeviceId, fSubsystemVendorId, fSubSystemId, &devShort, &devFull);
+	get_device_info(fVendorId, fDeviceId, fSubsystemVendorId, fSubSystemId,
+		&devShort, &devFull);
 	if (!devShort && !devFull) {
-		DeviceName << "Unknown";
+		DeviceName << B_TRANSLATE("Unknown");
 	} else if (devShort && devFull) {
 		DeviceName << devFull << "(" << devShort << ")";
 	} else {
 		DeviceName << (devShort ? devShort : devFull);
 	}
 	
-	SetAttribute("Device name", DeviceName);
-	SetAttribute("Manufacturer", ManufacturerName);
-	SetAttribute("Driver used", "Not implemented");
-	SetAttribute("Device paths", "Not implemented");
-	SetAttribute("Class info", classInfo);
+	SetAttribute(B_TRANSLATE("Device name"), DeviceName);
+	SetAttribute(B_TRANSLATE("Manufacturer"), ManufacturerName);
+	SetAttribute(B_TRANSLATE("Driver used"), B_TRANSLATE("Not implemented"));
+	SetAttribute(B_TRANSLATE("Device paths"), B_TRANSLATE("Not implemented"));
+	SetAttribute(B_TRANSLATE("Class info"), classInfo);
 	fCategory = (Category)fClassBaseId;
 	BString outlineName;
 	outlineName << ManufacturerName << " " << DeviceName;
@@ -122,7 +129,15 @@ DevicePCI::GetBusAttributes()
 BString
 DevicePCI::GetBusStrings()
 {
-	BString str;
-	str << "Class Info:\t\t\t\t: " << fAttributeMap["Class Info"];
+	BString str("Class Info:\t\t\t\t: %classInfo%");
+	str.ReplaceFirst("%classInfo%", fAttributeMap["Class Info"]);
 	return str;
 }
+
+
+BString
+DevicePCI::GetBusTabName()
+{
+	return B_TRANSLATE("PCI Information");
+}
+

@@ -113,8 +113,24 @@ Application MediaPlayer :
 	MainWin.cpp
 	VideoView.cpp
 
-	: be game locale media tracker translation textencoding $(TARGET_LIBSTDC++)
-		libshared.a
+	: be game locale media tracker translation textencoding $(TARGET_LIBSTDC++) 
+		$(HAIKU_LOCALE_LIBS) libshared.a
 	: MediaPlayer.rdef
 ;
 
+DoCatalogs MediaPlayer : 
+	x-vnd.Haiku-MediaPlayer
+	: 
+	CopyPLItemsCommand.cpp
+	ImportPLItemsCommand.cpp
+	InfoWin.cpp
+	MainApp.cpp
+	MainWin.cpp
+	MovePLItemsCommand.cpp
+	PeakView.cpp
+	PlaylistItem.cpp
+	PlaylistWindow.cpp
+	RandomizePLItemsCommand.cpp
+	RemovePLItemsCommand.cpp
+	SettingsWindow.cpp
+;

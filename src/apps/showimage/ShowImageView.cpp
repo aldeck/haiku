@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2010, Haiku, Inc. All Rights Reserved.
+ * Copyright 2003-2011, Haiku, Inc. All Rights Reserved.
  * Copyright 2004-2005 yellowTAB GmbH. All Rights Reserverd.
  * Copyright 2006 Bernd Korz. All Rights Reserved
  * Distributed under the terms of the MIT License.
@@ -192,20 +192,15 @@ ShowImageView::ShowImageView(BRect rect, const char *name, uint32 resizingMode,
 	fSelectionMode(false),
 	fAnimateSelection(true),
 	fHasSelection(false),
-	fSlideShow(false),
-	fSlideShowDelay(3 * 10), // 3 seconds
-	fSlideShowCountDown(0),
 	fShowCaption(false),
 	fShowingPopUpMenu(false),
 	fHideCursorCountDown(HIDE_CURSOR_DELAY_TIME),
 	fIsActiveWin(true)
 {
-	ShowImageSettings* settings;
-	settings = my_app->Settings();
+	ShowImageSettings* settings = my_app->Settings();
 	if (settings->Lock()) {
 		fStretchToBounds = settings->GetBool("StretchToBounds",
 			fStretchToBounds);
-		fSlideShowDelay = settings->GetInt32("SlideShowDelay", fSlideShowDelay);
 		fScaleBilinear = settings->GetBool("ScaleBilinear", fScaleBilinear);
 		settings->Unlock();
 	}
@@ -237,17 +232,6 @@ ShowImageView::Pulse()
 		fSelectionBox.Animate();
 		fSelectionBox.Draw(this, Bounds());
 	}
-#if 0
-	if (fSlideShow) {
-		fSlideShowCountDown --;
-		if (fSlideShowCountDown <= 0) {
-			fSlideShowCountDown = fSlideShowDelay;
-			if (!NextFile()) {
-				_FirstFile();
-			}
-		}
-	}
-#endif
 
 	if (fHideCursor && !fHasSelection && !fShowingPopUpMenu && fIsActiveWin) {
 		if (fHideCursorCountDown <= 0)
@@ -298,7 +282,7 @@ ShowImageView::_UpdateStatusText()
 
 	if (fHasSelection) {
 		char size[50];
-		sprintf(size, "(%.0fx%.0f)",
+		snprintf(size, sizeof(size), "(%.0fx%.0f)",
 			fSelectionBox.Bounds().Width() + 1.0,
 			fSelectionBox.Bounds().Height() + 1.0);
 
@@ -1280,9 +1264,7 @@ ShowImageView::KeyDown(const char* bytes, int32 numBytes)
 			break;
 		case B_ESCAPE:
 			// stop slide show
-			if (fSlideShow)
-				_ToggleSlideShow();
-
+			_StopSlideShow();
 			_ExitFullScreen();
 
 			ClearSelection();
@@ -1358,7 +1340,6 @@ ShowImageView::_ShowPopUpMenu(BPoint screen)
 	  if (window != NULL)
 		  window->BuildContextMenu(menu);
 
-	  screen += BPoint(2, 2);
 	  menu->Go(screen, true, true, true);
 	  fShowingPopUpMenu = true;
 	}
@@ -1557,8 +1538,8 @@ ShowImageView::SetZoom(float zoom, BPoint where)
 	float fitToBoundsZoom = _FitToBoundsZoom();
 	if (zoom > 32)
 		zoom = 32;
-	if (zoom < fitToBoundsZoom / 2)
-		zoom = fitToBoundsZoom / 2;
+	if (zoom < fitToBoundsZoom / 2 && zoom < 0.25)
+		zoom = min_c(fitToBoundsZoom / 2, 0.25);
 
 	if (zoom == fZoom) {
 		// window size might have changed
@@ -1624,7 +1605,7 @@ ShowImageView::ZoomOut(BPoint where)
 }
 
 
-/*!	Fits to image to the view bounds.
+/*!	Fits the image to the view bounds.
 */
 void
 ShowImageView::FitToBounds()
@@ -1639,43 +1620,6 @@ ShowImageView::FitToBounds()
 		SetZoom(fitToBoundsZoom);
 
 	FixupScrollBars();
-}
-
-
-void
-ShowImageView::SetSlideShowDelay(float seconds)
-{
-	ShowImageSettings* settings;
-	int32 delay = (int)(seconds * 10.0);
-	if (fSlideShowDelay != delay) {
-		// update counter
-		fSlideShowCountDown = delay - (fSlideShowDelay - fSlideShowCountDown);
-		if (fSlideShowCountDown <= 0) {
-			// show next image on next Pulse()
-			fSlideShowCountDown = 1;
-		}
-		fSlideShowDelay = delay;
-		settings = my_app->Settings();
-		if (settings->Lock()) {
-			settings->SetInt32("SlideShowDelay", fSlideShowDelay);
-			settings->Unlock();
-		}
-	}
-}
-
-
-void
-ShowImageView::StartSlideShow()
-{
-	fSlideShow = true;
-	fSlideShowCountDown = fSlideShowDelay;
-}
-
-
-void
-ShowImageView::StopSlideShow()
-{
-	fSlideShow = false;
 }
 
 
@@ -1855,6 +1799,13 @@ void
 ShowImageView::_ToggleSlideShow()
 {
 	_SendMessageToWindow(MSG_SLIDE_SHOW);
+}
+
+
+void
+ShowImageView::_StopSlideShow()
+{
+	_SendMessageToWindow(kMsgStopSlideShow);
 }
 
 

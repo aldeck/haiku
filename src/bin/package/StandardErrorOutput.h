@@ -6,10 +6,13 @@
 #define STANDARD_ERROR_OUTPUT_H
 
 
-#include "ErrorOutput.h"
+#include <package/hpkg/ErrorOutput.h>
 
 
-class StandardErrorOutput : public ErrorOutput {
+using BPackageKit::BHPKG::BErrorOutput;
+
+
+class StandardErrorOutput : public BErrorOutput {
 	virtual	void				PrintErrorVarArgs(const char* format,
 									va_list args);
 };

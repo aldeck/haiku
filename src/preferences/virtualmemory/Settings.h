@@ -25,17 +25,17 @@ class Settings {
 		void SetSwapSize(off_t size);
 		void SetSwapVolume(BVolume& volume);
 
-		void SetSwapDefaults();
 		void RevertSwapChanges();
-		bool IsDefaultable();
-		bool SwapChanged();
+		bool IsRevertible();
 
 	private:
-		void ReadWindowSettings();
-		void WriteWindowSettings();
+		void _ReadWindowSettings();
+		void _WriteWindowSettings();
 
-		void ReadSwapSettings();
-		void WriteSwapSettings();
+		void _ReadSwapSettings();
+		void _WriteSwapSettings();
+
+		void _SetSwapNull();
 
 		BPoint		fWindowPosition;
 
@@ -47,7 +47,8 @@ class Settings {
 		off_t		fInitialSwapSize;
 		dev_t		fInitialSwapVolume;
 
-		bool		fPositionUpdated, fSwapUpdated;
+		bool		fPositionUpdated;
+		const char*	fBadVolName;
 };
 
 #endif	/* SETTINGS_H */

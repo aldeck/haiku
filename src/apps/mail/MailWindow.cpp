@@ -529,7 +529,7 @@ TMailWindow::TMailWindow(BRect rect, const char* title, TMailApp* app,
 			// Use preferences setting for composing mail.
 		: B_MAIL_NULL_CONVERSION,
 			// Default is automatic selection for reading mail.
-		fApp->DefaultChain());
+		fApp->DefaultAccount());
 
 	r = Frame();
 	r.OffsetTo(0, 0);
@@ -652,9 +652,8 @@ TMailWindow::BuildButtonBar()
 		fNextButton = bbar->AddButton(B_TRANSLATE("Next"), 24,
 			new BMessage(M_NEXTMSG));
 		bbar->AddButton(B_TRANSLATE("Previous"), 20, new BMessage(M_PREVMSG));
-		if (!fAutoMarkRead) {
+		if (!fAutoMarkRead)
 			_AddReadButton();
-		}
 	}
 
 	bbar->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -788,7 +787,8 @@ TMailWindow::GetTrackerWindowFile(entry_ref *ref, bool next) const
 		if (BNodeInfo(&node).GetType(fileType) != B_OK)
 			return false;
 
-		if (strcasecmp(fileType,"text/x-email") == 0)
+		if (strcasecmp(fileType, B_MAIL_TYPE) == 0
+			|| strcasecmp(fileType, B_PARTIAL_MAIL_TYPE) == 0)
 			foundRef = true;
 	}
 
@@ -831,22 +831,22 @@ TMailWindow::SetTrackerSelectionToCurrent()
 
 
 void
-TMailWindow::SetCurrentMessageRead(bool read)
+TMailWindow::SetCurrentMessageRead(read_flags flag)
 {
 	BNode node(fRef);
-	if (node.InitCheck() == B_NO_ERROR) {
-		BString status;
-		if (ReadAttrString(&node, B_MAIL_ATTR_STATUS, &status) == B_NO_ERROR) {
-			if (read && !status.ICompare("New")) {
-				node.RemoveAttr(B_MAIL_ATTR_STATUS);
-				WriteAttrString(&node, B_MAIL_ATTR_STATUS, "Read");
-			}
-			if (!read && !status.ICompare("Read")) {
-				node.RemoveAttr(B_MAIL_ATTR_STATUS);
-				WriteAttrString(&node, B_MAIL_ATTR_STATUS, "New");
-			}
-		}
-	}
+	status_t status = node.InitCheck();
+	if (status != B_OK)
+		return;
+
+	int32 account;
+	if (node.ReadAttr("MAIL:account", B_INT32_TYPE, 0, &account,
+		sizeof(account)) < 0)
+		account = -1;
+
+	// don't wait for the server write the attribute directly
+	write_read_attr(node, flag);
+
+	BMailDaemon::MarkAsRead(account, *fRef, flag);
 }
 
 
@@ -953,6 +953,7 @@ TMailWindow::MenusBeginning()
 void
 TMailWindow::MessageReceived(BMessage *msg)
 {
+	bool wasReadMsg = false;
 	switch (msg->what) {
 		case FIELD_CHANGED:
 		{
@@ -1143,8 +1144,10 @@ TMailWindow::MessageReceived(BMessage *msg)
 				foundRef = GetTrackerWindowFile(&nextRef,
 					msg->what == M_DELETE_NEXT);
 			}
-			if (fIncoming && fAutoMarkRead)
-				SetCurrentMessageRead();
+			if (fIncoming) {
+				read_flags flag = (fAutoMarkRead == true) ? B_READ : B_SEEN;
+				SetCurrentMessageRead(flag);
+			}
 
 			if (!fTrackerMessenger.IsValid() || !fIncoming) {
 				// Not associated with a tracker window.  Create a new
@@ -1283,21 +1286,29 @@ TMailWindow::MessageReceived(BMessage *msg)
 
 		case M_SAVE:
 		{
-			char *str;
-			if (msg->FindString("address", (const char **)&str) == B_NO_ERROR) {
-				char *arg = (char *)malloc(strlen("META:email ")
-					+ strlen(str) + 1);
-				BVolumeRoster volumeRoster;
-				BVolume volume;
-				volumeRoster.GetBootVolume(&volume);
+			const char* address;
+			if (msg->FindString("address", (const char**)&address) != B_NO_ERROR)
+				break;
 
-				BQuery query;
+			BVolumeRoster volumeRoster;
+			BVolume volume;
+			BQuery query;
+			BEntry entry;
+			bool foundEntry = false;
+
+			char* arg = (char*)malloc(strlen("META:email=")
+				+ strlen(address) + 1);
+			sprintf(arg, "META:email=%s", address);
+
+			// Search a Person file with this email address
+			while (volumeRoster.GetNextVolume(&volume) == B_NO_ERROR) {
+				if (!volume.KnowsQuery())
+					continue;
+
 				query.SetVolume(&volume);
-				sprintf(arg, "META:email=%s", str);
 				query.SetPredicate(arg);
 				query.Fetch();
 
-				BEntry entry;
 				if (query.GetNextEntry(&entry) == B_NO_ERROR) {
 					BMessenger tracker("application/x-vnd.Be-TRAK");
 					if (tracker.IsValid()) {
@@ -1307,20 +1318,31 @@ TMailWindow::MessageReceived(BMessage *msg)
 						BMessage open(B_REFS_RECEIVED);
 						open.AddRef("refs", &ref);
 						tracker.SendMessage(&open);
+						foundEntry = true;
+						break;
 					}
-				} else {
-					sprintf(arg, "META:email %s", str);
-					status_t result = be_roster->Launch("application/x-person",
-						1, &arg);
-
-					if (result != B_NO_ERROR)
-						(new BAlert("",	B_TRANSLATE(
-							"Sorry, could not find an application that "
-							"supports the 'Person' data type."),
-							B_TRANSLATE("OK")))->Go();
 				}
-				free(arg);
+				// Try next volume, if any
+				query.Clear();
 			}
+
+			if (!foundEntry) {
+				// None found.
+				// Ask to open a new Person file with this address pre-filled
+
+				status_t result = be_roster->Launch("application/x-person",
+					1, &arg);
+
+				if (result != B_NO_ERROR) {
+					(new BAlert("",	B_TRANSLATE(
+						"Sorry, could not find an application that "
+						"supports the 'Person' data type."),
+						B_TRANSLATE("OK")))->Go();
+				}
+
+			}
+
+			free(arg);
 			break;
 		}
 
@@ -1463,34 +1485,44 @@ TMailWindow::MessageReceived(BMessage *msg)
 		//	Navigation Messages
 		//
 		case M_UNREAD:
-			SetCurrentMessageRead(false);
+			SetCurrentMessageRead(B_SEEN);
 			_UpdateReadButton();
 			break;
 		case M_READ:
-			SetCurrentMessageRead();
+			wasReadMsg = true;
+			SetCurrentMessageRead(B_READ);
+			_UpdateReadButton();
 			msg->what = M_NEXTMSG;
 		case M_PREVMSG:
 		case M_NEXTMSG:
 			if (fRef != NULL) {
 				entry_ref nextRef = *fRef;
 				if (GetTrackerWindowFile(&nextRef, (msg->what == M_NEXTMSG))) {
-					TMailWindow *window
-						= static_cast<TMailApp *>(be_app)->FindWindow(nextRef);
+					TMailWindow *window = static_cast<TMailApp *>(be_app)
+						->FindWindow(nextRef);
 					if (window == NULL) {
-						if (fAutoMarkRead)
-							SetCurrentMessageRead();
+						BNode node(fRef);
+						read_flags currentFlag;
+						if (read_read_attr(node, currentFlag) != B_OK)
+							currentFlag = B_UNREAD;
+						if (fAutoMarkRead == true)
+							SetCurrentMessageRead(B_READ);
+						else if (currentFlag != B_READ && !wasReadMsg)
+							SetCurrentMessageRead(B_SEEN);
+
 						OpenMessage(&nextRef,
-							fHeaderView->fCharacterSetUserSees);
+							fHeaderView->fCharacterSetUserSees, msg);
 					} else {
 						window->Activate();
 
 						//fSent = true;
-						BMessage msg(B_CLOSE_REQUESTED);
-						PostMessage(&msg);
+						PostMessage(B_CLOSE_REQUESTED);
 					}
 
 					SetTrackerSelectionToCurrent();
 				} else {
+					if (wasReadMsg)
+						PostMessage(B_CLOSE_REQUESTED);
 					beep();
 				}
 			}
@@ -1570,10 +1602,10 @@ TMailWindow::MessageReceived(BMessage *msg)
 			if (showAlert) {
 				// just some patience before Tracker pops up the folder
 				snooze(250000);
-				BAlert* alert = new BAlert("helpful message",
-					"Put your favorite e-mail queries and query "
-					"templates in this folder.",
-					"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_IDEA_ALERT);
+				BAlert* alert = new BAlert(B_TRANSLATE("helpful message"),
+					B_TRANSLATE("Put your favorite e-mail queries and query "
+					"templates in this folder."), B_TRANSLATE("OK"), NULL, NULL,
+					B_WIDTH_AS_USUAL, B_IDEA_ALERT);
 				alert->Go(NULL);
 			}
 
@@ -1701,8 +1733,16 @@ TMailWindow::QuitRequested()
 		}
 	} else if (fRef != NULL && !sKeepStatusOnQuit) {
 		// ...Otherwise just set the message read
-		if (fAutoMarkRead)
-			SetCurrentMessageRead();
+		if (fAutoMarkRead == true)
+			SetCurrentMessageRead(B_READ);
+		else {
+			BNode node(fRef);
+			read_flags currentFlag;
+			if (read_read_attr(node, currentFlag) != B_OK)
+				currentFlag = B_UNREAD;
+			if (currentFlag == B_UNREAD)
+				SetCurrentMessageRead(B_SEEN);
+		}
 	}
 
 	BPrivate::BPathMonitor::StopWatching(BMessenger(this, this));
@@ -1824,14 +1864,14 @@ TMailWindow::Forward(entry_ref *ref, TMailWindow *window,
 	// set mail account
 
 	if (useAccountFrom == ACCOUNT_FROM_MAIL) {
-		fHeaderView->fChain = fMail->Account();
+		fHeaderView->fAccountID = fMail->Account();
 
 		BMenu *menu = fHeaderView->fAccountMenu;
 		for (int32 i = menu->CountItems(); i-- > 0;) {
 			BMenuItem *item = menu->ItemAt(i);
 			BMessage *msg;
 			if (item && (msg = item->Message()) != NULL
-				&& msg->FindInt32("id") == fHeaderView->fChain)
+				&& msg->FindInt32("id") == fHeaderView->fAccountID)
 				item->SetMarked(true);
 		}
 	}
@@ -2066,25 +2106,26 @@ TMailWindow::Reply(entry_ref *ref, TMailWindow *window, uint32 type)
 	fHeaderView->fCc->SetText(fMail->CC());
 	fHeaderView->fSubject->SetText(fMail->Subject());
 
-	int32 chainID;
+	int32 accountID;
 	BFile file(window->fRef, B_READ_ONLY);
-	if (file.ReadAttr("MAIL:reply_with", B_INT32_TYPE, 0, &chainID, 4) < B_OK)
-		chainID = -1;
+	if (file.ReadAttr("MAIL:reply_with", B_INT32_TYPE, 0, &accountID,
+		sizeof(int32)) != B_OK)
+		accountID = -1;
 
 	// set mail account
 
-	if ((useAccountFrom == ACCOUNT_FROM_MAIL) || (chainID > -1)) {
+	if ((useAccountFrom == ACCOUNT_FROM_MAIL) || (accountID > -1)) {
 		if (useAccountFrom == ACCOUNT_FROM_MAIL)
-			fHeaderView->fChain = fMail->Account();
+			fHeaderView->fAccountID = fMail->Account();
 		else
-			fHeaderView->fChain = chainID;
+			fHeaderView->fAccountID = accountID;
 
 		BMenu *menu = fHeaderView->fAccountMenu;
 		for (int32 i = menu->CountItems(); i-- > 0;) {
 			BMenuItem *item = menu->ItemAt(i);
 			BMessage *msg;
 			if (item && (msg = item->Message()) != NULL
-				&& msg->FindInt32("id") == fHeaderView->fChain)
+				&& msg->FindInt32("id") == fHeaderView->fAccountID)
 				item->SetMarked(true);
 		}
 	}
@@ -2341,8 +2382,8 @@ TMailWindow::Send(bool now)
 			mail.SetTo(fHeaderView->fTo->Text(), characterSetToUse,
 				encodingForHeaders);
 
-			if (fHeaderView->fChain != ~0L)
-				mail.SendViaAccount(fHeaderView->fChain);
+			if (fHeaderView->fAccountID != ~0L)
+				mail.SendViaAccount(fHeaderView->fAccountID);
 
 			result = mail.Send(now);
 		}
@@ -2409,8 +2450,8 @@ TMailWindow::Send(bool now)
 				fMail->Attach(item->Ref(), fApp->AttachAttributes());
 			}
 		}
-		if (fHeaderView->fChain != ~0L)
-			fMail->SendViaAccount(fHeaderView->fChain);
+		if (fHeaderView->fAccountID != ~0L)
+			fMail->SendViaAccount(fHeaderView->fAccountID);
 
 		result = fMail->Send(now);
 
@@ -2762,7 +2803,8 @@ TMailWindow::SetTitleForMessage()
 //
 
 status_t
-TMailWindow::OpenMessage(entry_ref *ref, uint32 characterSetForDecoding)
+TMailWindow::OpenMessage(entry_ref *ref, uint32 characterSetForDecoding,
+	BMessage* trackerMsg)
 {
 	//
 	//	Set some references to the email file
@@ -2789,9 +2831,14 @@ TMailWindow::OpenMessage(entry_ref *ref, uint32 characterSetForDecoding)
 	BNodeInfo fileInfo(&file);
 	fileInfo.GetType(mimeType);
 
+	if (strcmp(mimeType, B_PARTIAL_MAIL_TYPE) == 0) {
+		BMailDaemon::FetchBody(*ref, trackerMsg);
+		fileInfo.GetType(mimeType);
+	}
+
 	// Check if it's a draft file, which contains only the text, and has the
 	// from, to, bcc, attachments listed as attributes.
-	if (!strcmp(kDraftType, mimeType)) {
+	if (strcmp(kDraftType, mimeType) == 0) {
 		BNode node(fRef);
 		off_t size;
 		BString string;
@@ -3073,7 +3120,7 @@ TMailWindow::_BuildQueryString(BEntry* entry) const
 		{
 			int32 count = 1;
 			if (node.ReadAttr(kAttrQueryInitialNumAttrs, B_INT32_TYPE, 0,
-					(int32 *)&mode, sizeof(int32)) <= 0) {
+					(int32 *)&count, sizeof(int32)) <= 0) {
 				count = 1;
 			}
 
@@ -3149,23 +3196,19 @@ TMailWindow::_BuildQueryString(BEntry* entry) const
 void
 TMailWindow::_AddReadButton()
 {
-	bool newMail = false;
 	BNode node(fRef);
-	if (node.InitCheck() == B_NO_ERROR) {
-		BString status;
-		if (ReadAttrString(&node, B_MAIL_ATTR_STATUS, &status) == B_NO_ERROR
-			&& !status.ICompare("New")) {
-			newMail = true;
-		}
-	}
+
+	read_flags flag = B_UNREAD;
+	read_read_attr(node, flag);
 
 	int32 buttonIndex = fButtonBar->IndexOf(fNextButton);
-	if (newMail)
-		fReadButton = fButtonBar->AddButton(
-			B_TRANSLATE(" Read "), 24, new BMessage(M_READ), buttonIndex);
-	else
-		fReadButton = fButtonBar->AddButton(
-			B_TRANSLATE("Unread"), 28, new BMessage(M_UNREAD), buttonIndex);
+	if (flag == B_READ) {
+		fReadButton = fButtonBar->AddButton(B_TRANSLATE("Unread"), 28,
+			new BMessage(M_UNREAD), buttonIndex);
+	} else {
+		fReadButton = fButtonBar->AddButton(B_TRANSLATE(" Read "), 24,
+			new BMessage(M_READ), buttonIndex);
+	}
 }
 
 
@@ -3175,9 +3218,8 @@ TMailWindow::_UpdateReadButton()
 	if (fApp->ShowButtonBar()) {
 		fButtonBar->RemoveButton(fReadButton);
 		fReadButton = NULL;
-		if (!fAutoMarkRead && !fReadButton) {
+		if (!fAutoMarkRead)
 			_AddReadButton();
-		}
 	}
 	UpdateViews();
 }

@@ -333,7 +333,7 @@ query_for_app(const char* signature, entry_ref* appRef)
 			else {
 				// second pass, create a case insensitive query string
 				char string[B_MIME_TYPE_LENGTH * 4];
-				strcpy(string, "application/");
+				strlcpy(string, "application/", sizeof(string));
 
 				int32 length = strlen(string);
 				const char* from = signature + length;
@@ -2261,7 +2261,7 @@ BRoster::_LaunchApp(const char* mimeType, const entry_ref* ref,
 		// find the app
 		entry_ref appRef;
 		char signature[B_MIME_TYPE_LENGTH];
-		status_t error = _ResolveApp(mimeType, docRef, &appRef, signature,
+		error = _ResolveApp(mimeType, docRef, &appRef, signature,
 			&appFlags, &wasDocument);
 		DBG(OUT("  find app: %s (%lx)\n", strerror(error), error));
 		if (error != B_OK)
@@ -2496,7 +2496,7 @@ BRoster::_ResolveApp(const char* inType, entry_ref* ref,
 		if (_appSig) {
 			// there's no warranty, that appMeta is valid
 			if (appMeta.IsValid())
-				strcpy(_appSig, appMeta.Type());
+				strlcpy(_appSig, appMeta.Type(), B_MIME_TYPE_LENGTH);
 			else
 				_appSig[0] = '\0';
 		}
@@ -2708,7 +2708,7 @@ BRoster::_TranslateType(const char* mimeType, BMimeType* appMeta,
 			}
 		} else {
 			// The type is not installed. We assume it is an app signature.
-			strcpy(primarySignature, mimeType);
+			strlcpy(primarySignature, mimeType, sizeof(primarySignature));
 		}
 	}
 
@@ -2876,7 +2876,7 @@ BRoster::_GetFileType(const entry_ref* file, BNodeInfo* nodeInfo,
 		if (!type.IsValid())
 			return B_BAD_VALUE;
 
-		strcpy(mimeType, type.Type());
+		strlcpy(mimeType, type.Type(), B_MIME_TYPE_LENGTH);
 	}
 
 	return B_OK;

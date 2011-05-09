@@ -9,8 +9,10 @@
 #include "Column.h"
 
 #include "ALMLayout.h"
-#include "OperatorType.h"
 #include "Tab.h"
+
+
+using namespace LinearProgramming;
 
 
 /**
@@ -156,7 +158,7 @@ Column::HasSameWidthAs(Column* column)
 {
 	Constraint* constraint = fLS->AddConstraint(
 		-1.0, Left(), 1.0, Right(), 1.0, column->Left(), -1.0, column->Right(),
-		OperatorType(EQ), 0.0);
+		kEQ, 0.0);
 	fConstraints.AddItem(constraint);
 	return constraint;
 }

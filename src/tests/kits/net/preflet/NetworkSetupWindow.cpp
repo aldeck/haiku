@@ -1,4 +1,12 @@
-#include "NetworkSetupAddOn.h"
+/*
+ * Copyright 2004-2011 Haiku Inc. All rights reserved.
+ * Distributed under the terms of the MIT License.
+ *
+ *	Authors:
+ *		Alexander von Gluck, <kallisti5@unixzen.com>
+ */
+
+
 #include "NetworkSetupWindow.h"
 
 #include <Application.h>
@@ -25,22 +33,17 @@
 NetworkSetupWindow::NetworkSetupWindow(const char *title)
 	:
 	BWindow(BRect(100, 100, 300, 300), title, B_TITLED_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS)
+		B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS),
+	fAddonCount(0)
 {
-	BBox *topDivider = new BBox(B_EMPTY_STRING);
-	topDivider->SetBorder(B_PLAIN_BORDER);
-
 	// ---- Profiles section
 	BMenu *profilesPopup = new BPopUpMenu("<none>");
-	_BuildProfilesMenu(profilesPopup, SELECT_PROFILE_MSG);
+	_BuildProfilesMenu(profilesPopup, kMsgProfileSelected);
 
 	BMenuField *profilesMenuField = new BMenuField("profiles_menu",
-			B_TRANSLATE("Profile:"), profilesPopup);
-	profilesMenuField->SetFont(be_bold_font);
+		B_TRANSLATE("Profile:"), profilesPopup);
 
-	BButton *button = new BButton("manage_profiles",
-			B_TRANSLATE("Manage profiles" B_UTF8_ELLIPSIS),
-			new BMessage(MANAGE_PROFILES_MSG));
+	profilesMenuField->SetFont(be_bold_font);
 
 	// ---- Settings section
 
@@ -50,17 +53,12 @@ NetworkSetupWindow::NetworkSetupWindow(const char *title)
 	BBox *bottomDivider = new BBox(B_EMPTY_STRING);
 	bottomDivider->SetBorder(B_PLAIN_BORDER);
 
-	BCheckBox *dontTouchCheckBox = new BCheckBox("dont_touch",
-			B_TRANSLATE("Prevent unwanted changes"),
-			new BMessage(DONT_TOUCH_MSG));
-	dontTouchCheckBox->SetValue(B_CONTROL_ON);
-
-	fApplyNowButton = new BButton("apply_now", B_TRANSLATE("Apply Now"),
-			new BMessage(APPLY_NOW_MSG));
+	fApplyButton = new BButton("apply", B_TRANSLATE("Apply"),
+		new BMessage(kMsgApply));
 
 	fRevertButton = new BButton("revert", B_TRANSLATE("Revert"),
-			new BMessage(REVERT_MSG));
-	fRevertButton->SetEnabled(false);
+		new BMessage(kMsgRevert));
+	// fRevertButton->SetEnabled(false);
 
 	// Enable boxes resizing modes
 	fPanel->SetResizingMode(B_FOLLOW_ALL);
@@ -72,28 +70,24 @@ NetworkSetupWindow::NetworkSetupWindow(const char *title)
 		.AddGroup(B_HORIZONTAL, 5)
 			.Add(profilesMenuField)
 			.AddGlue()
-			.Add(button)
 		.End()
-		.Add(topDivider)
 		.Add(fPanel)
 		.Add(bottomDivider)
 		.AddGroup(B_HORIZONTAL, 5)
-			.Add(dontTouchCheckBox)
+			.AddGlue()
 			.Add(fRevertButton)
-			.Add(fApplyNowButton)
+			.Add(fApplyButton)
 		.End()
 		.SetInsets(10, 10, 10, 10)
 	);
 
-	_BuildShowTabView(SHOW_MSG);
+	_BuildShowTabView(kMsgAddonShow);
 
-	topDivider->SetExplicitMaxSize(BSize(B_SIZE_UNSET, 1));
 	bottomDivider->SetExplicitMaxSize(BSize(B_SIZE_UNSET, 1));
 	fPanel->SetExplicitMinSize(BSize(fMinAddonViewRect.Width(),
-			fMinAddonViewRect.Height()));
+		fMinAddonViewRect.Height()));
 
 	fAddonView = NULL;
-
 
 }
 
@@ -115,48 +109,62 @@ void
 NetworkSetupWindow::MessageReceived(BMessage*	msg)
 {
 	switch (msg->what) {
-
-	case NEW_PROFILE_MSG:
-		break;
-
-	case DELETE_PROFILE_MSG: {
-		break;
-	}
-
-	case SELECT_PROFILE_MSG: {
-		BPath name;
-		const char *path;
-		bool is_default;
-		bool is_current;
-
-		if (msg->FindString("path", &path) != B_OK)
+		case kMsgProfileNew:
 			break;
 
-		name.SetTo(path);
+		case kMsgProfileSelected: {
+			BPath name;
+			const char *path;
+			bool is_default;
+			bool is_current;
 
-		is_default = (strcmp(name.Leaf(), "default") == 0);
-		is_current = (strcmp(name.Leaf(), "current") == 0);
-
-		fApplyNowButton->SetEnabled(!is_current);
-		break;
-	}
-
-	case SHOW_MSG: {
-		if (fAddonView)
-			fAddonView->RemoveSelf();
-
-		fAddonView = NULL;
-		if (msg->FindPointer("addon_view", (void **) &fAddonView) != B_OK)
+			if (msg->FindString("path", &path) != B_OK)
 				break;
 
-		fPanel->AddChild(fAddonView);
-		fAddonView->ResizeTo(fPanel->Bounds().Width(),
-			fPanel->Bounds().Height());
-		break;
-	}
+			name.SetTo(path);
 
-	default:
-		inherited::MessageReceived(msg);
+			is_default = (strcmp(name.Leaf(), "default") == 0);
+			is_current = (strcmp(name.Leaf(), "current") == 0);
+
+			fApplyButton->SetEnabled(!is_current);
+			break;
+		}
+
+		case kMsgRevert: {
+			for (int addonIndex = 0; addonIndex < fAddonCount; addonIndex++) {
+				NetworkSetupAddOn* addon
+					= fNetworkAddOnMap[addonIndex];
+				addon->Revert();
+			}
+			break;
+		}
+
+
+		case kMsgApply: {
+			for (int addonIndex = 0; addonIndex < fAddonCount; addonIndex++) {
+				NetworkSetupAddOn* addon
+					= fNetworkAddOnMap[addonIndex];
+				addon->Save();
+			}
+			break;
+		}
+
+		case kMsgAddonShow: {
+			if (fAddonView)
+				fAddonView->RemoveSelf();
+
+			fAddonView = NULL;
+			if (msg->FindPointer("addon_view", (void **) &fAddonView) != B_OK)
+				break;
+
+			fPanel->AddChild(fAddonView);
+			fAddonView->ResizeTo(fPanel->Bounds().Width(),
+				fPanel->Bounds().Height());
+			break;
+		}
+
+		default:
+			inherited::MessageReceived(msg);
 	}
 }
 
@@ -205,9 +213,9 @@ NetworkSetupWindow::_BuildProfilesMenu(BMenu* menu, int32 msg_what)
 
 	menu->AddSeparatorItem();
 	menu->AddItem(new BMenuItem(B_TRANSLATE("New" B_UTF8_ELLIPSIS),
-		new BMessage(NEW_PROFILE_MSG)));
-	menu->AddItem(new BMenuItem(B_TRANSLATE("Delete"),
-		new BMessage(DELETE_PROFILE_MSG)));
+		new BMessage(kMsgProfileNew)));
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Manage" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgProfileManage)));
 
 	if (strlen(current_profile)) {
 		item = menu->FindItem(current_profile);
@@ -234,7 +242,7 @@ NetworkSetupWindow::_BuildShowTabView(int32 msg_what)
 	if (!search_paths)
 		return;
 
-	fMinAddonViewRect.Set(0, 0, 200, 200);	// Minimum size
+	fMinAddonViewRect.Set(0, 0, 375, 225);	// Minimum size
 
 	search_paths = strdup(search_paths);
 	char* next_path_token;
@@ -277,24 +285,25 @@ NetworkSetupWindow::_BuildShowTabView(int32 msg_what)
 				B_SYMBOL_TYPE_TEXT, (void **) &get_nth_addon);
 
 			if (status == B_OK) {
-				NetworkSetupAddOn *addon;
-				int n = 0;
-				while ((addon = get_nth_addon(addon_id, n)) != NULL) {
+				while ((fNetworkAddOnMap[fAddonCount]
+					= get_nth_addon(addon_id, fAddonCount)) != NULL) {
+					printf("Adding Tab: %d\n", fAddonCount);
 					BMessage* msg = new BMessage(msg_what);
 
 					BRect r(0, 0, 0, 0);
-					BView* addon_view = addon->CreateView(&r);
+					BView* addon_view
+						= fNetworkAddOnMap[fAddonCount]->CreateView(&r);
 					fMinAddonViewRect = fMinAddonViewRect | r;
 
 					msg->AddInt32("image_id", addon_id);
 					msg->AddString("addon_path", addon_path.Path());
-					msg->AddPointer("addon", addon);
+					msg->AddPointer("addon", fNetworkAddOnMap[fAddonCount]);
 					msg->AddPointer("addon_view", addon_view);
 
 					BTab *tab = new BTab;
-					fPanel->AddTab(addon_view,tab);
-					tab->SetLabel(addon->Name());
-					n++;
+					fPanel->AddTab(addon_view, tab);
+					tab->SetLabel(fNetworkAddOnMap[fAddonCount]->Name());
+					fAddonCount++;
 				}
 				continue;
 			}

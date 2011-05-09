@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 Marcus Overhagen <marcus@overhagen.de>
+ * Copyright (c) 2004-2010 Marcus Overhagen <marcus@overhagen.de>
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -27,6 +27,10 @@
 #include <stdio.h>
 #include "MediaFormat.h"
 
+#define UINT64_C(c) (c ## ULL)
+extern "C" {
+  #include "avcodec.h"
+}
 
 void
 PrintFormat(const media_format &format)
@@ -51,16 +55,28 @@ GetHeaderFormatAc3Audio(media_format *out_format, const uint8 *header, size_t si
 
 	status_t status;
 	media_format_description desc;
-	desc.family = B_WAV_FORMAT_FAMILY;
-	desc.u.wav.codec = 0x2000;
+//	desc.family = B_WAV_FORMAT_FAMILY;
+//	desc.u.wav.codec = 0x2000;
+	desc.family = B_MISC_FORMAT_FAMILY;
+	desc.u.misc.file_format = 'ffmp';
+	desc.u.misc.codec = CODEC_ID_AC3;
 
 	BMediaFormats formats;	
 	status = formats.InitCheck();
-	if (status)
+	if (status) {
+		printf("formats.InitCheck failed, error %lu\n", status);
 		return status;
+	}
 	
-	return formats.GetFormatFor(desc, out_format);
+	status = formats.GetFormatFor(desc, out_format);
+	if (status) {
+		printf("formats.GetFormatFor failed, error %lu\n", status);
+		return status;
+	}
+	
+	return B_OK;
 }
+
 
 
 static status_t
@@ -94,17 +110,25 @@ GetHeaderFormatMpegAudio(media_format *out_format, const uint8 *header, size_t s
 
 	status_t status;
 	media_format_description desc;
-	desc.family = B_MPEG_FORMAT_FAMILY;
-	desc.u.mpeg.id = B_MPEG_2_AUDIO_LAYER_2;
-
+//	desc.family = B_MPEG_FORMAT_FAMILY;
+//	desc.u.mpeg.id = B_MPEG_2_AUDIO_LAYER_2;
+	desc.family = B_MISC_FORMAT_FAMILY;
+	desc.u.misc.file_format = 'ffmp';
+	desc.u.misc.codec = CODEC_ID_MP3;
+	
+	
 	BMediaFormats formats;	
 	status = formats.InitCheck();
-	if (status)
+	if (status) {
+		printf("formats.InitCheck failed, error %lu\n", status);
 		return status;
+	}
 	
 	status = formats.GetFormatFor(desc, out_format);
-	if (status)
+	if (status) {
+		printf("formats.GetFormatFor failed, error %lu\n", status);
 		return status;
+	}
 
 	out_format->u.encoded_audio.output.frame_rate = 48000;
 	out_format->u.encoded_audio.output.channel_count = 2;
@@ -120,15 +144,26 @@ GetHeaderFormatMpegVideo(media_format *out_format, const uint8 *header, size_t s
 
 	status_t status;
 	media_format_description desc;
-	desc.family = B_MPEG_FORMAT_FAMILY;
-	desc.u.mpeg.id = B_MPEG_2_VIDEO;
+//	desc.family = B_MPEG_FORMAT_FAMILY;
+//	desc.u.mpeg.id = B_MPEG_2_VIDEO;
+	desc.family = B_MISC_FORMAT_FAMILY;
+	desc.u.misc.file_format = 'ffmp';
+	desc.u.misc.codec = CODEC_ID_MPEG2VIDEO;
 
 	BMediaFormats formats;
 	status = formats.InitCheck();
-	if (status)
+	if (status) {
+		printf("formats.InitCheck failed, error %lu\n", status);
 		return status;
+	}
 	
-	return formats.GetFormatFor(desc, out_format);
+	status = formats.GetFormatFor(desc, out_format);
+	if (status) {
+		printf("formats.GetFormatFor failed, error %lu\n", status);
+		return status;
+	}
+
+	return B_OK;
 }
 
 
@@ -170,4 +205,3 @@ GetHeaderFormat(media_format *out_format, const void *header, size_t size, int s
 	}
 	return status;
 }
-

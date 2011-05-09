@@ -14,6 +14,7 @@
 
 #include <AppServerLink.h>
 #include <MessagePrivate.h>
+#include <ObjectListPrivate.h>
 
 #include <Autolock.h>
 #include <Deskbar.h>
@@ -183,8 +184,16 @@ InputServer::InputServer()
 
 	fAddOnManager = new(std::nothrow) ::AddOnManager(SafeMode());
 	if (fAddOnManager != NULL) {
-		fAddOnManager->Run();
+		// We need to Run() the AddOnManager looper after having loaded
+		// the initial add-ons, otherwise we may deadlock when the looper
+		// thread for some reason already receives node monitor notifications
+		// while we are still locked ourselves and are executing LoadState()
+		// at the same time (which may lock the add-on looper thread).
+		// NOTE: At first sight this may look like we may loose node monitor
+		// notifications while the thread is not yet running, but in fact those
+		// message should just pile up and be processed later.
 		fAddOnManager->LoadState();
+		fAddOnManager->Run();
 	}
 
 	BMessenger messenger(this);
@@ -1721,7 +1730,7 @@ InputServer::_FilterEvent(BInputServerFilter* filter, EventList& events,
 
 		if (result == B_DISPATCH_MESSAGE) {
 			EventList addedEvents;
-			addedEvents.AsBList()->AddList(&newEvents);
+			EventList::Private(&addedEvents).AsBList()->AddList(&newEvents);
 			_SanitizeEvents(addedEvents);
 			// add the new events - but don't methodize them again
 			events.AddList(&addedEvents, index);

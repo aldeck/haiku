@@ -15,6 +15,8 @@ SimpleTest tcp_client : tcp_client.c : $(TARGET_NETWORK_LIBS) ;
 SimpleTest ipv46_server : ipv46_server.cpp : $(TARGET_NETWORK_LIBS) ;
 SimpleTest ipv46_client : ipv46_client.cpp : $(TARGET_NETWORK_LIBS) ;
 
+SimpleTest link_echo : link_echo.cpp : $(TARGET_NETWORK_LIBS) bnetapi be ;
+
 SimpleTest getpeername : getpeername.cpp : $(TARGET_NETWORK_LIBS) ;
 
 SimpleTest tcp_connection_test : tcp_connection_test.cpp
@@ -26,10 +28,13 @@ SimpleTest NetAddressTest : NetAddressTest.cpp
 SimpleTest NetEndpointTest : NetEndpointTest.cpp
 	: $(TARGET_NETWORK_LIBS) $(HAIKU_NETAPI_LIB) be $(TARGET_LIBSUPC++) ;
 
+SimpleTest wlan_test : wlan_test.cpp : $(TARGET_NETWORK_LIBS) bnetapi be ;
+
 SubInclude HAIKU_TOP src tests kits net cookie ;
 SubInclude HAIKU_TOP src tests kits net DialUpPreflet ;
 SubInclude HAIKU_TOP src tests kits net icmp ;
 SubInclude HAIKU_TOP src tests kits net ipv6 ;
+HaikuSubInclude libnetapi ;
 SubInclude HAIKU_TOP src tests kits net multicast ;
 SubInclude HAIKU_TOP src tests kits net netperf ;
 SubInclude HAIKU_TOP src tests kits net preflet ;

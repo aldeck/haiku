@@ -1,5 +1,6 @@
 /*
  * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2011, Oliver Tappe <zooey@hirschkaefer.de>
  * Distributed under the terms of the MIT License.
  */
 
@@ -12,8 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "PackageWriter.h"
-
 
 extern const char* __progname;
 const char* kCommandName = __progname;
@@ -24,11 +23,12 @@ static const char* kUsage =
 	"Creates, inspects, or extracts a Haiku package.\n"
 	"\n"
 	"Commands:\n"
-	"  create [ <options> ] <package> <file> ...\n"
-	"    Creates package file <package> from a list of files.\n"
+	"  create [ <options> ] <package>\n"
+	"    Creates package file <package> from contents of current directory.\n"
 	"\n"
-	"    -C <dir>    - Change to directory <dir> before interpreting the file\n"
-	"                  names <file>.\n"
+	"    -C <dir>   - Change to directory <dir> before starting.\n"
+	"    -q         - be quiet (don't show any output except for errors).\n"
+	"    -v         - be verbose (show more info about created package).\n"
 	"\n"
 	"  dump [ <options> ] <package>\n"
 	"    Dumps the TOC section of package file <package>. For debugging only.\n"
@@ -36,7 +36,7 @@ static const char* kUsage =
 	"  extract [ <options> ] <package>\n"
 	"    Extracts the contents of package file <package>.\n"
 	"\n"
-	"    -C <dir>    - Change to directory <dir> before extracting the "
+	"    -C <dir>   - Change to directory <dir> before extracting the "
 		"contents\n"
 	"                  of the archive.\n"
 	"\n"

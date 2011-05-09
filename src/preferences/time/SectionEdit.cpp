@@ -8,6 +8,7 @@
  *
  */
 
+
 #include "SectionEdit.h"
 
 #include <Bitmap.h>
@@ -55,7 +56,8 @@ TSectionEdit::TSectionEdit(BRect frame, const char* name, uint32 sections)
 	BControl(frame, name, NULL, NULL, B_FOLLOW_NONE, B_NAVIGABLE | B_WILL_DRAW),
 	fSectionList(NULL),
 	fFocus(-1),
-	fSectionCount(sections)
+	fSectionCount(sections),
+	fHoldValue(0)
 {
 	InitView();
 }
@@ -87,7 +89,7 @@ TSectionEdit::Draw(BRect updateRect)
 
 	for (uint32 idx = 0; idx < fSectionCount; idx++) {
 		DrawSection(idx, ((uint32)fFocus == idx) && IsFocus());
-		if (idx < fSectionCount -1)
+		if (idx < fSectionCount - 1)
 			DrawSeparator(idx);
 	}
 }
@@ -102,7 +104,7 @@ TSectionEdit::MouseDown(BPoint where)
 		DoUpPress();
 	else if (fDownRect.Contains(where))
 		DoDownPress();
-	else if (fSectionList->CountItems()> 0) {
+	else if (fSectionList->CountItems() > 0) {
 		TSection* section;
 		for (uint32 idx = 0; idx < fSectionCount; idx++) {
 			section = (TSection*)fSectionList->ItemAt(idx);
@@ -140,7 +142,7 @@ TSectionEdit::KeyDown(const char* bytes, int32 numbytes)
 		case B_LEFT_ARROW:
 			fFocus -= 1;
 			if (fFocus < 0)
-				fFocus = fSectionCount -1;
+				fFocus = fSectionCount - 1;
 			SectionFocus(fFocus);
 			break;
 
@@ -204,10 +206,10 @@ void
 TSectionEdit::DrawBorder(const BRect& updateRect)
 {
 	BRect bounds(Bounds());
-	fShowFocus = (IsFocus() && Window() && Window()->IsActive());
+	bool showFocus = (IsFocus() && Window() && Window()->IsActive());
 
 	be_control_look->DrawBorder(this, bounds, updateRect, ViewColor(),
-		B_FANCY_BORDER, fShowFocus ? BControlLook::B_FOCUSED : 0);
+		B_FANCY_BORDER, showFocus ? BControlLook::B_FOCUSED : 0);
 
 	// draw up/down control
 
@@ -250,4 +252,3 @@ TSectionEdit::SeparatorWidth() const
 {
 	return 0.0f;
 }
-

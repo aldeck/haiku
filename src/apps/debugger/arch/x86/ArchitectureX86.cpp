@@ -12,6 +12,7 @@
 
 #include <AutoDeleter.h>
 
+#include "CfaContext.h"
 #include "CpuStateX86.h"
 #include "DisassembledCode.h"
 #include "FunctionDebugInfo.h"
@@ -194,6 +195,20 @@ ArchitectureX86::Registers() const
 
 
 status_t
+ArchitectureX86::InitRegisterRules(CfaContext& context) const
+{
+	status_t error = Architecture::InitRegisterRules(context);
+	if (error != B_OK)
+		return error;
+
+	// set up rule for EIP register
+	context.RegisterRule(fToDwarfRegisterMap->MapRegisterIndex(
+		X86_REGISTER_EIP))->SetToLocationOffset(-4);
+
+	return B_OK;
+}
+
+status_t
 ArchitectureX86::GetDwarfRegisterMaps(RegisterMap** _toDwarf,
 	RegisterMap** _fromDwarf) const
 {
@@ -325,14 +340,14 @@ ArchitectureX86::CreateStackFrame(Image* image, FunctionDebugInfo* function,
 		= new(std::nothrow) NoOpStackFrameDebugInfo;
 	if (stackFrameDebugInfo == NULL)
 		return B_NO_MEMORY;
-	Reference<StackFrameDebugInfo> stackFrameDebugInfoReference(
+	BReference<StackFrameDebugInfo> stackFrameDebugInfoReference(
 		stackFrameDebugInfo, true);
 
 	StackFrame* frame = new(std::nothrow) StackFrame(frameType, cpuState,
 		framePointer, eip, stackFrameDebugInfo);
 	if (frame == NULL)
 		return B_NO_MEMORY;
-	Reference<StackFrame> frameReference(frame, true);
+	BReference<StackFrame> frameReference(frame, true);
 
 	status_t error = frame->Init();
 	if (error != B_OK)
@@ -483,7 +498,7 @@ ArchitectureX86::DisassembleCode(FunctionDebugInfo* function,
 		fAssemblyLanguage);
 	if (source == NULL)
 		return B_NO_MEMORY;
-	Reference<DisassembledCode> sourceReference(source, true);
+	BReference<DisassembledCode> sourceReference(source, true);
 
 	// init disassembler
 	DisassemblerX86 disassembler;

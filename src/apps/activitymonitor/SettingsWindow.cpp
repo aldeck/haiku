@@ -9,10 +9,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <Catalog.h>
 #include <GridLayoutBuilder.h>
 #include <GroupLayoutBuilder.h>
 #include <Slider.h>
 #include <String.h>
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "SettingsWindow"
 
 
 static const uint32 kMsgUpdateTimeInterval = 'upti';
@@ -70,9 +74,9 @@ private:
 
 		bigtime_t interval = kUpdateIntervals[level];
 		if ((interval % 1000) == 0)
-			snprintf(fText, sizeof(fText), "%lld sec.", interval / 1000);
+			snprintf(fText, sizeof(fText), B_TRANSLATE("%lld sec."), interval / 1000);
 		else
-			snprintf(fText, sizeof(fText), "%lld ms", interval);
+			snprintf(fText, sizeof(fText), B_TRANSLATE("%lld ms"), interval);
 
 		return fText;
 	}
@@ -85,13 +89,14 @@ private:
 
 
 SettingsWindow::SettingsWindow(ActivityWindow* target)
-	: BWindow(_RelativeTo(target), "Settings", B_FLOATING_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS),
+	: BWindow(_RelativeTo(target),
+		B_TRANSLATE_WITH_CONTEXT("Settings", "ActivityWindow"), B_FLOATING_WINDOW,
+	   	B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS),
 	fTarget(target)
 {
 	SetLayout(new BGroupLayout(B_VERTICAL));
 
-	fIntervalSlider = new IntervalSlider("Update time interval:",
+	fIntervalSlider = new IntervalSlider(B_TRANSLATE("Update time interval:"),
 		new BMessage(kMsgUpdateTimeInterval), kNumUpdateIntervals);
 	fIntervalSlider->SetInterval(target->RefreshInterval());
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2010, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2008-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2003-2008, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  *
@@ -109,7 +109,7 @@ find_symbol(image_t* image, const SymbolLookupInfo& lookupInfo)
 		Elf32_Sym* symbol = &image->syms[i];
 
 		if (symbol->st_shndx != SHN_UNDEF
-			&& ((ELF32_ST_BIND(symbol->st_info)== STB_GLOBAL)
+			&& ((ELF32_ST_BIND(symbol->st_info) == STB_GLOBAL)
 				|| (ELF32_ST_BIND(symbol->st_info) == STB_WEAK))
 			&& !strcmp(SYMNAME(image, symbol), lookupInfo.name)) {
 
@@ -300,13 +300,26 @@ find_undefined_symbol_beos(image_t* rootImage, image_t* image,
 {
 	// BeOS style symbol resolution: It is sufficient to check the image itself
 	// and its direct dependencies. The linker would have complained, if the
-	// symbol wasn't there.
+	// symbol wasn't there. First we check whether the requesting symbol is
+	// defined already -- then we can simply return it, since, due to symbolic
+	// linking, that's the one we'd find anyway.
+	if (Elf32_Sym* symbol = lookupInfo.requestingSymbol) {
+		if (symbol->st_shndx != SHN_UNDEF
+			&& ((ELF32_ST_BIND(symbol->st_info) == STB_GLOBAL)
+				|| (ELF32_ST_BIND(symbol->st_info) == STB_WEAK))) {
+			*foundInImage = image;
+			return symbol;
+		}
+	}
+
+	// lookup in image
 	Elf32_Sym* symbol = find_symbol(image, lookupInfo);
 	if (symbol != NULL) {
 		*foundInImage = image;
 		return symbol;
 	}
 
+	// lookup in dependencies
 	for (uint32 i = 0; i < image->num_needed; i++) {
 		if (image->needed[i]->dynamic_ptr) {
 			symbol = find_symbol(image->needed[i], lookupInfo);
@@ -388,6 +401,24 @@ find_undefined_symbol_add_on(image_t* rootImage, image_t* image,
 	// library symbol references to symbol definitions in the add-on, as
 	// libraries can be shared between different add-ons and we must not
 	// introduce connections between add-ons.
+
+	// For the add-on image itself resolve non-weak symbols defined in the
+	// add-on to themselves. This makes the symbol resolution order inconsistent
+	// for those symbols, but avoids clashes of global symbols defined in the
+	// add-on with symbols defined e.g. in the application. There's really the
+	// same problem for weak symbols, but we don't have any way to discriminate
+	// weak symbols that must be resolved globally from those that should be
+	// resolved within the add-on.
+	if (rootImage == image) {
+		if (Elf32_Sym* symbol = lookupInfo.requestingSymbol) {
+			if (symbol->st_shndx != SHN_UNDEF
+				&& (ELF32_ST_BIND(symbol->st_info) == STB_GLOBAL)) {
+				*_foundInImage = image;
+				return symbol;
+			}
+		}
+	}
+
 	image_t* candidateImage = NULL;
 	Elf32_Sym* candidateSymbol = NULL;
 
@@ -479,7 +510,7 @@ resolve_symbol(image_t* rootImage, image_t* image, struct Elf32_Sym* sym,
 
 		// search the symbol
 		sharedSym = rootImage->find_undefined_symbol(rootImage, image,
-			SymbolLookupInfo(symName, type, versionInfo), &sharedImage);
+			SymbolLookupInfo(symName, type, versionInfo, 0, sym), &sharedImage);
 	}
 
 	enum {

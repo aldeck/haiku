@@ -19,9 +19,8 @@ public:
 	virtual Attributes	GetBusAttributes();
 	virtual BString		GetBusStrings();
 	virtual void		InitFromAttributes();
-	
-	virtual BString		GetBusTabName()
-							{ return "ACPI Information"; }
+	virtual BString		GetBusTabName();
 };
 
 #endif /* DEVICEACPI_H */
+

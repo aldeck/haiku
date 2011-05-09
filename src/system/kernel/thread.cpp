@@ -1,5 +1,5 @@
 /*
- * Copyright 2005-2010, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2005-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2002-2009, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  *
@@ -68,7 +68,7 @@ struct thread_key {
 spinlock gThreadSpinlock = B_SPINLOCK_INITIALIZER;
 
 // thread list
-static struct thread sIdleThreads[B_MAX_CPU_COUNT];
+static Thread sIdleThreads[B_MAX_CPU_COUNT];
 static hash_table *sThreadHash = NULL;
 static thread_id sNextThreadID = 1;
 
@@ -78,10 +78,10 @@ static int32 sMaxThreads = 4096;
 static int32 sUsedThreads = 0;
 
 struct UndertakerEntry : DoublyLinkedListLinkImpl<UndertakerEntry> {
-	struct thread*	thread;
-	team_id			teamID;
+	Thread*	thread;
+	team_id	teamID;
 
-	UndertakerEntry(struct thread* thread, team_id teamID)
+	UndertakerEntry(Thread* thread, team_id teamID)
 		:
 		thread(thread),
 		teamID(teamID)
@@ -97,16 +97,24 @@ public:
 	{
 	}
 
-	void Notify(uint32 eventCode, struct thread* thread)
+	void Notify(uint32 eventCode, team_id teamID, thread_id threadID,
+		Thread* thread = NULL)
 	{
 		char eventBuffer[128];
 		KMessage event;
 		event.SetTo(eventBuffer, sizeof(eventBuffer), THREAD_MONITOR);
 		event.AddInt32("event", eventCode);
-		event.AddInt32("thread", thread->id);
-		event.AddPointer("threadStruct", thread);
+		event.AddInt32("team", teamID);
+		event.AddInt32("thread", threadID);
+		if (thread != NULL)
+			event.AddPointer("threadStruct", thread);
 
 		DefaultNotificationService::Notify(event, eventCode);
+	}
+
+	void Notify(uint32 eventCode, Thread* thread)
+	{
+		return Notify(eventCode, thread->id, thread->team->id, thread);
 	}
 };
 
@@ -127,7 +135,7 @@ static void thread_kthread_exit(void);
 	You must hold the team lock when you call this function.
 */
 static void
-insert_thread_into_team(struct team *team, struct thread *thread)
+insert_thread_into_team(Team *team, Thread *thread)
 {
 	thread->team_next = team->thread_list;
 	team->thread_list = thread;
@@ -145,9 +153,9 @@ insert_thread_into_team(struct team *team, struct thread *thread)
 	You must hold the team lock when you call this function.
 */
 static void
-remove_thread_from_team(struct team *team, struct thread *thread)
+remove_thread_from_team(Team *team, Thread *thread)
 {
-	struct thread *temp, *last = NULL;
+	Thread *temp, *last = NULL;
 
 	for (temp = team->thread_list; temp != NULL; temp = temp->team_next) {
 		if (temp == thread) {
@@ -167,7 +175,7 @@ remove_thread_from_team(struct team *team, struct thread *thread)
 static int
 thread_struct_compare(void *_t, const void *_key)
 {
-	struct thread *thread = (struct thread*)_t;
+	Thread *thread = (Thread*)_t;
 	const struct thread_key *key = (const struct thread_key*)_key;
 
 	if (thread->id == key->id)
@@ -180,7 +188,7 @@ thread_struct_compare(void *_t, const void *_key)
 static uint32
 thread_struct_hash(void *_t, const void *_key, uint32 range)
 {
-	struct thread *thread = (struct thread*)_t;
+	Thread *thread = (Thread*)_t;
 	const struct thread_key *key = (const struct thread_key*)_key;
 
 	if (thread != NULL)
@@ -191,7 +199,7 @@ thread_struct_hash(void *_t, const void *_key, uint32 range)
 
 
 static void
-reset_signals(struct thread *thread)
+reset_signals(Thread *thread)
 {
 	thread->sig_pending = 0;
 	thread->sig_block_mask = 0;
@@ -209,15 +217,15 @@ reset_signals(struct thread *thread)
 		  \code < 0 \endcode a fresh one is allocated.
 	\param thread initialize this thread struct if nonnull
 */
-static struct thread *
-create_thread_struct(struct thread *inthread, const char *name,
+static Thread *
+create_thread_struct(Thread *inthread, const char *name,
 	thread_id threadID, struct cpu_ent *cpu)
 {
-	struct thread *thread;
+	Thread *thread;
 	char temp[64];
 
 	if (inthread == NULL) {
-		thread = (struct thread*)object_cache_alloc(sThreadCache, 0);
+		thread = (Thread*)object_cache_alloc(sThreadCache, 0);
 		if (thread == NULL)
 			return NULL;
 
@@ -305,7 +313,7 @@ err1:
 
 
 static void
-delete_thread_struct(struct thread *thread)
+delete_thread_struct(Thread *thread)
 {
 	delete_sem(thread->exit.sem);
 	delete_sem(thread->msg.write_sem);
@@ -320,7 +328,7 @@ delete_thread_struct(struct thread *thread)
 static void
 thread_kthread_entry(void)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	// The thread is new and has been scheduled the first time. Notify the user
 	// debugger code.
@@ -341,7 +349,7 @@ thread_kthread_entry(void)
 static void
 thread_kthread_exit(void)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	thread->exit.reason = THREAD_RETURN_EXIT;
 	thread_exit();
@@ -355,7 +363,7 @@ thread_kthread_exit(void)
 static int
 _create_user_thread_kentry(void)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	// jump to the entry point in user space
 	arch_thread_enter_userspace(thread, (addr_t)thread->entry,
@@ -370,7 +378,7 @@ _create_user_thread_kentry(void)
 static int
 _create_kernel_thread_kentry(void)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 	int (*func)(void *args) = (int (*)(void *))thread->entry;
 
 	// call the entry function with the appropriate args
@@ -386,8 +394,8 @@ _create_kernel_thread_kentry(void)
 static thread_id
 create_thread(thread_creation_attributes& attributes, bool kernel)
 {
-	struct thread *thread, *currentThread;
-	struct team *team;
+	Thread *thread, *currentThread;
+	Team *team;
 	cpu_status state;
 	char stack_name[B_OS_NAME_LENGTH];
 	status_t status;
@@ -455,6 +463,10 @@ create_thread(thread_creation_attributes& attributes, bool kernel)
 
 		// stop the new thread, if desired
 		debugNewThread = debugFlags & B_THREAD_DEBUG_STOP_CHILD_THREADS;
+
+		// copy signal handlers
+		memcpy(thread->sig_action, currentThread->sig_action,
+			sizeof(thread->sig_action));
 	}
 
 	// insert into global list
@@ -595,7 +607,7 @@ undertaker(void* /*args*/)
 			// we need a copy, since the original entry is on the thread's stack
 
 		// we've got an entry
-		struct thread* thread = entry.thread;
+		Thread* thread = entry.thread;
 
 		// delete the old kernel stack area
 		delete_area(thread->kernel_stack_area);
@@ -620,7 +632,7 @@ undertaker(void* /*args*/)
 
 
 static sem_id
-get_thread_wait_sem(struct thread* thread)
+get_thread_wait_sem(Thread* thread)
 {
 	if (thread->state == B_THREAD_WAITING
 		&& thread->wait.type == THREAD_BLOCK_TYPE_SEMAPHORE) {
@@ -635,7 +647,7 @@ get_thread_wait_sem(struct thread* thread)
 	The thread lock must be held when called.
 */
 static void
-fill_thread_info(struct thread *thread, thread_info *info, size_t size)
+fill_thread_info(Thread *thread, thread_info *info, size_t size)
 {
 	info->thread = thread->id;
 	info->team = thread->team->id;
@@ -679,7 +691,7 @@ static status_t
 send_data_etc(thread_id id, int32 code, const void *buffer, size_t bufferSize,
 	int32 flags)
 {
-	struct thread *target;
+	Thread *target;
 	sem_id cachedSem;
 	cpu_status state;
 	status_t status;
@@ -752,7 +764,7 @@ static int32
 receive_data_etc(thread_id *_sender, void *buffer, size_t bufferSize,
 	int32 flags)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 	status_t status;
 	size_t size;
 	int32 code;
@@ -804,7 +816,7 @@ common_getrlimit(int resource, struct rlimit * rlp)
 
 		case RLIMIT_STACK:
 		{
-			struct thread *thread = thread_get_current_thread();
+			Thread *thread = thread_get_current_thread();
 			if (!thread)
 				return B_ERROR;
 			rlp->rlim_cur = thread->user_stack_size;
@@ -851,7 +863,7 @@ common_setrlimit(int resource, const struct rlimit * rlp)
 static int
 make_thread_unreal(int argc, char **argv)
 {
-	struct thread *thread;
+	Thread *thread;
 	struct hash_iterator i;
 	int32 id = -1;
 
@@ -865,7 +877,7 @@ make_thread_unreal(int argc, char **argv)
 
 	hash_open(sThreadHash, &i);
 
-	while ((thread = (struct thread*)hash_next(sThreadHash, &i)) != NULL) {
+	while ((thread = (Thread*)hash_next(sThreadHash, &i)) != NULL) {
 		if (id != -1 && thread->id != id)
 			continue;
 
@@ -883,7 +895,7 @@ make_thread_unreal(int argc, char **argv)
 static int
 set_thread_prio(int argc, char **argv)
 {
-	struct thread *thread;
+	Thread *thread;
 	struct hash_iterator i;
 	int32 id;
 	int32 prio;
@@ -906,7 +918,7 @@ set_thread_prio(int argc, char **argv)
 
 	hash_open(sThreadHash, &i);
 
-	while ((thread = (struct thread*)hash_next(sThreadHash, &i)) != NULL) {
+	while ((thread = (Thread*)hash_next(sThreadHash, &i)) != NULL) {
 		if (thread->id != id)
 			continue;
 		thread->priority = thread->next_priority = prio;
@@ -924,7 +936,7 @@ set_thread_prio(int argc, char **argv)
 static int
 make_thread_suspended(int argc, char **argv)
 {
-	struct thread *thread;
+	Thread *thread;
 	struct hash_iterator i;
 	int32 id;
 
@@ -940,7 +952,7 @@ make_thread_suspended(int argc, char **argv)
 
 	hash_open(sThreadHash, &i);
 
-	while ((thread = (struct thread*)hash_next(sThreadHash, &i)) != NULL) {
+	while ((thread = (Thread*)hash_next(sThreadHash, &i)) != NULL) {
 		if (thread->id != id)
 			continue;
 
@@ -959,7 +971,7 @@ make_thread_suspended(int argc, char **argv)
 static int
 make_thread_resumed(int argc, char **argv)
 {
-	struct thread *thread;
+	Thread *thread;
 	struct hash_iterator i;
 	int32 id;
 
@@ -974,7 +986,7 @@ make_thread_resumed(int argc, char **argv)
 
 	hash_open(sThreadHash, &i);
 
-	while ((thread = (struct thread*)hash_next(sThreadHash, &i)) != NULL) {
+	while ((thread = (Thread*)hash_next(sThreadHash, &i)) != NULL) {
 		if (thread->id != id)
 			continue;
 
@@ -1019,7 +1031,7 @@ drop_into_debugger(int argc, char **argv)
 
 
 static const char *
-state_to_text(struct thread *thread, int32 state)
+state_to_text(Thread *thread, int32 state)
 {
 	switch (state) {
 		case B_THREAD_READY:
@@ -1069,7 +1081,7 @@ print_thread_list_table_head()
 
 
 static void
-_dump_thread_info(struct thread *thread, bool shortInfo)
+_dump_thread_info(Thread *thread, bool shortInfo)
 {
 	if (shortInfo) {
 		kprintf("%p %6ld  %-10s", thread, thread->id, state_to_text(thread,
@@ -1251,7 +1263,7 @@ dump_thread_info(int argc, char **argv)
 
 		if (IS_KERNEL_ADDRESS(id)) {
 			// semi-hack
-			_dump_thread_info((struct thread *)id, shortInfo);
+			_dump_thread_info((Thread *)id, shortInfo);
 			continue;
 		}
 
@@ -1259,8 +1271,8 @@ dump_thread_info(int argc, char **argv)
 		bool found = false;
 		struct hash_iterator i;
 		hash_open(sThreadHash, &i);
-		struct thread *thread;
-		while ((thread = (struct thread*)hash_next(sThreadHash, &i)) != NULL) {
+		Thread *thread;
+		while ((thread = (Thread*)hash_next(sThreadHash, &i)) != NULL) {
 			if (!strcmp(name, thread->name) || thread->id == id) {
 				_dump_thread_info(thread, shortInfo);
 				found = true;
@@ -1280,7 +1292,7 @@ dump_thread_info(int argc, char **argv)
 static int
 dump_thread_list(int argc, char **argv)
 {
-	struct thread *thread;
+	Thread *thread;
 	struct hash_iterator i;
 	bool realTimeOnly = false;
 	bool calling = false;
@@ -1325,7 +1337,7 @@ dump_thread_list(int argc, char **argv)
 	print_thread_list_table_head();
 
 	hash_open(sThreadHash, &i);
-	while ((thread = (struct thread*)hash_next(sThreadHash, &i)) != NULL) {
+	while ((thread = (Thread*)hash_next(sThreadHash, &i)) != NULL) {
 		// filter out threads not matching the search criteria
 		if ((requiredState && thread->state != requiredState)
 			|| (calling && !arch_debug_contains_call(thread, callSymbol,
@@ -1349,8 +1361,8 @@ void
 thread_exit(void)
 {
 	cpu_status state;
-	struct thread *thread = thread_get_current_thread();
-	struct team *team = thread->team;
+	Thread *thread = thread_get_current_thread();
+	Team *team = thread->team;
 	thread_id parentID = -1;
 	status_t status;
 	struct thread_debug_info debugInfo;
@@ -1417,7 +1429,7 @@ thread_exit(void)
 		}
 
 		if (deleteTeam) {
-			struct team *parent = team->parent;
+			Team *parent = team->parent;
 
 			// remember who our parent was so we can send a signal
 			parentID = parent->id;
@@ -1434,9 +1446,9 @@ thread_exit(void)
 				// team_set_job_control_state() already moved our entry
 				// into the parent's list. We just check the soft limit of
 				// death entries.
-				if (parent->dead_children->count > MAX_DEAD_CHILDREN) {
-					death = parent->dead_children->entries.RemoveHead();
-					parent->dead_children->count--;
+				if (parent->dead_children.count > MAX_DEAD_CHILDREN) {
+					death = parent->dead_children.entries.RemoveHead();
+					parent->dead_children.count--;
 				} else
 					death = NULL;
 
@@ -1602,10 +1614,10 @@ thread_exit(void)
 }
 
 
-struct thread *
+Thread *
 thread_get_thread_struct(thread_id id)
 {
-	struct thread *thread;
+	Thread *thread;
 	cpu_status state;
 
 	state = disable_interrupts();
@@ -1620,14 +1632,14 @@ thread_get_thread_struct(thread_id id)
 }
 
 
-struct thread *
+Thread *
 thread_get_thread_struct_locked(thread_id id)
 {
 	struct thread_key key;
 
 	key.id = id;
 
-	return (struct thread*)hash_lookup(sThreadHash, &key);
+	return (Thread*)hash_lookup(sThreadHash, &key);
 }
 
 
@@ -1639,7 +1651,7 @@ thread_get_thread_struct_locked(thread_id id)
 void
 thread_at_kernel_entry(bigtime_t now)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	TRACE(("thread_at_kernel_entry: entry thread %ld\n", thread->id));
 
@@ -1659,7 +1671,7 @@ thread_at_kernel_entry(bigtime_t now)
 void
 thread_at_kernel_exit(void)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	TRACE(("thread_at_kernel_exit: exit thread %ld\n", thread->id));
 
@@ -1686,7 +1698,7 @@ thread_at_kernel_exit(void)
 void
 thread_at_kernel_exit_no_signals(void)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	TRACE(("thread_at_kernel_exit_no_signals: exit thread %ld\n", thread->id));
 
@@ -1702,7 +1714,7 @@ thread_at_kernel_exit_no_signals(void)
 void
 thread_reset_for_exec(void)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	reset_signals(thread);
 
@@ -1712,7 +1724,7 @@ thread_reset_for_exec(void)
 
 /*! Insert a thread to the tail of a queue */
 void
-thread_enqueue(struct thread *thread, struct thread_queue *queue)
+thread_enqueue(Thread *thread, struct thread_queue *queue)
 {
 	thread->queue_next = NULL;
 	if (queue->head == NULL) {
@@ -1725,17 +1737,17 @@ thread_enqueue(struct thread *thread, struct thread_queue *queue)
 }
 
 
-struct thread *
+Thread *
 thread_lookat_queue(struct thread_queue *queue)
 {
 	return queue->head;
 }
 
 
-struct thread *
+Thread *
 thread_dequeue(struct thread_queue *queue)
 {
-	struct thread *thread = queue->head;
+	Thread *thread = queue->head;
 
 	if (thread != NULL) {
 		queue->head = thread->queue_next;
@@ -1746,11 +1758,11 @@ thread_dequeue(struct thread_queue *queue)
 }
 
 
-struct thread *
+Thread *
 thread_dequeue_id(struct thread_queue *q, thread_id id)
 {
-	struct thread *thread;
-	struct thread *last = NULL;
+	Thread *thread;
+	Thread *last = NULL;
 
 	thread = q->head;
 	while (thread != NULL) {
@@ -1771,14 +1783,14 @@ thread_dequeue_id(struct thread_queue *q, thread_id id)
 }
 
 
-struct thread*
+Thread*
 thread_iterate_through_threads(thread_iterator_callback callback, void* cookie)
 {
 	struct hash_iterator iterator;
 	hash_open(sThreadHash, &iterator);
 
-	struct thread* thread;
-	while ((thread = (struct thread*)hash_next(sThreadHash, &iterator))
+	Thread* thread;
+	while ((thread = (Thread*)hash_next(sThreadHash, &iterator))
 			!= NULL) {
 		if (callback(thread, cookie))
 			break;
@@ -1819,7 +1831,7 @@ thread_yield(bool force)
 #if 0
 		cpu_status state;
 
-		struct thread *thread = thread_get_current_thread();
+		Thread *thread = thread_get_current_thread();
 		if (thread == NULL)
 			return;
 
@@ -1835,7 +1847,7 @@ thread_yield(bool force)
 		restore_interrupts(state);
 #endif
 	} else {
-		struct thread *thread = thread_get_current_thread();
+		Thread *thread = thread_get_current_thread();
 		if (thread == NULL)
 			return;
 
@@ -1877,7 +1889,7 @@ wait_for_thread_etc(thread_id id, uint32 flags, bigtime_t timeout,
 	sem_id exitSem = B_BAD_THREAD_ID;
 	struct death_entry death;
 	job_control_entry* freeDeath = NULL;
-	struct thread *thread;
+	Thread *thread;
 	cpu_status state;
 	status_t status = B_OK;
 
@@ -1905,7 +1917,7 @@ wait_for_thread_etc(thread_id id, uint32 flags, bigtime_t timeout,
 		// find its death entry in our team
 		GRAB_TEAM_LOCK();
 
-		struct team* team = thread_get_current_thread()->team;
+		Team* team = thread_get_current_thread()->team;
 
 		// check the child death entries first (i.e. main threads of child
 		// teams)
@@ -1993,7 +2005,7 @@ select_thread(int32 id, struct select_info* info, bool kernel)
 	InterruptsSpinLocker locker(gThreadSpinlock);
 
 	// get thread
-	struct thread* thread = thread_get_thread_struct_locked(id);
+	Thread* thread = thread_get_thread_struct_locked(id);
 	if (thread == NULL)
 		return B_BAD_THREAD_ID;
 
@@ -2019,7 +2031,7 @@ deselect_thread(int32 id, struct select_info* info, bool kernel)
 	InterruptsSpinLocker locker(gThreadSpinlock);
 
 	// get thread
-	struct thread* thread = thread_get_thread_struct_locked(id);
+	Thread* thread = thread_get_thread_struct_locked(id);
 	if (thread == NULL)
 		return B_BAD_THREAD_ID;
 
@@ -2057,7 +2069,7 @@ thread_used_threads(void)
 
 
 const char*
-thread_state_to_text(struct thread* thread, int32 state)
+thread_state_to_text(Thread* thread, int32 state)
 {
 	return state_to_text(thread, state);
 }
@@ -2067,7 +2079,7 @@ int32
 thread_get_io_priority(thread_id id)
 {
 	// take a shortcut, if it is the current thread
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 	int32 priority;
 	if (id == thread->id) {
 		int32 priority = thread->io_priority;
@@ -2089,7 +2101,7 @@ thread_get_io_priority(thread_id id)
 void
 thread_set_io_priority(int32 priority)
 {
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 	thread->io_priority = priority;
 }
 
@@ -2102,11 +2114,11 @@ thread_init(kernel_args *args)
 	TRACE(("thread_init: entry\n"));
 
 	// create the thread hash table
-	sThreadHash = hash_init(15, offsetof(struct thread, all_next),
+	sThreadHash = hash_init(15, offsetof(Thread, all_next),
 		&thread_struct_compare, &thread_struct_hash);
 
 	// create the thread structure object cache
-	sThreadCache = create_object_cache("threads", sizeof(thread), 16, NULL,
+	sThreadCache = create_object_cache("threads", sizeof(Thread), 16, NULL,
 		NULL, NULL);
 		// Note: The x86 port requires 16 byte alignment of thread structures.
 	if (sThreadCache == NULL)
@@ -2121,7 +2133,7 @@ thread_init(kernel_args *args)
 	// create an idle thread for each cpu
 
 	for (i = 0; i < args->num_cpus; i++) {
-		struct thread *thread;
+		Thread *thread;
 		area_info info;
 		char name[64];
 
@@ -2259,7 +2271,7 @@ thread_block_timeout(timer* timer)
 	// we're holding the thread lock already. This makes things comfortably
 	// easy.
 
-	struct thread* thread = (struct thread*)timer->user_data;
+	Thread* thread = (Thread*)timer->user_data;
 	thread_unblock_locked(thread, B_TIMED_OUT);
 
 	return B_HANDLED_INTERRUPT;
@@ -2279,7 +2291,7 @@ thread_unblock(status_t threadID, status_t status)
 {
 	InterruptsSpinLocker _(gThreadSpinlock);
 
-	struct thread* thread = thread_get_thread_struct_locked(threadID);
+	Thread* thread = thread_get_thread_struct_locked(threadID);
 	if (thread != NULL)
 		thread_unblock_locked(thread, status);
 }
@@ -2296,7 +2308,7 @@ thread_block_with_timeout(uint32 timeoutFlags, bigtime_t timeout)
 status_t
 thread_block_with_timeout_locked(uint32 timeoutFlags, bigtime_t timeout)
 {
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 
 	if (thread->wait.status != 1)
 		return thread->wait.status;
@@ -2341,7 +2353,7 @@ thread_block_with_timeout_locked(uint32 timeoutFlags, bigtime_t timeout)
 static status_t
 user_unblock_thread(thread_id threadID, status_t status)
 {
-	struct thread* thread = thread_get_thread_struct_locked(threadID);
+	Thread* thread = thread_get_thread_struct_locked(threadID);
 	if (thread == NULL)
 		return B_BAD_THREAD_ID;
 	if (thread->user_thread == NULL)
@@ -2362,7 +2374,7 @@ user_unblock_thread(thread_id threadID, status_t status)
 void
 exit_thread(status_t returnValue)
 {
-	struct thread *thread = thread_get_current_thread();
+	Thread *thread = thread_get_current_thread();
 
 	thread->exit.status = returnValue;
 	thread->exit.reason = THREAD_RETURN_EXIT;
@@ -2418,7 +2430,7 @@ status_t
 _get_thread_info(thread_id id, thread_info *info, size_t size)
 {
 	status_t status = B_OK;
-	struct thread *thread;
+	Thread *thread;
 	cpu_status state;
 
 	if (info == NULL || size != sizeof(thread_info) || id < B_OK)
@@ -2454,7 +2466,7 @@ _get_next_thread_info(team_id teamID, int32 *_cookie, thread_info *info,
 
 	InterruptsSpinLocker teamLocker(gTeamSpinlock);
 
-	struct team* team;
+	Team* team;
 	if (teamID == B_CURRENT_TEAM)
 		team = thread_get_current_thread()->team;
 	else
@@ -2463,7 +2475,7 @@ _get_next_thread_info(team_id teamID, int32 *_cookie, thread_info *info,
 	if (team == NULL)
 		return B_BAD_VALUE;
 
-	struct thread* thread = NULL;
+	Thread* thread = NULL;
 
 	if (lastID == 0) {
 		// We start with the main thread
@@ -2472,7 +2484,7 @@ _get_next_thread_info(team_id teamID, int32 *_cookie, thread_info *info,
 		// Find the one thread with an ID higher than ours
 		// (as long as the IDs don't overlap they are always sorted from
 		// highest to lowest).
-		for (struct thread* next = team->thread_list; next != NULL;
+		for (Thread* next = team->thread_list; next != NULL;
 				next = next->team_next) {
 			if (next->id <= lastID)
 				break;
@@ -2498,7 +2510,7 @@ thread_id
 find_thread(const char *name)
 {
 	struct hash_iterator iterator;
-	struct thread *thread;
+	Thread *thread;
 	cpu_status state;
 
 	if (name == NULL)
@@ -2513,10 +2525,10 @@ find_thread(const char *name)
 	//		cheap either - although this function is probably used very rarely.
 
 	hash_open(sThreadHash, &iterator);
-	while ((thread = (struct thread*)hash_next(sThreadHash, &iterator))
+	while ((thread = (Thread*)hash_next(sThreadHash, &iterator))
 			!= NULL) {
 		// Search through hash
-		if (thread->name != NULL && !strcmp(thread->name, name)) {
+		if (!strcmp(thread->name, name)) {
 			thread_id id = thread->id;
 
 			RELEASE_THREAD_LOCK();
@@ -2533,40 +2545,41 @@ find_thread(const char *name)
 
 
 status_t
-rename_thread(thread_id id, const char *name)
+rename_thread(thread_id id, const char* name)
 {
-	struct thread *thread = thread_get_current_thread();
-	status_t status = B_BAD_THREAD_ID;
-	cpu_status state;
+	Thread* thread = thread_get_current_thread();
 
 	if (name == NULL)
 		return B_BAD_VALUE;
 
-	state = disable_interrupts();
-	GRAB_THREAD_LOCK();
+	InterruptsSpinLocker locker(gThreadSpinlock);
 
-	if (thread->id != id)
+	if (thread->id != id) {
 		thread = thread_get_thread_struct_locked(id);
-
-	if (thread != NULL) {
-		if (thread->team == thread_get_current_thread()->team) {
-			strlcpy(thread->name, name, B_OS_NAME_LENGTH);
-			status = B_OK;
-		} else
-			status = B_NOT_ALLOWED;
+		if (thread == NULL)
+			return B_BAD_THREAD_ID;
+		if (thread->team != thread_get_current_thread()->team)
+			return B_NOT_ALLOWED;
 	}
 
-	RELEASE_THREAD_LOCK();
-	restore_interrupts(state);
+	strlcpy(thread->name, name, B_OS_NAME_LENGTH);
 
-	return status;
+	team_id teamID = thread->team->id;
+
+	locker.Unlock();
+
+	// notify listeners
+	sNotificationService.Notify(THREAD_NAME_CHANGED, teamID, id);
+		// don't pass the thread structure, as it's unsafe, if it isn't ours
+
+	return B_OK;
 }
 
 
 status_t
 set_thread_priority(thread_id id, int32 priority)
 {
-	struct thread *thread;
+	Thread *thread;
 	int32 oldPriority;
 
 	// make sure the passed in priority is within bounds
@@ -2614,7 +2627,7 @@ snooze_etc(bigtime_t timeout, int timebase, uint32 flags)
 		return B_BAD_VALUE;
 
 	InterruptsSpinLocker _(gThreadSpinlock);
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 
 	thread_prepare_to_block(thread, flags, THREAD_BLOCK_TYPE_SNOOZE, NULL);
 	status = thread_block_with_timeout_locked(flags, timeout);
@@ -2955,7 +2968,7 @@ _user_block_thread(uint32 flags, bigtime_t timeout)
 	syscall_restart_handle_timeout_pre(flags, timeout);
 	flags |= B_CAN_INTERRUPT;
 
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 
 	InterruptsSpinLocker locker(gThreadSpinlock);
 

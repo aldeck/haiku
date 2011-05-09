@@ -1,5 +1,5 @@
 /*
- * Copyright 2010, Haiku, Inc. All Rights Reserved.
+ * Copyright 2010-2011, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  */
 #ifndef _NETWORK_ADDRESS_H
@@ -16,7 +16,7 @@
 #include <String.h>
 
 
-class BNetworkAddress : public BArchivable {
+class BNetworkAddress : public BFlattenable {
 public:
 								BNetworkAddress();
 								BNetworkAddress(const char* address,
@@ -38,7 +38,6 @@ public:
 								BNetworkAddress(const in6_addr& address,
 									uint16 port = 0);
 								BNetworkAddress(const BNetworkAddress& other);
-								BNetworkAddress(BMessage* archive);
 	virtual						~BNetworkAddress();
 
 			status_t			InitCheck() const;
@@ -64,8 +63,10 @@ public:
 			void				SetTo(const BNetworkAddress& other);
 
 			status_t			SetToBroadcast(int family, uint16 port = 0);
-			status_t			SetToLocal();
-			status_t			SetToLoopback();
+			status_t			SetToLocal(int family = AF_UNSPEC,
+									uint16 port = 0);
+			status_t			SetToLoopback(int family = AF_UNSPEC,
+									uint16 port = 0);
 			status_t			SetToMask(int family, uint32 prefixLength);
 			status_t			SetToWildcard(int family, uint16 port = 0);
 
@@ -78,8 +79,8 @@ public:
 			void				SetToLinkLevel(const char* name);
 			void				SetToLinkLevel(uint32 index);
 			void				SetLinkLevelIndex(uint32 index);
-			void				SetLinkLevelType(uint32 type);
-			void				SetLinkLevelFrameType(uint32 frameType);
+			void				SetLinkLevelType(uint8 type);
+			void				SetLinkLevelFrameType(uint16 frameType);
 
 			int					Family() const;
 			uint16				Port() const;
@@ -104,8 +105,8 @@ public:
 
 			uint32				LinkLevelIndex() const;
 			BString				LinkLevelInterface() const;
-			uint32				LinkLevelType() const;
-			uint32				LinkLevelFrameType() const;
+			uint8				LinkLevelType() const;
+			uint16				LinkLevelFrameType() const;
 			uint8*				LinkLevelAddress() const;
 			size_t				LinkLevelAddressLength() const;
 
@@ -117,11 +118,17 @@ public:
 			BString				HostName() const;
 			BString				ServiceName() const;
 
-	virtual	status_t			Archive(BMessage* into, bool deep = true) const;
-	static	BArchivable*		Instantiate(BMessage* archive);
-
 			bool				Equals(const BNetworkAddress& other,
 									bool includePort = true) const;
+
+	// BFlattenable implementation
+	virtual	bool				IsFixedSize() const;
+	virtual	type_code			TypeCode() const;
+	virtual	ssize_t				FlattenedSize() const;
+
+	virtual	status_t			Flatten(void* buffer, ssize_t size) const;
+	virtual	status_t			Unflatten(type_code code, const void* buffer,
+									ssize_t size);
 
 			BNetworkAddress&	operator=(const BNetworkAddress& other);
 
@@ -135,6 +142,9 @@ public:
 								operator sockaddr*();
 								operator const sockaddr&();
 								operator sockaddr&();
+
+private:
+			status_t			_ParseLinkAddress(const char* address);
 
 private:
 			sockaddr_storage	fAddress;

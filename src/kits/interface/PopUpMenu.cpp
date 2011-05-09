@@ -317,6 +317,7 @@ BMenuItem *
 BPopUpMenu::_Go(BPoint where, bool autoInvoke, bool startOpened,
 		BRect *_specialRect, bool async)
 {
+
 	if (fTrackThread >= B_OK) {
 		// we already have an active menu, wait for it to go away before
 		// spawning another
@@ -417,10 +418,19 @@ BPopUpMenu::_StartTrack(BPoint where, bool autoInvoke, bool startOpened, BRect *
 	// called by BMenu::Track()
 	fUseWhere = true;
 
+	// Determine when mouse-down-up will be taken as a 'press', rather than a 'click'
+	bigtime_t clickMaxTime = 0;
+	get_click_speed(&clickMaxTime);
+	clickMaxTime += system_time();
+	
 	// Show the menu's window
 	Show();
 	snooze(50000);
 	BMenuItem *result = Track(startOpened, _specialRect);
+
+	// If it was a click, keep the menu open and tracking
+	if (system_time() <= clickMaxTime)	
+		result = Track(true, _specialRect);
 	if (result != NULL && autoInvoke)
 		result->Invoke();
 

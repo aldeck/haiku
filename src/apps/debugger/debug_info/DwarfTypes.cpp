@@ -537,7 +537,7 @@ DwarfCompoundType::ResolveDataMemberLocation(DataMember* _member,
 		return B_OK;
 	}
 
-	Reference<ValueLocation> locationReference(location);
+	BReference<ValueLocation> locationReference(location);
 
 	// get the byte size
 	target_addr_t byteSize;
@@ -592,7 +592,7 @@ DwarfCompoundType::ResolveDataMemberLocation(DataMember* _member,
 	ValueLocation* bitFieldLocation = new(std::nothrow) ValueLocation;
 	if (bitFieldLocation == NULL)
 		return B_NO_MEMORY;
-	Reference<ValueLocation> bitFieldLocationReference(bitFieldLocation, true);
+	BReference<ValueLocation> bitFieldLocationReference(bitFieldLocation, true);
 
 	if (!bitFieldLocation->SetTo(*location, bitOffset, bitSize))
 		return B_NO_MEMORY;
@@ -641,7 +641,7 @@ DwarfCompoundType::_ResolveDataMemberLocation(DwarfType* memberType,
 		parentLocation.IsBigEndian());
 	if (location == NULL)
 		return B_NO_MEMORY;
-	Reference<ValueLocation> locationReference(location, true);
+	BReference<ValueLocation> locationReference(location, true);
 
 	switch (memberLocation->attributeClass) {
 		case ATTRIBUTE_CLASS_CONSTANT:
@@ -691,7 +691,13 @@ DwarfCompoundType::_ResolveDataMemberLocation(DwarfType* memberType,
 			if (fEntry->Tag() != DW_TAG_union_type)
 				return B_BAD_VALUE;
 
-			if (!location->SetTo(parentLocation, 0, memberType->ByteSize() * 8))
+			// since all members start at the same location, set up
+			// the location by hand since we don't want the size difference
+			// between the overall union and the member being
+			// factored into the assigned address.
+			ValuePieceLocation piece = parentLocation.PieceAt(0);
+			piece.SetSize(memberType->ByteSize());
+			if (!location->AddPiece(piece))
 				return B_NO_MEMORY;
 
 			break;
@@ -866,7 +872,7 @@ DwarfArrayType::ResolveElementLocation(const ArrayIndexPath& indexPath,
 		parentLocation.IsBigEndian());
 	if (location == NULL)
 		return B_NO_MEMORY;
-	Reference<ValueLocation> locationReference(location, true);
+	BReference<ValueLocation> locationReference(location, true);
 
 	// If we have a single memory piece location for the array, we compute the
 	// element's location by hand -- not uncommonly the array size isn't known.

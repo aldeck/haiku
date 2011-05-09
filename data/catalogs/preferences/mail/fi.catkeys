@@ -1,45 +1,42 @@
-1	finnish	x-vnd.Haiku-Mail	2349748505
-Select account type	Config Views		Valitse tilityyppi
-Mail checking	Config Window		Sähköpostitarkistus
-Settings	Config Window		Asetukset
-Only when dial-up is connected	Config Window		Vain kun valintayhteys on päällä
-While sending and receiving	Config Window		Lähettämisen ja vastaanoton aikana
-days	Config Window		päivää
-Start mail services on startup	Config Window		Käynnistä sähköpostipalvelut käynnistyksen yhteydessä
-Receive mail only	Config Views		Vain vastaanota sähköpostia
-Account name:	Config Views		Tilinimi:
-OK	Config Views		Valmis
-The filter could not be moved. Deleting filter.	Config Views		Suodatinta ei voitu siirtää. Poistetaan suodatin.
-Revert	Config Window		Palauta
-Accounts	Config Window		Tilit
-Account type:	Config Views		Tilityyppi:
-Remove	Config Window		Poista
-Miscellaneous	Config Window		Sekalaiset
-Show connection status window:	Config Window		Näytä yhteystilaikkuna:
-While sending	Config Window		Lähetettäessä
-Schedule outgoing mail when dial-up is disconnected	Config Window		Aikatauluta lähtevä posti kun valintayhteys ei ole päällä
-hours	Config Window		tuntia
-Add	Config Window		Lisää
-Send mail only	Config Views		Vain lähetä sähköpostia
-E-mail	Account		Sähköposti
-Unnamed	Account		Nimetön
-\nThe general settings couldn't be reverted.\n\nError retrieving general settings:\n%s\n	Config Window		\nYleisiä asetuksia ei voitu palauttaa.\n\nVirhe noudettaessa yleisiä asetuksia:\n%s\n
-Send and receive mail	Config Views		Lähetä ja vastaanota postia
-Real name:	Config Views		Oikea nimi:
-Return address:	Config Views		Paluuosoite:
-Edit mailbox menu…	Config Window		Muokkaa postilaatikkovalikkoa…
-Remove	Config Views		Poista
-Could not create inbound chain.	Account		Ei voitu luoda tulevaa ketjua.
-Check every	Config Window		Tarkista kaikki
-never	Config Window		Ei koskaan
-Incoming mail filters	Config Views		Tulevan postin suodattimet
+1	finnish	x-vnd.Haiku-Mail	3023422579
+Account name:	Config Views		Tilin nimi:
 Account settings	Config Views		Tiliasetukset
-minutes	Config Window		minuuttia
-Error retrieving general settings: %s\n	Config Window		Virhe noudettaessa yleisasetuksia: %s\n
-OK	Account		Valmis
-Apply	Config Window		Sovella
-Could not create outbound chain.	Account		Ei voitu luoda lähtevää ketjua.
+Accounts	Config Window		Tilit
+Add	Config Window		Lisää
+Alpha	Config Window		Alfa
 Always	Config Window		Aina
-Add filter	Config Views		Lisää suodatin
-Outgoing mail filters	Config Views		Lähtevän postin suodattimet
-\n\nCreate a new account with the Add button.\n\nRemove an account with the Remove button on the selected item.\n\nSelect an item in the list to change its settings.	Config Window		\n\nLuo uusi tili Lisää-painikkeella.\n\nPoista tili Poista-painikkeella valitun tilin kohdalla.\n\nValitse tilirivi luettelossa sen asetusten muuttamiseksi.
+Apply	Config Window		Sovella
+Beta	Config Window		Beeta
+Check every	Config Window		Tarkista joka
+Development	Config Window		Kehitys
+E-mail	Config Window		Sähköposti
+Edit mailbox menu…	Config Window		Muokkaa sähköpostilaatikkovalikkoa...
+Error	Config Window		Virhe
+Error retrieving general settings: %s\n	Config Window		Virhe noudettaessa yleisasetuksia: %s\n
+Final	Config Window		Lopullinen
+Gamma	Config Window		Gamma
+Golden master	Config Window		Golden master
+Mail Daemon Replacement\n\nby Haiku, Inc. All rights reserved.\n\nVersion %ld.%ld.%ld %s\n\nSee LICENSE file included in the installation package for more information.\n\n\n\nYou can contact us at:\n%s\n\nPlease submit bug reports using the %s\n\nProject homepage at:\n%s	Config Window		Sähköpostitaustaohjelmakorvaus\n\ntekijä: Haiku, Inc. All rights reserved.\n\nVersio %ld.%ld.%ld %s\n\nLisätietoja varten katso LICENSE-tiedostoa, joka on asennuspakkauksessa.\n\n\n\nVoit ottaa meihin yhteyttä osoitteessa:\n%s\n\nLähetä vikailmoitukset käyttäen osoitetta %s\n\nHankkeen kotisivu on osoitteessa:\n%s
+Mail checking	Config Window		Sähköpostin tarkistus
+Miscellaneous	Config Window		Sekalaiset
+OK	Config Window		Valmis
+Only when dial-up is connected	Config Window		Vain kun valintayhteys on yhdistetty
+Real name:	Config Views		Oikea nimi:
+Remove	Config Window		Poista
+Return address:	Config Views		Paluuosoite:
+Revert	Config Window		Palauta
+Schedule outgoing mail when dial-up is disconnected	Config Window		Aikatauluta lähtevä sähköposti kun valintayhteys ei ole kytketty
+Settings	Config Window		Asetukset
+Show connection status window:	Config Window		Näytä yhteystilaikkuna:
+Start mail services on startup	Config Window		Käynnistä postipalvelut tietokoneen käynnistyksen yhteydessä
+While sending	Config Window		Lähetettäessä
+While sending and receiving	Config Window		Lähetettäessä ja vastaanotettaessa
+\nThe general settings couldn't be reverted.\n\nError retrieving general settings:\n%s\n	Config Window		\nYleisasetuksia ei voitu palauttaa.\n\nVirhe noudettaessa yleisasetuksia:\n%s\n
+\n\nCreate a new account with the Add button.\n\nRemove an account with the Remove button on the selected item.\n\nSelect an item in the list to change its settings.	Config Window		\n\nLuo uusi tili ”Lisää”-painikkeella.\n\nPoista tili ”Poista”-painikkella valitusta kohdasta.\n\nValitse kohde luettelosta sen asetusten muuttamiseksi.
+days	Config Window		päivä
+hours	Config Window		tunti
+minutes	Config Window		minuutti
+never	Config Window		älä tarkista
+· E-mail filters	Config Window		· Sähköpostisuodattimet
+· Incoming	Config Window		· Tuleva
+· Outgoing	Config Window		· Lähtevä

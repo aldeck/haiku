@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2001-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -173,7 +173,7 @@ struct Volume::IORequestStructMap
 
 
 // IterativeFDIOCookie
-struct Volume::IterativeFDIOCookie : public Referenceable {
+struct Volume::IterativeFDIOCookie : public BReferenceable {
 	Volume*				volume;
 	int					fd;
 	int32				requestID;
@@ -295,7 +295,7 @@ Volume::HasVNodeCapability(VNode* vnode, int capability) const
 // constructor
 Volume::Volume(FileSystem* fileSystem, fs_volume* fsVolume)
 	:
-	Referenceable(true),
+	BReferenceable(),
 	fFileSystem(fileSystem),
 	fFSVolume(fsVolume),
 	fUserlandVolume(NULL),
@@ -741,7 +741,7 @@ Volume::DoIterativeFDIO(int fd, int32 requestID, void* clientCookie,
 	}
 
 	// we need another reference, so we can still access the cookie below
-	cookie->AddReference();
+	cookie->AcquireReference();
 
 // TODO: Up to this point we're responsible for calling the finished hook on
 // error!
@@ -754,7 +754,7 @@ Volume::DoIterativeFDIO(int fd, int32 requestID, void* clientCookie,
 	MutexLocker _(fLock);
 	cookie->vecs = NULL;
 	cookie->vecCount = 0;
-	cookie->RemoveReference();
+	cookie->ReleaseReference();
 
 	return error;
 }
@@ -4386,7 +4386,7 @@ Volume::_SendRequest(RequestPort* port, RequestAllocator* allocator,
 	// fill in the caller info
 	KernelRequest* request = static_cast<KernelRequest*>(
 		allocator->GetRequest());
-	struct thread* thread = thread_get_current_thread();
+	Thread* thread = thread_get_current_thread();
 	request->team = thread->team->id;
 	request->thread = thread->id;
 	request->user = geteuid();
@@ -4765,7 +4765,7 @@ Volume::_IterativeFDIOFinished(void* _cookie, io_request* ioRequest,
 
 	// At any rate, we're done with the cookie after this call -- it will not
 	// be used anymore.
-	Reference<IterativeFDIOCookie> _(cookie, true);
+	BReference<IterativeFDIOCookie> _(cookie, true);
 
 	// We also want to dispose of the request.
 	IORequestRemover _2(volume, cookie->requestID);

@@ -1,0 +1,11 @@
+1	russian	x-vnd.Haiku-PowerStatus	1036085981
+About	PowerStatus		about
+Battery info…	PowerStatus		Информация о батарее…
+OK	PowerStatus		ОК
+Quit	PowerStatus		Выход
+Technology: 	PowerStatus		Технология:
+Type: 	PowerStatus		Тип:
+mV	PowerStatus		мВ
+mW	PowerStatus		мВт
+mWh	PowerStatus		мВтч
+rechargeable	PowerStatus		перезаряжаемый
