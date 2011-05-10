@@ -1,0 +1,15 @@
+1	slovak	x-vnd.Haiku-DataTranslations	2855793119
+An item named '%name' already exists in the Translators folder! Shall the existing translator be overwritten?	DataTranslations		Položka „%name“ už existuje v priečinku Translators! Má sa existujúci prekladač prepísať?
+Cancel	DataTranslations		Zrušiť
+Could not install %s:\n%s	DataTranslations		Nebolo možné nainštalovať %s:\n%s
+DataTranslations - Error	DataTranslations		Preklad dát - chyba
+DataTranslations - Note	DataTranslations		Preklad dát - poznámka
+Info	DataTranslations		Info
+Info:	DataTranslations		Info:
+Name:	DataTranslations		Názov:
+OK	DataTranslations		OK
+Overwrite	DataTranslations		Prepísať
+Path:	DataTranslations		Cesta:
+The item '%name' does not appear to be a Translator and will not be installed.	DataTranslations		Zdá sa, že položka „%name“ nie je prekladač a nebude nainštalovaná.
+The new translator has been installed successfully.	DataTranslations		Nový prekladač bol úspešne nainštalovaný.
+Version:	DataTranslations		Verzia:

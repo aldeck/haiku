@@ -44,6 +44,7 @@ All rights reserved.
 #endif
 
 #include <Bitmap.h>
+#include <Catalog.h>
 #include <Debug.h>
 #include <Directory.h>
 #include <fs_attr.h>
@@ -84,6 +85,9 @@ const float kExactMatchScore = INFINITY;
 
 const rgb_color	kBlack = {0, 0, 0, 255};
 const rgb_color	kWhite = {255, 255, 255, 255};
+
+
+bool gLocalizedNamePreferred;
 
 
 uint32

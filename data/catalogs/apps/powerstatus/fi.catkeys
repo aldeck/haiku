@@ -1,4 +1,4 @@
-1	finnish	x-vnd.Haiku-PowerStatus	51899741
+1	finnish	x-vnd.Haiku-PowerStatus	2178654445
 About	PowerStatus		Ohjelmasta
 About…	PowerStatus		Ohjelmasta...
 Battery charging	PowerStatus		Akkulataus
@@ -10,6 +10,7 @@ Capacity granularity 1: 	PowerStatus		Kapasiteettirakeisuus 1:
 Capacity granularity 2: 	PowerStatus		Kapasiteettirakeisuus 2:
 Capacity: 	PowerStatus		Kapasiteetti:
 Current rate: 	PowerStatus		Virtamäärä:
+Damaged battery	PowerStatus		Vaurioitunut akku
 Design capacity low warning: 	PowerStatus		Suunnittelukapasiteetti alhainen -varoitus
 Design capacity warning: 	PowerStatus		Suunnittelukapasiteettivaroitus:
 Design capacity: 	PowerStatus		Suunnittelukapasiteetti:
@@ -23,6 +24,7 @@ OEM info: 	PowerStatus		OEM-tiedot:
 OK	PowerStatus		Valmis
 Power status box	PowerStatus		Virtatilalaatikko
 PowerStatus	PowerStatus		Virtatila
+PowerStatus	System name		Virtatila
 PowerStatus\nwritten by Axel Dörfler, Clemens Zeidler\nCopyright 2006, Haiku, Inc.\n	PowerStatus		Virtatila\ntekijä: Axel Dörfler, Clemens Zeidler\nCopyright 2006, Haiku, Inc.\n
 Quit	PowerStatus		Poistu
 Run in window	PowerStatus		Suorita ikkunassa

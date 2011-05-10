@@ -18,10 +18,12 @@ class IMAPMailboxListener {
 public:
 	virtual						~IMAPMailboxListener() {}
 
-	virtual void				HeaderFetched(int32 uid, BPositionIO* data) {}
+	virtual void				HeaderFetched(int32 uid, BPositionIO* data,
+									bool bodyIsComing) {}
 	virtual void				BodyFetched(int32 uid, BPositionIO* data) {}
 
 	virtual	void				NewMessagesToFetch(int32 nMessages) {}
+	virtual	void				FetchEnd() {}
 };
 
 
@@ -42,7 +44,7 @@ public:
 			status_t			Sync();
 
 			bool				SupportWatching();
-			status_t			StartWatchingMailbox();
+			status_t			StartWatchingMailbox(sem_id startedSem = -1);
 			status_t			StopWatchingMailbox();
 
 			status_t			CheckMailbox();
@@ -72,7 +74,7 @@ public:
 			int32				UIDToMessageNumber(int32 uid);
 			int32				MessageNumberToUID(int32 messageNumber);
 
-			status_t			DeleteMessage(int32 messageNumber);
+			status_t			DeleteMessage(int32 uid, bool permanently);
 private:
 			void				_InstallUnsolicitedHandler(bool install);
 

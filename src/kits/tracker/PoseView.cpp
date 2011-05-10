@@ -1756,7 +1756,7 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 	else
 		viewBounds = Bounds();
 
-	be_clipboard->Lock();
+	bool clipboardLocked = be_clipboard->Lock();
 
 	int32 poseIndex = 0;
 	uint32 clipboardMode = 0;
@@ -1775,8 +1775,8 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 		} else
 			fInsertedNodes.insert(*(model->NodeRef()));
 
-		if ((clipboardMode = FSClipboardFindNodeMode(model, false, true)) != 0
-			&& !HasPosesInClipboard()) {
+		if ((clipboardMode = FSClipboardFindNodeMode(model, !clipboardLocked,
+				true)) != 0 && !HasPosesInClipboard()) {
 			SetHasPosesInClipboard(true);
 		}
 
@@ -1866,7 +1866,8 @@ BPoseView::CreatePoses(Model **models, PoseInfo *poseInfoArray, int32 count,
 		model->CloseNode();
 	}
 
-	be_clipboard->Unlock();
+	if (clipboardLocked)
+		be_clipboard->Unlock();
 
 	FinishPendingScroll(listViewScrollBy, viewBounds);
 
@@ -2401,6 +2402,8 @@ BPoseView::MessageReceived(BMessage *message)
 								settings.SetSortFolderNamesFirst(sortFolderNamesFirst);
 
 							NameAttributeText::SetSortFolderNamesFirst(settings.SortFolderNamesFirst());
+							RealNameAttributeText::SetSortFolderNamesFirst(
+								settings.SortFolderNamesFirst());
 							SortPoses();
 							Invalidate();
 						}

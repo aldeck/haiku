@@ -24,6 +24,15 @@ typedef void *				acpi_handle;
 
 #ifndef __ACTYPES_H__
 
+/* Notify types */
+
+#define ACPI_SYSTEM_NOTIFY				0x1
+#define ACPI_DEVICE_NOTIFY				0x2
+#define ACPI_ALL_NOTIFY					(ACPI_SYSTEM_NOTIFY | ACPI_DEVICE_NOTIFY)
+#define ACPI_MAX_NOTIFY_HANDLER_TYPE	0x3
+
+#define ACPI_MAX_SYS_NOTIFY				0x7f
+
 /* Address Space (Operation Region) Types */
 
 enum {
@@ -77,7 +86,7 @@ enum {
 struct acpi_object_type {
 	uint32 object_type;
 	union {
-		uint32 integer;
+		uint64 integer;
 		struct {
 			uint32 len;
 			char *string; /* You have to allocate string space yourself */
@@ -91,9 +100,9 @@ struct acpi_object_type {
 			acpi_object_type *objects;
 		} package;
 		struct {
-	        uint32 actual_type;
-	        acpi_handle handle;
-	    } reference;
+			uint32 actual_type;
+			acpi_handle handle;
+		} reference;
 		struct {
 			uint32 cpu_id;
 			int pblk_address;
@@ -111,14 +120,14 @@ struct acpi_object_type {
  * List of objects, used as a parameter list for control method evaluation
  */
 typedef struct acpi_objects {
-    uint32				count;
-    acpi_object_type	*pointer;
+	uint32				count;
+	acpi_object_type	*pointer;
 } acpi_objects;
 
 
 typedef struct acpi_data {
-    acpi_size			length;         /* Length in bytes of the buffer */
-    void				*pointer;       /* pointer to buffer */
+	acpi_size			length;		/* Length in bytes of the buffer */
+	void				*pointer;	/* pointer to buffer */
 } acpi_data;
 
 
@@ -126,9 +135,10 @@ enum {
 	ACPI_ALLOCATE_BUFFER = -1,
 };
 
+
 /*
  * acpi_status should return ACPI specific error codes, not BeOS ones.
- */ 
+ */
 typedef uint32 acpi_status;
 
 #endif	// __ACTYPES_H__
@@ -150,7 +160,7 @@ typedef void (*acpi_notify_handler)(acpi_handle device, uint32 value,
 struct acpi_module_info {
 	module_info info;
 
-	status_t	(*get_handle)(acpi_handle parent, char *pathname,
+	status_t	(*get_handle)(acpi_handle parent, const char *pathname,
 					acpi_handle *retHandle);
 
 	/* Global Lock */
@@ -160,11 +170,11 @@ struct acpi_module_info {
 
 	/* Notify Handler */
 
-    status_t	(*install_notify_handler)(acpi_handle device,
-    				uint32 handlerType, acpi_notify_handler handler,
-    				void *context);
+	status_t	(*install_notify_handler)(acpi_handle device,
+					uint32 handlerType, acpi_notify_handler handler,
+					void *context);
 	status_t	(*remove_notify_handler)(acpi_handle device,
-    				uint32 handlerType, acpi_notify_handler handler);
+					uint32 handlerType, acpi_notify_handler handler);
 
 	/* GPE Handler */
 
@@ -230,6 +240,10 @@ struct acpi_module_info {
 					acpi_data *retBuffer);
 	status_t	(*get_current_resources)(acpi_handle busDeviceHandle,
 					acpi_data *retBuffer);
+	status_t	(*get_possible_resources)(acpi_handle busDeviceHandle,
+					acpi_data *retBuffer);
+	status_t	(*set_current_resources)(acpi_handle busDeviceHandle,
+					acpi_data *buffer);
 
 	/* Power state setting */
 
@@ -266,10 +280,10 @@ typedef struct acpi_device_module_info {
 	/* Notify Handler */
 
 	status_t	(*install_notify_handler)(acpi_device device,
-    				uint32 handlerType, acpi_notify_handler handler,
-    				void *context);
+					uint32 handlerType, acpi_notify_handler handler,
+					void *context);
 	status_t	(*remove_notify_handler)(acpi_device device,
-    				uint32 handlerType, acpi_notify_handler handler);
+					uint32 handlerType, acpi_notify_handler handler);
 
 	/* Address Space Handler */
 	status_t	(*install_address_space_handler)(acpi_device device,

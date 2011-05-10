@@ -101,6 +101,5 @@ resource(6, "META:ATTR_INFO") message(233) {
 	"attr:alignment" = 0,
 	"attr:alignment" = 0,
 	"attr:alignment" = 0,
-	"type" = "text/x-email",
 	"type" = "text/x-email"
 };

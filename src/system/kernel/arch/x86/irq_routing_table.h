@@ -7,22 +7,30 @@
 
 
 #include <ACPI.h>
-#include <PCI.h>
 
 
 #include "util/Vector.h"
 
 
 struct irq_routing_entry {
-	int				device_address;
-	int8			pin;
+	// ACPI specifics
+	uint64		device_address;
+	uint8		pin;
 
-	acpi_handle		source;
-	int				source_index;
+	acpi_handle	source;
+	uint32		source_index;
+	bool		needs_configuration;
 
-	// pci busmanager connection
-	uchar			pci_bus;
-	uchar			pci_device;
+	// PCI bus_manager connection
+	uint8		pci_bus;
+	uint8		pci_device;
+	uint32		pci_function_mask;
+
+	// Distilled configuration info
+	uint8		irq;			// Global System Interrupt (GSI)
+	uint8		bios_irq;		// BIOS assigned original IRQ
+	uint8		polarity;		// B_{HIGH|LOW}_ACTIVE_POLARITY
+	uint8		trigger_mode;	// B_{LEVEL|EDGE}_TRIGGERED
 };
 
 
@@ -31,56 +39,50 @@ typedef Vector<irq_routing_entry> IRQRoutingTable;
 
 struct irq_descriptor {
 	irq_descriptor();
-	// bit 0 is interrupt 0, bit 2 is interrupt 2, and so on
-	int16			irq;
+
+	uint8			irq;
 	bool			shareable;
 	// B_LOW_ACTIVE_POLARITY or B_HIGH_ACTIVE_POLARITY
-	int8			polarity;
+	uint8			polarity;
 	// B_LEVEL_TRIGGERED or B_EDGE_TRIGGERED
-	int8			interrupt_mode;
+	uint8			trigger_mode;
 };
 
 
-// Similar to bus_managers/acpi/include/acrestyp.h definition
-typedef struct acpi_prt {
-	uint32			length;
-	uint32			pin;
-	uint64			address;		// here for 64-bit alignment
-	uint32			sourceIndex;
-	char			source[4];		// pad to 64 bits so sizeof() works in
-									// all cases
-} acpi_pci_routing_table;
+typedef Vector<irq_descriptor> irq_descriptor_list;
 
-//TODO: Hack until we expose ACPI structs better, currently hardcoded to
-// ACPI_RESOURCE_IRQ
-struct acpi_resource {
-    uint32          type;
-    uint32			length;
-    
-    uint8			descriptorLength;
-    uint8			triggering;
-    uint8			polarity;
-    uint8			sharable;
-    uint8			interruptCount;
-    uint8			interrupts[];
+
+struct pci_address {
+	uint8	segment;
+	uint8	bus;
+	uint8	device;
+	uint8	function;
 };
 
 
-void print_irq_descriptor(irq_descriptor* descriptor);
-void print_irq_routing_table(IRQRoutingTable* table);
+struct link_device {
+	acpi_handle					handle;
+	irq_descriptor				current_irq;
+	Vector<irq_descriptor>		possible_irqs;
+	Vector<irq_routing_entry*>	used_by;
+};
 
 
-status_t read_irq_routing_table(pci_module_info *pci, acpi_module_info* acpi,
-			IRQRoutingTable* table);
-status_t read_irq_descriptor(acpi_module_info* acpi, acpi_handle device,
-			const char* method, irq_descriptor* descriptor);
+void print_irq_descriptor(const irq_descriptor& descriptor);
+void print_irq_routing_table(const IRQRoutingTable& table);
+
+
+status_t prepare_irq_routing(acpi_module_info* acpi, IRQRoutingTable& table,
+			uint32 maxIRQCount);
+status_t enable_irq_routing(acpi_module_info* acpi,
+			IRQRoutingTable& routingTable);
 
 status_t read_current_irq(acpi_module_info* acpi, acpi_handle device,
-			irq_descriptor* descriptor);
-status_t read_possible_irq(acpi_module_info* acpi, acpi_handle device,
-			irq_descriptor* descriptor);
+			irq_descriptor& descriptor);
+status_t read_possible_irqs(acpi_module_info* acpi, acpi_handle device,
+			irq_descriptor_list& descriptorList);
 
-status_t set_acpi_irq(acpi_module_info* acpi, acpi_handle device,
-			irq_descriptor* descriptor);
+status_t set_current_irq(acpi_module_info* acpi, acpi_handle device,
+			const irq_descriptor& descriptor);
 
 #endif	// IRQ_ROUTING_TABLE_H

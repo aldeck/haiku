@@ -397,7 +397,57 @@ static inline int Bconputs(int16 handle, const char *string)
 
 #define VM_INQUIRE	-1
 
+/* Milan specific video constants */
+#define MI_MAGIC	0x4d49
+#define CMD_GETMODE		0
+#define CMD_SETMODE		1
+#define CMD_GETINFO		2
+#define CMD_ALLOCPAGE	3
+#define CMD_FREEPAGE	4
+#define CMD_FLIPPAGE	5
+#define CMD_ALLOCMEM	6
+#define CMD_FREEMEM		7
+#define CMD_SETADR		8
+#define CMD_ENUMMODES	9
+#define ENUMMODE_EXIT	0
+#define ENUMMODE_CONT	1
+/* scrFlags */
+#define SCRINFO_OK	1
+/* scrFormat */
+#define INTERLEAVE_PLANES	0
+#define STANDARD_PLANES		1
+#define PACKEDPIX_PLANES	2
+/* bitFlags */
+#define STANDARD_BITS	1
+#define FALCON_BITS		2
+#define INTEL_BITS		8
+
+
 #ifndef __ASSEMBLER__
+
+/* Milan specific video stuff */
+typedef struct screeninfo {
+	int32	size;
+	int32	devID;
+	char	name[64];
+	int32	scrFlags;
+	int32	frameadr;
+	int32	scrHeight;
+	int32	scrWidth;
+	int32	virtHeight;
+	int32	virtWidth;
+	int32	scrPlanes;
+	int32	scrColors;
+	int32	lineWrap;
+	int32	planeWrap;
+	int32	scrFormat;
+	int32	scrClut;
+	/*
+	int32	redBits;
+	...
+	*/
+} SCREENINFO;
+
 
 //extern int32 xbios(uint16 nr, ...);
 
@@ -405,8 +455,9 @@ static inline int Bconputs(int16 handle, const char *string)
 #define Initmous(mode, param, vec) toscallWPP(XBIOS_TRAP, 0, (int16)mode, (void *)param, (void *)vec)
 #define Physbase() (void *)toscallV(XBIOS_TRAP, 2)
 #define Logbase() (void *)toscallV(XBIOS_TRAP, 3)
-//#define Getrez() toscallV(XBIOS_TRAP, 4)
-#define Setscreen(log, phys, mode) toscallPPW(XBIOS_TRAP, 5, (void *)log, (void *)phys, (int16)mode)
+#define Getrez() toscallV(XBIOS_TRAP, 4)
+#define Setscreen(log, phys, mode) toscallPPWW(XBIOS_TRAP, 5, (void *)log, (void *)phys, (int16)mode, (int16)0)
+#define SetscreenM(log, phys, command) toscallPPWW(XBIOS_TRAP, 5, (void *)log, (void *)phys, (int16)MI_MAGIC, (int16)command)
 #define VsetScreen(log, phys, mode, modecode) toscallPPWW(XBIOS_TRAP, 5, (void *)log, (void *)phys, (int16)mode, (int16)modecode)
 #define Floprd(buf, dummy, dev, sect, track, side, count) toscallPLWWWWW(XBIOS_TRAP, 8, (void *)buf, (int32)dummy, (int16)dev, (int16)sect, (int16)track, (int16)side, (int16)count)
 //#define Mfpint() toscallV(XBIOS_TRAP, 13, )

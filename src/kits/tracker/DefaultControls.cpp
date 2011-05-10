@@ -615,6 +615,11 @@ DefaultAttributeMenu::DefaultAttributeMenu(PoseViewController* controller)
 	AddItem(_NewItem(B_TRANSLATE("Name"),
 		kAttrStatName, B_STRING_TYPE, 145, B_ALIGN_LEFT, true, true));
 
+	if (gLocalizedNamePreferred) {
+		menu->AddItem(_NewItem(B_TRANSLATE("Real name"),
+			kAttrRealName, B_STRING_TYPE, 145, B_ALIGN_LEFT, true, true));
+	}
+
 	AddItem(_NewItem (B_TRANSLATE("Size"), kAttrStatSize, B_OFF_T_TYPE,
 		80, B_ALIGN_RIGHT, false, true));
 

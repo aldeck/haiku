@@ -40,7 +40,6 @@ enum {
 	msg_start		= 'strt',
 	msg_stop		= 'stop',
 
-	msg_about		= 'abut',
 	msg_setup		= 'setp',
 	msg_video		= 'vdeo',
 

@@ -1,6 +1,5 @@
-1	finnish	x-vnd.Haiku-ShowImage	3385354583
+1	finnish	x-vnd.Haiku-ShowImage	886873119
 %SECONDS seconds	Menus	Don't translate %SECONDS	%SECONDS sekuntia
-About ShowImage…	Menus		Ohjelmasta Kuvankatselin…
 Browse	Menus		Selaa
 Cancel	ClosePrompt		Peru
 Clear selection	Menus		Tyhjennä valinta
@@ -24,6 +23,7 @@ High-quality zooming	Menus		Korkealaatuinen rajaus
 Image	Menus		Kuva
 Job setup	PrintOptionsWindow		Työasetukset
 Last page	Menus		Viimeinen sivu
+Leave full screen	Menus		Jätä kokoruututila
 Next file	Menus		Seuraava tiedosto
 Next page	Menus		Seuraava sivu
 OK	Alerts		Valmis
@@ -43,10 +43,10 @@ Rotate clockwise	Menus		Pyöritä myötäpäivään
 Rotate counterclockwise	Menus		Pyöritä vastapäivään
 Save as…	Menus		Tallenna nimellä...
 Select all	Menus		Valitse kaikki
-Selection Mode	Menus		Valintatila
+Selection mode	Menus		Valintatila
 Show caption in full screen mode	Menus		Näytä kuvateksti kokoruututilassa
-ShowImage	AboutWindow		Kuvankatselin
-ShowImage	Menus		Kuvankatselin
+Show tool bar	Menus		Näytä työkalupalkki
+ShowImage	System name		Kuvakatselin
 Slide delay	Menus		Diaviive
 Slide show	Menus		Diaesitys
 Stretch to window	Menus		Venytä ikkunaan

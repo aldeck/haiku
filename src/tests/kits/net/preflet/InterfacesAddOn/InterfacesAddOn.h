@@ -13,34 +13,38 @@
 
 #include <Box.h>
 #include <ListView.h>
+#include <ListItem.h>
 #include <Button.h>
 
 #include "NetworkSetupAddOn.h"
+#include "InterfacesListView.h"
+
+
+static const uint32 kMsgInterfaceSelected = 'ifce';
+static const uint32 kMsgInterfaceConfigure = 'ifcf';
+static const uint32 kMsgInterfaceToggle = 'onof';
+static const uint32 kMsgInterfaceRenegotiate = 'redo';
 
 
 class InterfacesAddOn : public NetworkSetupAddOn, public BBox
 {
 public:
-		InterfacesAddOn(image_id addon_image);
-		~InterfacesAddOn();
+								InterfacesAddOn(image_id addon_image);
+								~InterfacesAddOn();
 
-		const char* 	Name();
-		status_t		Save();
-		BView*			CreateView(BRect *bounds);
+			const char* 		Name();
+			status_t			Save();
 
-		enum {
-			INTERFACE_SELECTED_MSG		= 'ifce',
-			CONFIGURE_INTERFACE_MSG		= 'conf',
-			ONOFF_INTERFACE_MSG			= 'onof'
-		};
+			BView*				CreateView(BRect *bounds);
 
-		void			AttachedToWindow();
-		void			MessageReceived(BMessage* msg);
+			void				AttachedToWindow();
+			void				MessageReceived(BMessage* msg);
 
 private:
-		BListView*		fListview;
-		BButton*		fConfigure;
-		BButton*		fOnOff;
+			InterfacesListView*	fListview;
+			BButton*			fConfigure;
+			BButton*			fOnOff;
+			BButton*			fRenegotiate;
 };
 
 

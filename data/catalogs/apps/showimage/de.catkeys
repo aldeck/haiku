@@ -1,6 +1,5 @@
-1	german	x-vnd.Haiku-ShowImage	3385354583
+1	german	x-vnd.Haiku-ShowImage	886873119
 %SECONDS seconds	Menus	Don't translate %SECONDS	%SECONDS Sekunden
-About ShowImage…	Menus		Über ShowImage…
 Browse	Menus		Blättern
 Cancel	ClosePrompt		Abbrechen
 Clear selection	Menus		Auswahl aufheben
@@ -24,6 +23,7 @@ High-quality zooming	Menus		Zoomen mit hoher Qualität
 Image	Menus		Bild
 Job setup	PrintOptionsWindow		Druckauftrag bearbeiten
 Last page	Menus		Letzte Seite
+Leave full screen	Menus		Vollbild verlassen
 Next file	Menus		Nächste Datei
 Next page	Menus		Nächste Seite
 OK	Alerts		OK
@@ -43,10 +43,10 @@ Rotate clockwise	Menus		Im Uhrzeigersinn rotieren
 Rotate counterclockwise	Menus		Gegen Uhrzeigersinn rotieren
 Save as…	Menus		Speichern unter...
 Select all	Menus		Alles auswählen
-Selection Mode	Menus		Auswahlmodus
+Selection mode	Menus		Auswahlmodus
 Show caption in full screen mode	Menus		Im Vollbild-Modus Dateiname zeigen
-ShowImage	AboutWindow		ShowImage
-ShowImage	Menus		ShowImage
+Show tool bar	Menus		Werkzeugleiste zeigen
+ShowImage	System name		Bildbetrachter
 Slide delay	Menus		Verzögerung
 Slide show	Menus		Diashow
 Stretch to window	Menus		Auf Fenstergröße vergrößern

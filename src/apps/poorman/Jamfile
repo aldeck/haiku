@@ -29,6 +29,8 @@ actions THTTPMakeHeader1
 THTTPMakeHeader mime_encodings.h : mime_encodings.txt ;
 THTTPMakeHeader mime_types.h : mime_types.txt ;
 
+UsePrivateHeaders shared ;
+
 AddResources PoorMan : PoorMan.rdef ;
 
 Application PoorMan : PoorMan.cpp
@@ -54,8 +56,8 @@ Application PoorMan : PoorMan.cpp
 
 
 DoCatalogs PoorMan : 
-	x-vnd.Haiku.PoorMan
-	: 
+	x-vnd.Haiku-PoorMan
+	:
 	constants.cpp
 	PoorManAdvancedView.cpp
 	PoorManLoggingView.cpp

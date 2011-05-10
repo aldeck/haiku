@@ -75,6 +75,7 @@ public:
 									const char* username, const char* password,
 									bool useSSL = true, int32 port = -1);
 			status_t			Disconnect();
+			bool				IsConnected();
 
 			ConnectionReader&	GetConnectionReader();
 			status_t			SendRawCommand(const char* command);
@@ -93,7 +94,8 @@ protected:
 			status_t			SendCommand(const char* command,
 									int32 commandId);
 			status_t			HandleResponse(int32 commandId,
-									bigtime_t timeout = kIMAP4ClientTimeout);
+									bigtime_t timeout = kIMAP4ClientTimeout,
+									bool disconnectOnTimeout = true);
 			void				ProcessAfterQuacks(bigtime_t timeout);
 			int32				NextCommandId();
 
@@ -111,6 +113,7 @@ private:
 			status_t			_ProcessCommandWithoutAfterQuake(
 									const char* command,
 									bigtime_t timeout = kIMAP4ClientTimeout);
+			status_t			_Disconnect();
 
 			int32				fCommandId;
 			std::vector<int32>	fOngoingCommands;
@@ -118,6 +121,8 @@ private:
 			BString				fCommandError;
 
 			vint32				fStopNow;
+
+			bool				fIsConnected;
 };
 
 

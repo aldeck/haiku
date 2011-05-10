@@ -9,8 +9,9 @@
 					On Zeta, both AddChild(new BGLView) and new MainWindow work without any problems.
 */
 
-#include <InterfaceKit.h>
+#include <Catalog.h>
 #include <GLView.h>
+#include <InterfaceKit.h>
 #include <Messenger.h>
 
 #include "MainWindow.h"
@@ -23,19 +24,11 @@
 static const float MENU_BAR_HEIGHT = 19;
 
 static const unsigned int	MSG_FILE_OPEN			= 'fopn';
-static const unsigned int	MSG_ABOUT				= 'info';
 static const unsigned int	MSG_SHAPE_BOOK			= 'spbk';
 static const unsigned int	MSG_SHAPE_CUBE			= 'spcb';
 static const unsigned int	MSG_SHAPE_SPHERE		= 'spsp';
 static const unsigned int	MSG_OPTION_WIREFRAME	= 'opwf';
 static const unsigned int	MSG_FULLSCREEN			= 'full';
-
-static const char *ABOUT_TEXT = "\
-Drag and drop media files (pictures and videos) onto the 3D shapes. \
-Use your mouse to interact with the 3D shape.\n\
-Pick up your jaw from the floor.\n\n\
-Inspired by the original BeInc 3dmov demo.\n\
-Written by Zenja Solaja, 2009";
 
 
 // 	Local functions
@@ -51,7 +44,8 @@ static int sMainWindowCount = 0;	// keep track of number of spawned windows
 	DESCRIPTION:	Constructor
 */
 MainWindow :: MainWindow(BRect frame, SHAPE shape)
-	: BDirectWindow(frame, "3Dmov", B_TITLED_WINDOW, 0)
+	:
+	BDirectWindow(frame, B_TRANSLATE_SYSTEM_NAME("3DMov"), B_TITLED_WINDOW, 0)
 {
 	sMainWindowCount++;
 	
@@ -109,7 +103,6 @@ void MainWindow :: SetupMenuBar(BRect frame)
 	//	File
 	BMenu *menu_file = new BMenu("File");
 	//menu_file->AddItem(new BMenuItem("Open", new BMessage(MSG_FILE_OPEN), 'N'));
-	menu_file->AddItem(new BMenuItem("About", new BMessage(MSG_ABOUT)));
 	menu_file->AddItem(new BMenuItem("Exit", new BMessage(B_QUIT_REQUESTED)));
 		
 	//	Shape
@@ -144,14 +137,6 @@ void MainWindow :: MessageReceived(BMessage *message)
 			SetFullScreen(!IsFullScreen());
 			break;
 			
-		case MSG_ABOUT:
-		{
-			BAlert *about = new BAlert("3Dmov", ABOUT_TEXT, "Wow");
-			about->SetShortcut(0, B_ESCAPE);
-			about->Go(NULL);
-			break;
-		}
-		
 		/*	TODO - Due to a bug when creating a 2nd BGLView in Haiku, I've decided to spawn a new window
 			instead of creating a new BGLView (and using AddChild(new_view) / RemoveChild(old_view).
 			Under Zeta, there is no problem replacing the current view with a new view.

@@ -44,9 +44,6 @@ DevicesView::CreateLayout()
 		"Generate system information"), new BMessage(kMsgGenerateSysInfo)));
 	item->SetEnabled(false);
 	menu->AddSeparatorItem();
-	menu->AddItem(item = new BMenuItem(B_TRANSLATE("About Devices"
-		 B_UTF8_ELLIPSIS), new BMessage(B_ABOUT_REQUESTED)));
-	menu->AddSeparatorItem();
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menu->SetTargetForItems(this);

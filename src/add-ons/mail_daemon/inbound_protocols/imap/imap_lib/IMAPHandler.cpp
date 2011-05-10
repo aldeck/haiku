@@ -105,10 +105,8 @@ MailboxSelectHandler::Handle(const BString& response)
 }
 
 
-CapabilityHandler::CapabilityHandler(IMAPMailbox& mailbox)
+CapabilityHandler::CapabilityHandler()
 	:
-	IMAPMailboxCommand(mailbox),
-
 	fCapabilities("")
 {
 	
@@ -208,9 +206,6 @@ FetchMinMessageCommand::Handle(const BString& response)
 	if (!ParseMinMessage(extracted, minMessage))
 		return false;
 
-	if ((minMessage.flags & kDeleted) != 0)
-		return true;
-
 	fMinMessageList->push_back(minMessage);
 	fStorage.AddNewMessage(minMessage.uid, minMessage.flags, fData);
 	return true;
@@ -294,9 +289,6 @@ FetchMessageListCommand::Handle(const BString& response)
 	if (!FetchMinMessageCommand::ParseMinMessage(extracted, minMessage))
 		return false;
 
-	if ((minMessage.flags & kDeleted) != 0)
-		return true;
-
 	fMinMessageList->push_back(minMessage);
 	return true;
 }
@@ -326,7 +318,17 @@ FetchMessageCommand::FetchMessageCommand(IMAPMailbox& mailbox,
 	fOutData(NULL),
 	fFetchBodyLimit(fetchBodyLimit)
 {
-	
+	if (fEndMessage > 0)
+		fUnhandled = fEndMessage - fMessage + 1;
+	else
+		fUnhandled = 1;
+}
+
+
+FetchMessageCommand::~FetchMessageCommand()
+{
+	for (int32 i = 0; i < fUnhandled; i++)
+		fIMAPMailbox.Listener().FetchEnd();
 }
 
 
@@ -407,11 +409,17 @@ FetchMessageCommand::Handle(const BString& response)
 	BString lastLine;
 	fConnectionReader.GetNextLine(lastLine);
 
+	fUnhandled--;
+
+	bool bodyIsComing = true;
+	if (fFetchBodyLimit >= 0 && fFetchBodyLimit <= messageSize)
+		bodyIsComing = false;
+
 	int32 uid = fIMAPMailbox.MessageNumberToUID(message);
 	if (uid >= 0)
-		fIMAPMailbox.Listener().HeaderFetched(uid, data);
+		fIMAPMailbox.Listener().HeaderFetched(uid, data, bodyIsComing);
 
-	if (fFetchBodyLimit >= 0 && fFetchBodyLimit <= messageSize)
+	if (!bodyIsComing)
 		return true;
 
 	deleter.Detach();
@@ -446,7 +454,7 @@ FetchBodyCommand::Command()
 {
 	BString command = "FETCH ";
 	command << fMessage;
-	command += " BODY.PEEK[TEXT]";
+	command += " (FLAGS BODY.PEEK[TEXT])";
 	return command;
 }
 
@@ -456,13 +464,16 @@ FetchBodyCommand::Handle(const BString& response)
 {
 	if (response.FindFirst("FETCH") < 0)
 		return false;
+
 	BString extracted = response;
 	int32 message;
 	if (!IMAPParser::RemoveUntagedFromLeft(extracted, "FETCH", message))
 		return false;
-
 	if (message != fMessage)
 		return false;
+
+	int32 flags = FetchMinMessageCommand::ExtractFlags(extracted);
+	fStorage.SetFlags(fIMAPMailbox.MessageNumberToUID(message), flags);
 
 	int32 textPos = extracted.FindFirst("BODY[TEXT]");
 	if (textPos < 0)
@@ -484,6 +495,8 @@ FetchBodyCommand::Handle(const BString& response)
 	int32 uid = fIMAPMailbox.MessageNumberToUID(message);
 	if (uid >= 0)
 		fIMAPMailbox.Listener().BodyFetched(uid, fOutData);
+	else
+		fIMAPMailbox.Listener().FetchEnd();
 
 	return true;
 }
@@ -634,6 +647,27 @@ ExistsHandler::Handle(const BString& response)
 }
 
 
+ExpungeCommmand::ExpungeCommmand(IMAPMailbox& mailbox)
+	:
+	IMAPMailboxCommand(mailbox)
+{
+
+}
+
+BString
+ExpungeCommmand::Command()
+{
+	return "EXPUNGE";
+}
+
+
+bool
+ExpungeCommmand::Handle(const BString& response)
+{
+	return false;
+}
+
+
 ExpungeHandler::ExpungeHandler(IMAPMailbox& mailbox)
 	:
 	IMAPMailboxCommand(mailbox)
@@ -651,7 +685,15 @@ ExpungeHandler::Handle(const BString& response)
 	if (!IMAPParser::ExtractUntagedFromLeft(response, "EXPUNGE", expunge))
 		return false;
 
-	fIMAPMailbox.DeleteMessage(expunge);
+	// remove from storage
+	IMAPStorage& storage = fIMAPMailbox.GetStorage();
+	storage.DeleteMessage(fIMAPMailbox.MessageNumberToUID(expunge));
+
+	// remove from min message list
+	MinMessageList& messageList = const_cast<MinMessageList&>(
+		fIMAPMailbox.GetMessageList());
+	messageList.erase(messageList.begin() + expunge - 1);
+
 	TRACE("EXPUNGE %i\n", (int)expunge);
 
 	// the watching loop restarts again, we need to watch again to because
@@ -810,4 +852,57 @@ bool
 UnsubscribeCommand::Handle(const BString& response)
 {
 	return false;
+}
+
+
+
+GetQuotaCommand::GetQuotaCommand(const char* mailboxName)
+	:
+	fMailboxName(mailboxName),
+
+	fUsedStorage(-1),
+	fTotalStorage(-1)
+{
+
+}
+
+
+BString
+GetQuotaCommand::Command()
+{
+	BString command = "GETQUOTA \"";
+	command += fMailboxName;
+	command += "\"";
+	return command;
+}
+
+
+bool
+GetQuotaCommand::Handle(const BString& response)
+{
+	if (response.FindFirst("QUOTA") < 0)
+		return false;
+
+	BString data = IMAPParser::ExtractBetweenBrackets(response, "(", ")");
+	IMAPParser::RemovePrimitiveFromLeft(data);
+	fUsedStorage = IMAPParser::RemoveIntegerFromLeft(data);
+	fUsedStorage *= 1024;
+	fTotalStorage = IMAPParser::RemoveIntegerFromLeft(data);
+	fTotalStorage *= 1024;
+
+	return true;
+}
+
+
+double
+GetQuotaCommand::UsedStorage()
+{
+	return fUsedStorage;
+}
+
+
+double
+GetQuotaCommand::TotalStorage()
+{
+	return fTotalStorage;
 }

@@ -234,9 +234,15 @@ ShowImageView::Pulse()
 	}
 
 	if (fHideCursor && !fHasSelection && !fShowingPopUpMenu && fIsActiveWin) {
-		if (fHideCursorCountDown <= 0)
-			be_app->ObscureCursor();
-		else
+		if (fHideCursorCountDown <= 0) {
+			BPoint mousePos;
+			uint32 buttons;
+			GetMouse(&mousePos, &buttons, false);
+			if (Bounds().Contains(mousePos)) {
+				be_app->ObscureCursor();
+				_ShowToolBarIfEnabled(false);
+			}
+		} else
 			fHideCursorCountDown--;
 	}
 }
@@ -1071,9 +1077,17 @@ ShowImageView::MouseDown(BPoint position)
 	MakeFocus(true);
 
 	BPoint point = ViewToImage(position);
+	int32 clickCount = 0;
 	uint32 buttons = 0;
-	if (Window() != NULL && Window()->CurrentMessage() != NULL)
+	if (Window() != NULL && Window()->CurrentMessage() != NULL) {
+		clickCount = Window()->CurrentMessage()->FindInt32("clicks");
 		buttons = Window()->CurrentMessage()->FindInt32("buttons");
+	}
+
+	if (buttons == B_PRIMARY_MOUSE_BUTTON && clickCount == 2) {
+		Window()->PostMessage(MSG_FULL_SCREEN);
+		return;
+	}
 
 	if (fHasSelection && fSelectionBox.Bounds().Contains(point)
 		&& (buttons
@@ -1139,6 +1153,7 @@ void
 ShowImageView::MouseMoved(BPoint point, uint32 state, const BMessage* message)
 {
 	fHideCursorCountDown = HIDE_CURSOR_DELAY_TIME;
+	_ShowToolBarIfEnabled(true);
 	if (fCreatingSelection)
 		_UpdateSelectionRect(point, false);
 	else if (fScrollingBitmap)
@@ -1669,7 +1684,7 @@ ShowImageView::_DoImageOperation(ImageProcessor::operation op, bool quiet)
 }
 
 
-//! image operation initiated by user
+//! Image operation initiated by user
 void
 ShowImageView::_UserDoImageOperation(ImageProcessor::operation op, bool quiet)
 {
@@ -1681,11 +1696,10 @@ ShowImageView::_UserDoImageOperation(ImageProcessor::operation op, bool quiet)
 void
 ShowImageView::Rotate(int degree)
 {
-	if (degree == 90) {
-		_UserDoImageOperation(ImageProcessor::kRotateClockwise);
-	} else if (degree == 270) {
-		_UserDoImageOperation(ImageProcessor::kRotateCounterClockwise);
-	}
+	_UserDoImageOperation(degree == 90 ? ImageProcessor::kRotateClockwise
+		: ImageProcessor::kRotateCounterClockwise);
+
+	FitToBounds();
 }
 
 
@@ -1814,6 +1828,15 @@ ShowImageView::_ExitFullScreen()
 {
 	be_app->ShowCursor();
 	_SendMessageToWindow(MSG_EXIT_FULL_SCREEN);
+}
+
+
+void
+ShowImageView::_ShowToolBarIfEnabled(bool show)
+{
+	BMessage message(kShowToolBarIfEnabled);
+	message.AddBool("show", show);
+	Window()->PostMessage(&message);
 }
 
 

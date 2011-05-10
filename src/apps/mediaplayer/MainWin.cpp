@@ -166,7 +166,7 @@ static const char* kRatingAttrName = "Media:Rating";
 
 static const char* kDisabledSeekMessage = B_TRANSLATE("Drop files to play");
 
-static const char* kApplicationName = B_TRANSLATE(NAME);
+static const char* kApplicationName = B_TRANSLATE_SYSTEM_NAME(NAME);
 
 
 //#define printf(a...)
@@ -1084,9 +1084,11 @@ MainWin::OpenPlaylistItem(const PlaylistItemRef& item)
 	if (ret != B_OK) {
 		fprintf(stderr, "MainWin::OpenPlaylistItem() - Failed to send message "
 			"to Controller.\n");
-		(new BAlert(B_TRANSLATE("error"), 
-			B_TRANSLATE(NAME" encountered an internal error. "
-			"The file could not be opened."), B_TRANSLATE("OK")))->Go();
+		BString message = B_TRANSLATE("%app% encountered an internal error. "
+			"The file could not be opened.");
+		message.ReplaceFirst("%app%", kApplicationName);
+		(new BAlert(kApplicationName, message.String(),
+			B_TRANSLATE("OK")))->Go();
 		_PlaylistItemOpened(item, ret);
 	} else {
 		BString string;
@@ -1468,13 +1470,6 @@ MainWin::_CreateMenu()
 
 	item = new BMenuItem(B_TRANSLATE("Settings"B_UTF8_ELLIPSIS),
 		new BMessage(M_SETTINGS), 'S');
-	fFileMenu->AddItem(item);
-	item->SetTarget(be_app);
-
-	fFileMenu->AddSeparatorItem();
-
-	item = new BMenuItem(B_TRANSLATE("About " NAME B_UTF8_ELLIPSIS),
-		new BMessage(B_ABOUT_REQUESTED));
 	fFileMenu->AddItem(item);
 	item->SetTarget(be_app);
 
@@ -2181,7 +2176,7 @@ MainWin::_KeyDown(BMessage* msg)
 		case 't':			// t for Trash
 			if ((modifiers() & B_COMMAND_KEY) != 0) {
 				BAutolock _(fPlaylist);
-				BMessage removeMessage(M_PLAYLIST_REMOVE_AND_PUT_INTO_TRASH);
+				BMessage removeMessage(M_PLAYLIST_MOVE_TO_TRASH);
 				removeMessage.AddInt32("playlist index",
 					fPlaylist->CurrentItemIndex());
 				fPlaylistWindow->PostMessage(&removeMessage);

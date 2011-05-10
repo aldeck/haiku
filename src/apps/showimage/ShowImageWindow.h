@@ -22,9 +22,12 @@ class BMenu;
 class BMenuBar;
 class BMenuItem;
 class BMessageRunner;
+class BScrollBar;
+class BScrollView;
 class ProgressWindow;
 class ShowImageView;
 class ShowImageStatusView;
+class ToolBarView;
 
 
 // public message constants
@@ -38,6 +41,8 @@ enum {
 	kMsgDeleteCurrentFile		= 'mDcF',
 	MSG_SLIDE_SHOW				= 'mSSW',
 	kMsgStopSlideShow			= 'msss',
+	MSG_FULL_SCREEN				= 'mFSC',
+	kShowToolBarIfEnabled		= 'mSTE',
 	MSG_EXIT_FULL_SCREEN		= 'mEFS',
 	MSG_WINDOW_HAS_QUIT			= 'wndq'
 };
@@ -98,6 +103,9 @@ private:
 
 			void				_UpdateRatingMenu();
 
+			void				_SetToolBarVisible(bool visible,
+									bool animate = false);
+
 private:
 			ImageFileNavigator	fNavigator;
 			BFilePanel*			fSavePanel;
@@ -106,12 +114,16 @@ private:
 			BMenu*				fGoToPageMenu;
 			BMenu*				fSlideShowDelayMenu;
 			BMenu*				fRatingMenu;
+			ToolBarView*		fToolBarView;
+			BScrollView*		fScrollView;
+			BScrollBar*			fVerticalScrollBar;
 			ShowImageView*		fImageView;
 			ShowImageStatusView* fStatusView;
 			ProgressWindow*		fProgressWindow;
 			bool				fModified;
 			bool				fFullScreen;
 			bool				fShowCaption;
+			bool				fShowToolBar;
 			BRect				fWindowFrame;
 			BMessage*			fPrintSettings;
 			PrintOptions		fPrintOptions;

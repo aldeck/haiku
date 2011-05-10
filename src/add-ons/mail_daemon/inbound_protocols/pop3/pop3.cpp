@@ -58,6 +58,8 @@ POP3Protocol::POP3Protocol(BMailAccountSettings* settings)
 	fSettings = fAccountSettings.InboundSettings().Settings();
 #ifdef USE_SSL
 	fUseSSL = (fSettings.FindInt32("flavor") == 1);
+	fSSL = NULL;
+	fSSLContext = NULL;
 #endif
 
 	if (fSettings.FindString("destination", &fDestinationDir) != B_OK)
@@ -109,6 +111,12 @@ POP3Protocol::Disconnect()
 			SSL_shutdown(fSSL);
 		if (fSSLContext)
 			SSL_CTX_free(fSSLContext);
+		if (fSSLBio)
+			BIO_free(fSSLBio);
+
+		fSSL = NULL;
+		fSSLContext = NULL;
+		fSSLBio = NULL;
 	}
 #endif
 
@@ -117,6 +125,7 @@ POP3Protocol::Disconnect()
 #else
 	closesocket(fSocket);
 #endif
+	fSocket = -1;
 	return B_OK;
 }
 
@@ -124,6 +133,10 @@ POP3Protocol::Disconnect()
 status_t
 POP3Protocol::SyncMessages()
 {
+	bool leaveOnServer;
+	if (fSettings.FindBool("leave_mail_on_server", &leaveOnServer) != B_OK)
+		leaveOnServer = true;
+
 	// create directory if not exist
 	create_directory(fDestinationDir, 0777);
 
@@ -146,13 +159,11 @@ POP3Protocol::SyncMessages()
 		return error;
 	}
 
-	int32	num_messages;
-
 	BStringList toDownload;
 	fManifest.NotHere(fUniqueIDs, &toDownload);
 
-	num_messages = toDownload.CountItems();
-	if (num_messages == 0) {
+	int32 numMessages = toDownload.CountItems();
+	if (numMessages == 0) {
 		CheckForDeletedMessages();
 		ResetProgress();
 		return B_OK;
@@ -161,25 +172,31 @@ POP3Protocol::SyncMessages()
 	ResetProgress();
 	SetTotalItems(toDownload.CountItems());
 
-	printf("POP3 to download: %i\n", (int)toDownload.CountItems());
+	printf("POP3: Messages to download: %i\n", (int)toDownload.CountItems());
 	for (int32 i = 0; i < toDownload.CountItems(); i++) {
 		const char* uid = toDownload.ItemAt(i);
 		int32 toRetrieve = fUniqueIDs.IndexOf(uid);
 
 		if (toRetrieve < 0) {
+			// should not happen!
 			error = B_NAME_NOT_FOUND;
-			break;
+			printf("POP3: uid %s index %i not found in fUniqueIDs!\n", uid,
+				(int)toRetrieve);
+			continue;
 		}
 
 		BPath path(fDestinationDir);
 		BString fileName = "Downloading file... uid: ";
 		fileName += uid;
+		fileName.ReplaceAll("/", "_SLASH_");
 		path.Append(fileName);
 		BEntry entry(path.Path());
 		BFile file(&entry, B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
 		error = file.InitCheck();
-		if (error != B_OK)
-			break;;
+		if (error != B_OK) {
+			printf("POP3: Can't create file %s\n ", path.Path());
+			break;
+		}
 		BMailMessageIO mailIO(this, &file, toRetrieve);
 
 		entry_ref ref;
@@ -192,17 +209,25 @@ POP3Protocol::SyncMessages()
 		int32 size = MessageSize(toRetrieve);
 		if (fFetchBodyLimit < 0 || size <= fFetchBodyLimit) {
 			error = mailIO.Seek(0, SEEK_END);
-			if (error < 0)
+			if (error < 0) {
+				printf("POP3: Failed to download body %s\n ", uid);
 				break;
+			}
 			NotifyHeaderFetched(ref, &file);
 			NotifyBodyFetched(ref, &file);
+
+			if (!leaveOnServer)
+				Delete(toRetrieve);
 		} else {
 			int32 dummy;
 			error = mailIO.ReadAt(0, &dummy, 1);
-			if (error < 0)
+			if (error < 0) {
+				printf("POP3: Failed to download header %s\n ", uid);
 				break;
+			}
 			NotifyHeaderFetched(ref, &file);
 		}
+		ReportProgress(0, 1);
 
 		if (file.WriteAttr("MAIL:unique_id", B_STRING_TYPE, 0, uid,
 			strlen(uid)) < 0) {
@@ -238,7 +263,6 @@ POP3Protocol::FetchBody(const entry_ref& ref)
 	if (error < B_OK)
 		return error;
 
-	
 	BFile file(&ref, B_READ_WRITE);
 	status_t status = file.InitCheck();
 	if (status != B_OK)
@@ -253,20 +277,21 @@ POP3Protocol::FetchBody(const entry_ref& ref)
 	if (toRetrieve < 0)
 		return B_NAME_NOT_FOUND;
 
-	// TODO: get rid of this BMailMessageIO!
-	// read header
-	BMailMessageIO io(this, &file, toRetrieve);
-	int32 dummy;
-	status = io.ReadAt(0, &dummy, 1);
-	if (status < 0)
-		return status;
+	bool leaveOnServer;
+	if (fSettings.FindBool("leave_mail_on_server", &leaveOnServer) != B_OK)
+		leaveOnServer = true;
 
+	// TODO: get rid of this BMailMessageIO!
+	BMailMessageIO io(this, &file, toRetrieve);
 	// read body
 	status = io.Seek(0, SEEK_END);
 	if (status < 0)
 		return status;
 
 	NotifyBodyFetched(ref, &file);
+
+	if (!leaveOnServer)
+		Delete(toRetrieve);
 
 	ReportProgress(0, 1);
 	ResetProgress();
@@ -583,7 +608,7 @@ POP3Protocol::CheckForDeletedMessages()
 		entry_ref entry;
 
 		fido.SetVolume(&volume);
-		fido.PushAttr("MAIL:account");
+		fido.PushAttr(B_MAIL_ATTR_ACCOUNT_ID);
 		fido.PushInt32(fAccountSettings.AccountID());
 		fido.PushOp(B_EQ);
 
@@ -794,6 +819,9 @@ POP3Protocol::Delete(int32 num)
 #if DEBUG
 	puts(fLog.String());
 #endif
+	/* The mail is just marked as deleted and removed from the server when
+	sending the QUIT command. Because of that the message number stays the same
+	and we keep the uid in the uid list. */
 }
 
 

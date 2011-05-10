@@ -133,13 +133,14 @@ namespace {
 static const char* kPriorityAttr = "ADDON:priority";
 
 static const char* kLanguageField = "language";
-
 static const char* kTimezoneField = "timezone";
 static const char* kOffsetField = "offset";
+static const char* kTranslateFilesystemField = "filesys";
 
 
 static RosterData* sRosterData = NULL;
 static pthread_once_t sRosterDataInitOnce = PTHREAD_ONCE_INIT;
+
 
 static struct RosterDataReaper {
 	~RosterDataReaper()
@@ -167,6 +168,7 @@ RosterData::RosterData(const BLanguage& language,
 	:
 	fLock("LocaleRosterData"),
 	fDefaultLocale(&language, &conventions),
+	fIsFilesystemTranslationPreferred(false),
 	fAreResourcesLoaded(false)
 {
 	fInitStatus = _Initialize();
@@ -289,6 +291,28 @@ RosterData::SetPreferredLanguages(const BMessage* languages)
 	if (status == B_OK) {
 		BMessage updateMessage(B_LOCALE_CHANGED);
 		status = _AddPreferredLanguagesToMessage(&updateMessage);
+		if (status == B_OK)
+			status = be_roster->Broadcast(&updateMessage);
+	}
+
+	return status;
+}
+
+
+status_t
+RosterData::SetFilesystemTranslationPreferred(bool preferred)
+{
+	BAutolock lock(fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	_SetFilesystemTranslationPreferred(preferred);
+
+	status_t status = _SaveLocaleSettings();
+
+	if (status == B_OK) {
+		BMessage updateMessage(B_LOCALE_CHANGED);
+		status = _AddFilesystemTranslationPreferenceToMessage(&updateMessage);
 		if (status == B_OK)
 			status = be_roster->Broadcast(&updateMessage);
 	}
@@ -483,6 +507,10 @@ RosterData::_LoadLocaleSettings()
 		fDefaultLocale.SetFormattingConventions(conventions);
 
 		_SetPreferredLanguages(&settings);
+		
+		bool preferred;
+		if (settings.FindBool(kTranslateFilesystemField, &preferred) == B_OK)
+			_SetFilesystemTranslationPreferred(preferred);
 
 		return B_OK;
 	}
@@ -540,6 +568,8 @@ RosterData::_SaveLocaleSettings()
 	status_t status = _AddDefaultFormattingConventionsToMessage(&settings);
 	if (status == B_OK)
 		_AddPreferredLanguagesToMessage(&settings);
+	if (status == B_OK)
+		_AddFilesystemTranslationPreferenceToMessage(&settings);
 
 	BPath path;
 	if (status == B_OK)
@@ -642,6 +672,13 @@ RosterData::_SetPreferredLanguages(const BMessage* languages)
 }
 
 
+void
+RosterData::_SetFilesystemTranslationPreferred(bool preferred)
+{
+	fIsFilesystemTranslationPreferred = preferred;
+}
+
+
 status_t
 RosterData::_AddDefaultFormattingConventionsToMessage(BMessage* message) const
 {
@@ -682,6 +719,15 @@ RosterData::_AddPreferredLanguagesToMessage(BMessage* message) const
 	}
 
 	return status;
+}
+
+
+status_t
+RosterData::_AddFilesystemTranslationPreferenceToMessage(BMessage* message)
+	const
+{
+	return message->AddBool(kTranslateFilesystemField,
+		fIsFilesystemTranslationPreferred);
 }
 
 
@@ -733,6 +779,13 @@ status_t
 MutableLocaleRoster::SetPreferredLanguages(const BMessage* languages)
 {
 	return RosterData::Default()->SetPreferredLanguages(languages);
+}
+
+
+status_t
+MutableLocaleRoster::SetFilesystemTranslationPreferred(bool preferred)
+{
+	return RosterData::Default()->SetFilesystemTranslationPreferred(preferred);
 }
 
 

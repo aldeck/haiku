@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2010, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2007-2011, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -112,7 +112,7 @@ public:
 
 private:
 			Inode*			_CreateNode(Inode* parent, const char* name,
-								off_t start, off_t frames, int32 type);
+								uint64 start, uint64 frames, int32 type);
 			int				_OpenAttributes(int mode,
 								enum attr_mode attrMode = kDiscIDAttributes);
 			void			_RestoreAttributes();
@@ -170,7 +170,7 @@ private:
 class Inode {
 public:
 							Inode(Volume* volume, Inode* parent,
-								const char* name, off_t start, off_t frames,
+								const char* name, uint64 start, uint64 frames,
 								int32 type);
 							~Inode();
 
@@ -190,11 +190,11 @@ public:
 								{ return fCreationTime; }
 			time_t			ModificationTime() const
 								{ return fModificationTime; }
-			off_t			StartFrame() const
+			uint64			StartFrame() const
 								{ return fStartFrame; }
-			off_t			FrameCount() const
+			uint64			FrameCount() const
 								{ return fFrameCount; }
-			off_t			Size() const
+			uint64			Size() const
 								{ return fFrameCount * kFrameSize; }
 									// does not include the WAV header
 
@@ -207,6 +207,8 @@ public:
 								const char* string);
 			status_t		AddAttribute(const char* name, type_code type,
 								uint32 value);
+			status_t		AddAttribute(const char* name, type_code type,
+								uint64 value);
 			status_t		RemoveAttribute(const char* name,
 								bool checkNamespace = false);
 
@@ -232,8 +234,8 @@ private:
 			uid_t			fUserID;
 			time_t			fCreationTime;
 			time_t			fModificationTime;
-			off_t			fStartFrame;
-			off_t			fFrameCount;
+			uint64			fStartFrame;
+			uint64			fFrameCount;
 			AttributeList	fAttributes;
 			AttrCookieList	fAttrCookies;
 			wav_header		fWAVHeader;
@@ -542,9 +544,9 @@ is_data_track(const scsi_toc_track& track)
 uint32
 count_audio_tracks(scsi_toc_toc* toc)
 {
-	uint32 lastTrack = toc->last_track + 1 - toc->first_track;
+	uint32 trackCount = toc->last_track + 1 - toc->first_track;
 	uint32 count = 0;
-	for (uint32 i = 0; i < lastTrack; i++) {
+	for (uint32 i = 0; i < trackCount; i++) {
 		if (!is_data_track(toc->tracks[i]))
 			count++;
 	}
@@ -608,37 +610,6 @@ Volume::InitCheck()
 }
 
 
-/*static*/ void
-Volume::DetermineName(uint32 cddbID, int device, char* name, size_t length)
-{
-	name[0] = '\0';
-
-	int attrFD = open_attributes(cddbID, device, O_RDONLY,
-		kDiscIDAttributes);
-	if (attrFD < 0) {
-		// We do not have attributes set. Read CD text.
-		cdtext text;
-		if (read_cdtext(device, text) == B_OK) {
-			if (text.artist != NULL && text.album != NULL)
-				snprintf(name, length, "%s - %s", text.artist, text.album);
-			else if (text.artist != NULL || text.album != NULL) {
-				snprintf(name, length, "%s", text.artist != NULL
-					? text.artist : text.album);
-			}
-		}
-	} else {
-		// We have an attribute file. Read name from it.
-		if (!read_line(attrFD, name, length))
-			name[0] = '\0';
-
-		close(attrFD);
-	}
-
-	if (!name[0])
-		strlcpy(name, "Audio CD", length);
-}
-
-
 status_t
 Volume::Mount(const char* device)
 {
@@ -682,10 +653,10 @@ Volume::Mount(const char* device)
 		// We do not seem to have an attribute file so this is probably the
 		// first time this CD is inserted. In this case, try to read CD-Text
 		// data.
-		if (read_cdtext(fDevice, text) != B_OK)
-			dprintf("CDDA: no CD-Text found.\n");
-		else
+		if (read_cdtext(fDevice, text) == B_OK)
 			doLookup = false;
+		else
+			TRACE(("CDDA: no CD-Text found.\n"));
 	} else {
 		doLookup = false;
 	}
@@ -700,11 +671,17 @@ Volume::Mount(const char* device)
 		scsi_cd_msf& start = toc->tracks[i].start.time;
 		int32 track = i + 1;
 
-		off_t startFrame = start.minute * kFramesPerMinute
+		uint64 startFrame = start.minute * kFramesPerMinute
 			+ start.second * kFramesPerSecond + start.frame;
-		off_t frames = next.minute * kFramesPerMinute
+		uint64 frames = next.minute * kFramesPerMinute
 			+ next.second * kFramesPerSecond + next.frame
 			- startFrame;
+
+		// Adjust length of the last audio track according to the Blue Book
+		// specification in case of an Enhanced CD
+		if (i + 1 < trackCount && is_data_track(toc->tracks[i + 1])
+			&& !is_data_track(toc->tracks[i]))
+			frames -= kDataTrackLeadGap;
 
 		totalFrames += frames;
 
@@ -742,13 +719,10 @@ Volume::Mount(const char* device)
 		inode->AddAttribute("Audio:Album", B_STRING_TYPE, text.album);
 		inode->AddAttribute("Audio:Title", B_STRING_TYPE, text.titles[i]);
 		inode->AddAttribute("Audio:Genre", B_STRING_TYPE, text.genre);
-		inode->AddAttribute("Audio:Track", B_INT32_TYPE, track);
+		inode->AddAttribute("Audio:Track", B_INT32_TYPE, (uint32)track);
 		inode->AddAttribute("Audio:Bitrate", B_STRING_TYPE, "1411 kbps");
-
-		snprintf(title, sizeof(title), "%02lu:%02lu",
-			uint32(inode->FrameCount() / kFramesPerMinute),
-			uint32((inode->FrameCount() % kFramesPerMinute) / kFramesPerSecond));
-		inode->AddAttribute("Audio:Length", B_STRING_TYPE, title);
+		inode->AddAttribute("Media:Length", B_INT64_TYPE,
+			inode->FrameCount() * 1000000LL / kFramesPerSecond);
 		inode->AddAttribute("BEOS:TYPE", B_MIME_STRING_TYPE, "audio/x-wav");
 	}
 
@@ -781,42 +755,26 @@ Volume::Mount(const char* device)
 }
 
 
+status_t
+Volume::SetName(const char* name)
+{
+	if (name == NULL || !name[0])
+		return B_BAD_VALUE;
+
+	name = strdup(name);
+	if (name == NULL)
+		return B_NO_MEMORY;
+
+	free(fName);
+	fName = (char*)name;
+	return B_OK;
+}
+
+
 Semaphore&
 Volume::Lock()
 {
 	return fLock;
-}
-
-
-Inode*
-Volume::_CreateNode(Inode* parent, const char* name, off_t start, off_t frames,
-	int32 type)
-{
-	Inode* inode = new Inode(this, parent, name, start, frames, type);
-	if (inode == NULL)
-		return NULL;
-
-	if (inode->InitCheck() != B_OK) {
-		delete inode;
-		return NULL;
-	}
-
-	if (S_ISREG(type)) {
-		// we need to order it by track for compatibility with BeOS' cdda
-		Inode* current = fFirstEntry;
-		Inode* last = NULL;
-		while (current != NULL) {
-			last = current;
-			current = current->Next();
-		}
-
-		if (last)
-			last->SetNext(inode);
-		else
-			fFirstEntry = inode;
-	}
-
-	return inode;
 }
 
 
@@ -848,28 +806,75 @@ Volume::Find(const char* name)
 }
 
 
-status_t
-Volume::SetName(const char* name)
-{
-	if (name == NULL || !name[0])
-		return B_BAD_VALUE;
-
-	name = strdup(name);
-	if (name == NULL)
-		return B_NO_MEMORY;
-
-	free(fName);
-	fName = (char*)name;
-	return B_OK;
-}
-
-
 void
 Volume::DisableCDDBLookUps()
 {
 	bool doLookup = false;
 	RootNode().AddAttribute(kDoLookupAttribute, B_BOOL_TYPE, true,
 		(const uint8*)&doLookup, sizeof(bool));
+}
+
+
+/*static*/ void
+Volume::DetermineName(uint32 cddbID, int device, char* name, size_t length)
+{
+	name[0] = '\0';
+
+	int attrFD = open_attributes(cddbID, device, O_RDONLY,
+		kDiscIDAttributes);
+	if (attrFD < 0) {
+		// We do not have attributes set. Read CD text.
+		cdtext text;
+		if (read_cdtext(device, text) == B_OK) {
+			if (text.artist != NULL && text.album != NULL)
+				snprintf(name, length, "%s - %s", text.artist, text.album);
+			else if (text.artist != NULL || text.album != NULL) {
+				snprintf(name, length, "%s", text.artist != NULL
+					? text.artist : text.album);
+			}
+		}
+	} else {
+		// We have an attribute file. Read name from it.
+		if (!read_line(attrFD, name, length))
+			name[0] = '\0';
+
+		close(attrFD);
+	}
+
+	if (!name[0])
+		strlcpy(name, "Audio CD", length);
+}
+
+
+Inode*
+Volume::_CreateNode(Inode* parent, const char* name, uint64 start,
+	uint64 frames, int32 type)
+{
+	Inode* inode = new Inode(this, parent, name, start, frames, type);
+	if (inode == NULL)
+		return NULL;
+
+	if (inode->InitCheck() != B_OK) {
+		delete inode;
+		return NULL;
+	}
+
+	if (S_ISREG(type)) {
+		// we need to order it by track for compatibility with BeOS' cdda
+		Inode* current = fFirstEntry;
+		Inode* last = NULL;
+		while (current != NULL) {
+			last = current;
+			current = current->Next();
+		}
+
+		if (last)
+			last->SetNext(inode);
+		else
+			fFirstEntry = inode;
+	}
+
+	return inode;
 }
 
 
@@ -1148,8 +1153,8 @@ Attribute::IsProtectedNamespace(const char* name)
 //	#pragma mark - Inode class
 
 
-Inode::Inode(Volume* volume, Inode* parent, const char* name, off_t start,
-		off_t frames, int32 type)
+Inode::Inode(Volume* volume, Inode* parent, const char* name, uint64 start,
+		uint64 frames, int32 type)
 	:
 	fNext(NULL)
 {
@@ -1300,7 +1305,16 @@ Inode::AddAttribute(const char* name, type_code type, const char* string)
 status_t
 Inode::AddAttribute(const char* name, type_code type, uint32 value)
 {
-	return AddAttribute(name, type, true, (const uint8*)&value, sizeof(uint32));
+	uint32 data = B_HOST_TO_LENDIAN_INT32(value);
+	return AddAttribute(name, type, true, (const uint8*)&data, sizeof(uint32));
+}
+
+
+status_t
+Inode::AddAttribute(const char* name, type_code type, uint64 value)
+{
+	uint64 data = B_HOST_TO_LENDIAN_INT64(value);
+	return AddAttribute(name, type, true, (const uint8*)&data, sizeof(uint64));
 }
 
 
@@ -1322,8 +1336,10 @@ Inode::RemoveAttribute(const char* name, bool checkNamespace)
 			AttrCookieList::Iterator i = fAttrCookies.GetIterator();
 			while (i.HasNext()) {
 				attr_cookie* cookie = i.Next();
-				if (cookie->current == attribute)
-					cookie->current = attribute->GetDoublyLinkedListLink()->next;
+				if (cookie->current == attribute) {
+					cookie->current
+						= attribute->GetDoublyLinkedListLink()->next;
+				}
 			}
 
 			iterator.Remove();
@@ -1370,11 +1386,41 @@ cdda_identify_partition(int fd, partition_data* partition, void** _cookie)
 
 	status_t status = read_table_of_contents(fd, toc, 2048);
 
-	// there has to be at least a single audio track
-	if (status == B_OK && count_audio_tracks(toc) == 0)
-		status = B_BAD_TYPE;
+	// If we succeeded in reading the toc, check the tracks in the
+	// partition, which may not be the whole CD, and if any are audio,
+	// claim the partition.
+	if (status == B_OK) {
+		uint32 trackCount = toc->last_track + (uint32)1 - toc->first_track;
+		uint64 sessionStartLBA = partition->offset / partition->block_size;
+		uint64 sessionEndLBA	= sessionStartLBA
+			+ (partition->size / partition->block_size);
+		TRACE(("cdda_identify_partition: session at %lld-%lld\n",
+			sessionStartLBA, sessionEndLBA));
+		status = B_ENTRY_NOT_FOUND;
+		for (uint32 i = 0; i < trackCount; i++) {
+			// We have to get trackLBA from track.start.time since
+			// track.start.lba is useless for this.
+			// This is how session gets it.
+			uint64 trackLBA
+				= ((toc->tracks[i].start.time.minute * kFramesPerMinute)
+					+ (toc->tracks[i].start.time.second * kFramesPerSecond)
+					+ toc->tracks[i].start.time.frame - 150);
+			if (trackLBA >= sessionStartLBA && trackLBA < sessionEndLBA) {
+				if (is_data_track(toc->tracks[i])) {
+					TRACE(("cdda_identify_partition: track %ld at %lld is "
+						"data\n", i + 1, trackLBA));
+					status = B_BAD_TYPE;
+				} else {
+					TRACE(("cdda_identify_partition: track %ld at %lld is "
+						"audio\n", i + 1, trackLBA));
+					status = B_OK;
+					break;
+				}
+			}
+		}
+	}
 
-	if (status < B_OK) {
+	if (status != B_OK) {
 		free(toc);
 		return status;
 	}
@@ -1732,7 +1778,8 @@ cdda_read_stat(fs_volume* _volume, fs_vnode* _node, struct stat* stat)
 	Volume* volume = (Volume*)_volume->private_volume;
 	Inode* inode = (Inode*)_node->private_node;
 
-	TRACE(("cdda_read_stat: vnode %p (0x%Lx), stat %p\n", inode, inode->ID(), stat));
+	TRACE(("cdda_read_stat: vnode %p (0x%Lx), stat %p\n", inode, inode->ID(),
+		stat));
 
 	fill_stat_buffer(volume, inode, NULL, *stat);
 
@@ -1811,7 +1858,8 @@ cdda_read_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 	Volume* volume = (Volume*)_volume->private_volume;
 	Inode* inode = (Inode*)_node->private_node;
 
-	TRACE(("cdda_read_dir: vnode %p, cookie %p, buffer = %p, bufferSize = %ld, num = %p\n", _node, _cookie, dirent, bufferSize,_num));
+	TRACE(("cdda_read_dir: vnode %p, cookie %p, buffer = %p, bufferSize = %ld,"
+		" num = %p\n", _node, _cookie, buffer, bufferSize,_num));
 
 	if ((Inode*)_node->private_node != &volume->RootNode())
 		return B_BAD_VALUE;
@@ -1907,7 +1955,7 @@ cdda_free_dir_cookie(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 {
 	dir_cookie* cookie = (dir_cookie*)_cookie;
 
-	TRACE(("cdda_freecookie: entry vnode %p, cookie %p\n", _vnode, cookie));
+	TRACE(("cdda_freecookie: entry vnode %p, cookie %p\n", _node, cookie));
 
 	free(cookie);
 	return 0;

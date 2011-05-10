@@ -133,9 +133,10 @@ static const float kPlainFontSizeScale = 0.9;
 
 
 THeaderView::THeaderView(BRect rect, BRect windowRect, bool incoming,
-		BEmailMessage *mail, bool resending, uint32 defaultCharacterSet,
-		int32 defaultAccount)
-	: BBox(rect, "m_header", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW, B_NO_BORDER),
+	bool resending, uint32 defaultCharacterSet, int32 defaultAccount)
+	:
+	BBox(rect, "m_header", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW, B_NO_BORDER),
+
 	fAccountMenu(NULL),
 	fEncodingMenu(NULL),
 	fAccountID(defaultAccount),
@@ -344,7 +345,8 @@ THeaderView::THeaderView(BRect rect, BRect windowRect, bool incoming,
 				item->SetMarked(true);
 				fAccountID = item->Message()->FindInt32("id");
 			} else {
-				fAccountMenu->AddItem(item = new BMenuItem("<none>",NULL));
+				fAccountMenu->AddItem(
+					item = new BMenuItem(B_TRANSLATE("<none>"), NULL));
 				item->SetEnabled(false);
 				fAccountID = ~0UL;
 			}
@@ -465,8 +467,6 @@ THeaderView::THeaderView(BRect rect, BRect windowRect, bool incoming,
 		fDate->SetHighColor(0, 0, 0);
 
 		y += controlHeight + 5;
-
-		LoadMessage(mail);
 	}
 	ResizeTo(Bounds().Width(), y);
 }
@@ -549,11 +549,11 @@ THeaderView::InitGroupCompletion()
 			continue;
 
 		BString groups;
-		if (ReadAttrString(&file, "META:group", &groups) < B_OK || groups.Length() == 0)
+		if (file.ReadAttrString("META:group", &groups) < B_OK || groups.Length() == 0)
 			continue;
 
 		BString address;
-		ReadAttrString(&file, "META:email", &address);
+		file.ReadAttrString("META:email", &address);
 
 		// avoid adding an empty address
 		if (address.Length() == 0)
@@ -641,6 +641,13 @@ THeaderView::MessageReceived(BMessage *msg)
 			int32 account;
 			if (msg->FindInt32("id",(int32 *)&account) >= B_OK)
 				fAccountID = account;
+			
+			BMessage message(FIELD_CHANGED);
+			// field doesn't matter; no special processing for this field
+			// it's just to turn on the save button
+			message.AddInt32("bitmask", 0);
+			Window()->PostMessage(&message, Window());
+			
 			break;
 		}
 
@@ -655,6 +662,13 @@ THeaderView::MessageReceived(BMessage *msg)
 			message.what = CHARSET_CHOICE_MADE;
 			message.AddInt32 ("charset", fCharacterSetUserSees);
 			Window()->PostMessage (&message, Window());
+			
+			BMessage message2(FIELD_CHANGED);
+			// field doesn't matter; no special processing for this field
+			// it's just to turn on the save button
+			message2.AddInt32("bitmask", 0);
+			Window()->PostMessage(&message2, Window());
+			
 			break;
 		}
 	}
@@ -823,7 +837,7 @@ TTextControl::MessageReceived(BMessage *msg)
 								attr = buffer;
 
 								BString address;
-								ReadAttrString(&node, buffer, &address);
+								node.ReadAttrString(buffer, &address);
 								if (address.Length() <= 0)
 									continue;
 
@@ -847,13 +861,13 @@ TTextControl::MessageReceived(BMessage *msg)
 						}
 
 						BString email;
-						ReadAttrString(&file,attr.String(),&email);
+						file.ReadAttrString(attr.String(), &email);
 
 						// we got something...
 						if (email.Length() > 0) {
 							// see if we can get a username as well
 							BString name;
-							ReadAttrString(&file, "META:name", &name);
+							file.ReadAttrString("META:name", &name);
 
 							BString	address;
 							if (name.Length() == 0) {
@@ -913,7 +927,7 @@ TTextControl::MessageReceived(BMessage *msg)
 
 				display = address;
 
-				ReadAttrString(&node, "META:name", &name);
+				node.ReadAttrString("META:name", &name);
 				if (name.Length() > 0) {
 					display = "";
 					display << "\"" << name << "\" <" << address << ">";
@@ -1065,7 +1079,7 @@ QPopupMenu::EntryCreated(const entry_ref &ref, ino_t node)
 	// Does the file have a group attribute?  OK to have none.
 	BString groups;
 	const char *kNoGroup = "NoGroup!";
-	ReadAttrString(&file, "META:group", &groups);
+	file.ReadAttrString("META:group", &groups);
 	if (groups.Length() <= 0)
 		groups = kNoGroup;
 
@@ -1143,10 +1157,10 @@ QPopupMenu::EntryCreated(const entry_ref &ref, ino_t node)
 		}
 
 		BString	name;
-		ReadAttrString(&file, "META:name", &name);
+		file.ReadAttrString("META:name", &name);
 
 		BString email;
-		ReadAttrString(&file, "META:email", &email);
+		file.ReadAttrString("META:email", &email);
 
 		if (email.Length() != 0 || name.Length() != 0)
 			AddPersonItem(&ref, node, name, email, NULL, groupMenu, superItem);
@@ -1155,7 +1169,7 @@ QPopupMenu::EntryCreated(const entry_ref &ref, ino_t node)
 		for (int16 i = 2; i < 6; i++) {
 			char attr[16];
 			sprintf(attr, "META:email%d", i);
-			if (ReadAttrString(&file, attr, &email) >= B_OK && email.Length() > 0)
+			if (file.ReadAttrString(attr, &email) >= B_OK && email.Length() > 0)
 				AddPersonItem(&ref, node, name, email, attr, groupMenu, superItem);
 		}
 	} while (groups.Length() > 0);

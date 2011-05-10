@@ -19,8 +19,6 @@
 class DevicesApplication : public BApplication {
 public:
 								DevicesApplication();
-	virtual	void				AboutRequested();
-	static	void				ShowAbout();
 };
 
 
@@ -43,40 +41,9 @@ DevicesApplication::DevicesApplication()
 }
 
 
-void
-DevicesApplication::AboutRequested()
-{
-	ShowAbout();
-}
-
-
-void
-DevicesApplication::ShowAbout()
-{
-	BAlert* alert = new BAlert(B_TRANSLATE("About"), B_TRANSLATE("Devices\n"
-		"\twritten by Pieter Panman\n"
-		"\n"
-		"\tBased on listdev by Jérôme Duval\n"
-		"\tand the previous Devices preference\n"
-		"\tby Jérôme Duval and Sikosis\n"
-		"\tCopyright 2009, Haiku, Inc.\n"), B_TRANSLATE("OK"));
-	BTextView* view = alert->TextView();
-	BFont font;
-
-	view->SetStylable(true);
-
-	view->GetFont(&font);
-	font.SetSize(18);
-	font.SetFace(B_BOLD_FACE);
-	view->SetFontAndColor(0, 7, &font);
-
-	alert->Go();
-}
-
-
 DevicesWindow::DevicesWindow()
 	:
-	BWindow(BRect(50, 50, 750, 550), B_TRANSLATE("Devices"), 
+	BWindow(BRect(50, 50, 750, 550), B_TRANSLATE_SYSTEM_NAME("Devices"),
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS 
 		| B_AUTO_UPDATE_SIZE_LIMITS
 		| B_QUIT_ON_WINDOW_CLOSE)

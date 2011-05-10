@@ -747,7 +747,7 @@ inline void
 TermView::_InvalidateTextRect(int32 x1, int32 y1, int32 x2, int32 y2)
 {
 	BRect rect(x1 * fFontWidth, _LineOffset(y1),
-	    (x2 + 1) * fFontWidth - 1, _LineOffset(y2 + 1) - 1);
+		(x2 + 1) * fFontWidth - 1, _LineOffset(y2 + 1) - 1);
 //debug_printf("Invalidate((%f, %f) - (%f, %f))\n", rect.left, rect.top,
 //rect.right, rect.bottom);
 	Invalidate(rect);
@@ -1790,11 +1790,6 @@ TermView::MessageReceived(BMessage *msg)
 	}
 
 	switch (msg->what){
-		case B_ABOUT_REQUESTED:
-			// (replicant) about box requested
-			AboutRequested();
-			break;
-
 		case B_SIMPLE_DATA:
 		case B_REFS_RECEIVED:
 		{
@@ -2195,7 +2190,7 @@ TermView::_SecondaryMouseButtonDropped(BMessage* msg)
 		cdItem->SetEnabled(false);
 
 	BPopUpMenu *menu = new BPopUpMenu(
-		B_TRANSLATE("Secondary mouse button drop menu"));
+		"Secondary mouse button drop menu");
 	menu->SetAsyncAutoDestruct(true);
 	menu->AddItem(insertItem);
 	menu->AddSeparatorItem();
@@ -3087,22 +3082,6 @@ TermView::InitiateDrag()
 	rect = rect & Bounds();
 
 	DragMessage(&message, rect);
-}
-
-
-/* static */
-void
-TermView::AboutRequested()
-{
-	BAlert *alert = new (std::nothrow) BAlert("about",
-		B_TRANSLATE("Terminal\n\n"
-			"written by Kazuho Okui and Takashi Murai\n"
-			"updated by Kian Duffy and others\n\n"
-			"Copyright " B_UTF8_COPYRIGHT "2003-2009, Haiku.\n"),
-		B_TRANSLATE("OK"));
-	alert->SetShortcut(0, B_ESCAPE);
-	if (alert != NULL)
-		alert->Go();
 }
 
 

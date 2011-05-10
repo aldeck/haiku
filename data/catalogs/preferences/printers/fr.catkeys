@@ -1,4 +1,4 @@
-1	french	x-vnd.Be-PRNT	1563474157
+1	french	x-vnd.Be-PRNT	2065133853
 %.2f KB	JobListView		%.2f Ko
 1 pending job.	PrinterListView		1 travail en attente.
 <pick one>	AddPrinterDialog		<choisir>
@@ -27,6 +27,7 @@ Printer name:	AddPrinterDialog		Nom de l'imprimante :
 Printer type:	AddPrinterDialog		Type d'imprimante :
 Printer: %printer_name%\nDriver:  %driver%\n	TestPageView		Imprimante : %printer_name%\nPilote : %driver%\n
 Printers	PrintersWindow		Imprimantes
+Printers	System name		Imprimantes
 Processing	JobListView		Traitement
 Red	TestPageView		Rouge
 Remove	PrintersWindow		Retirer

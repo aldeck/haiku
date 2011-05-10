@@ -557,7 +557,7 @@ WorkspacesView::MouseDown(BPoint where)
 		BMenuItem* item;
 
 		menu->AddSeparatorItem();
-		menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show window title"),
+		menu->AddItem(item = new BMenuItem(B_TRANSLATE("Show window tab"),
 			new BMessage(kMsgToggleTitle)));
 		if (window->Look() == B_TITLED_WINDOW_LOOK)
 			item->SetMarked(true);
@@ -595,9 +595,10 @@ WorkspacesView::MouseDown(BPoint where)
 
 
 WorkspacesWindow::WorkspacesWindow(WorkspacesSettings *settings)
-	: BWindow(settings->WindowFrame(), B_TRANSLATE("Workspaces"), 
-		B_TITLED_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL, B_AVOID_FRONT 
-		| B_WILL_ACCEPT_FIRST_CLICK, B_ALL_WORKSPACES),
+	:
+	BWindow(settings->WindowFrame(), B_TRANSLATE_SYSTEM_NAME("Workspaces"), 
+		B_TITLED_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
+		B_AVOID_FRONT | B_WILL_ACCEPT_FIRST_CLICK, B_ALL_WORKSPACES),
  	fSettings(settings),
  	fAutoRaising(false)
 {

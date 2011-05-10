@@ -12,11 +12,9 @@
 
 
 #include <Application.h>
+#include <Directory.h>
+#include <Entry.h>
 
-#include "DataTranslationsSettings.h"
-
-class BDirectory;
-class BEntry;
 
 class DataTranslationsApplication : public BApplication {
 public:
@@ -24,20 +22,12 @@ public:
 	virtual						~DataTranslationsApplication();
 
 	virtual void				RefsReceived(BMessage* message);
-	virtual void				AboutRequested();
-
-			BPoint				WindowCorner() const {
-									return fSettings.WindowCorner();
-								}
-			void				SetWindowCorner(const BPoint& leftTop);
 
 private:
 			void				_InstallError(const char* name, status_t status);
 			status_t			_Install(BDirectory& target, BEntry& entry);
 			void				_NoTranslatorError(const char* name);
-
-private:
-			DataTranslationsSettings	fSettings;
 };
+
 
 #endif	// DATA_TRANSLATIONS_H

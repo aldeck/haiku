@@ -59,9 +59,9 @@ private:
 };
 
 
-class CapabilityHandler : public IMAPMailboxCommand {
+class CapabilityHandler : public IMAPCommand {
 public:
-								CapabilityHandler(IMAPMailbox& mailbox);
+								CapabilityHandler();
 
 			BString				Command();
 			bool				Handle(const BString& response);
@@ -130,6 +130,7 @@ public:
 								FetchMessageCommand(IMAPMailbox& mailbox,
 									int32 firstMessage, int32 lastMessage,
 									int32 fetchBodyLimit = -1);
+								~FetchMessageCommand();
 
 			BString				Command();
 			bool				Handle(const BString& response);
@@ -139,6 +140,7 @@ private:
 			int32				fEndMessage;
 			BPositionIO*		fOutData;
 			int32				fFetchBodyLimit;
+			int32				fUnhandled;
 };
 
 
@@ -193,6 +195,18 @@ class ExistsHandler : public IMAPMailboxCommand {
 public:
 								ExistsHandler(IMAPMailbox& mailbox);
 
+			bool				Handle(const BString& response);
+};
+
+
+/*! Just send a expunge command to delete kDeleted flagged messages. The
+response is handled by the unsolicited ExpungeHandler which is installed all
+the time. */
+class ExpungeCommmand : public IMAPMailboxCommand {
+public:
+								ExpungeCommmand(IMAPMailbox& mailbox);
+
+			BString				Command();
 			bool				Handle(const BString& response);
 };
 
@@ -264,6 +278,24 @@ public:
 private:
 			BString				fMailboxName;
 };
+
+
+class GetQuotaCommand : public IMAPCommand {
+public:
+								GetQuotaCommand(const char* mailboxName = "");
+
+			BString				Command();
+			bool				Handle(const BString& response);
+
+			double				UsedStorage();
+			double				TotalStorage();
+private:
+			BString				fMailboxName;
+
+			double				fUsedStorage;
+			double				fTotalStorage;
+};
+
 
 
 #endif // IMAP_HANDLER_H

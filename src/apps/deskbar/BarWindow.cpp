@@ -26,9 +26,10 @@ Except as contained in this notice, the name of Be Incorporated shall not be
 used in advertising or otherwise to promote the sale, use or other dealings in
 this Software without prior written authorization from Be Incorporated.
 
-Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
-of Be Incorporated in the United States and other countries. Other brand product
-names are registered trademarks or trademarks of their respective holders.
+Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered
+trademarks of Be Incorporated in the United States and other countries. Other
+brand product names are registered trademarks or trademarks of their respective
+holders.
 All rights reserved.
 */
 
@@ -43,6 +44,7 @@ All rights reserved.
 #include <Path.h>
 #include <Debug.h>
 #include <File.h>
+#include <Locale.h>
 #include <MenuItem.h>
 #include <MessageFilter.h>
 #include <Screen.h>
@@ -58,8 +60,12 @@ All rights reserved.
 #include <MessagePrivate.h>
 
 
-// This is a very ugly hack to be able to call the private BMenuBar::StartMenuBar()
-// method from the TBarWindow::ShowBeMenu() method.
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "MainWindow"
+
+
+// This is a very ugly hack to be able to call the private
+// BMenuBar::StartMenuBar() method from the TBarWindow::ShowBeMenu() method.
 // Don't do this at home -- but why the hell is this method private?
 #if __MWERKS__
 	#define BMenuBar_StartMenuBar_Hack StartMenuBar__8BMenuBarFlbbP5BRect
@@ -70,7 +76,8 @@ All rights reserved.
 #else
 #	error "You may want to port this ugly hack to your compiler ABI"
 #endif
-extern "C" void BMenuBar_StartMenuBar_Hack(BMenuBar*,int32,bool,bool,BRect*);
+extern "C" void
+	BMenuBar_StartMenuBar_Hack(BMenuBar*, int32, bool, bool, BRect*);
 
 
 TBeMenu* TBarWindow::sBeMenu = NULL;
@@ -78,11 +85,11 @@ TBeMenu* TBarWindow::sBeMenu = NULL;
 
 TBarWindow::TBarWindow()
 	:
-	BWindow(BRect(-1000.0f, -1000.0f, -1000.0f, -1000.0f), "Deskbar",
-		B_BORDERED_WINDOW,
+	BWindow(BRect(-1000.0f, -1000.0f, -1000.0f, -1000.0f),
+		B_TRANSLATE_SYSTEM_NAME("Deskbar"), B_BORDERED_WINDOW,
 		B_WILL_ACCEPT_FIRST_CLICK | B_NOT_ZOOMABLE | B_NOT_CLOSABLE
-			| B_NOT_MINIMIZABLE | B_NOT_MOVABLE | B_NOT_RESIZABLE
-			| B_AVOID_FRONT | B_ASYNCHRONOUS_CONTROLS,
+		| B_NOT_MINIMIZABLE | B_NOT_MOVABLE | B_NOT_RESIZABLE
+		| B_AVOID_FRONT | B_ASYNCHRONOUS_CONTROLS,
 		B_ALL_WORKSPACES)
 {
 	desk_settings* settings = ((TBarApp*)be_app)->Settings();
@@ -312,7 +319,7 @@ TBarWindow::ShowBeMenu()
 	if (menuBar == NULL)
 		return;
 
-	BMenuBar_StartMenuBar_Hack(menuBar,0,true,true,NULL);
+	BMenuBar_StartMenuBar_Hack(menuBar, 0, true, true, NULL);
 }
 
 
@@ -326,11 +333,11 @@ TBarWindow::ShowTeamMenu()
 	if (KeyMenuBar() == NULL)
 		return;
 
-	BMenuBar_StartMenuBar_Hack(KeyMenuBar(),index,true,true,NULL);
+	BMenuBar_StartMenuBar_Hack(KeyMenuBar(), index, true, true, NULL);
 }
 
 
-/**	determines the actual location of the window */
+// determines the actual location of the window
 
 deskbar_location
 TBarWindow::DeskbarLocation() const
@@ -552,7 +559,6 @@ TBarWindow::AddItem(BMessage* message)
 		if (err < B_OK)
 			delete archive;
 	} else if (message->FindRef("addon", &ref) == B_OK) {
-		//
 		//	exposing the name of the view here is not so great
 		TReplicantTray* tray
 			= dynamic_cast<TReplicantTray*>(FindView("Status"));
@@ -579,8 +585,8 @@ TBarWindow::RemoveItem(BMessage* message)
 	int32 id;
 	const char* name;
 
-	// 	ids ought to be unique across all shelves, assuming, of course,
-	//	that sometime in the future there may be more than one
+	// ids ought to be unique across all shelves, assuming, of course,
+	// that sometime in the future there may be more than one
 #if SHELF_AWARE
 	if (message->FindInt32("shelf", (int32*)&shelf) == B_OK) {
 		if (message->FindString("name", &name) == B_OK)
@@ -589,8 +595,8 @@ TBarWindow::RemoveItem(BMessage* message)
 #endif
 		if (message->FindInt32("id", &id) == B_OK) {
 			fBarView->RemoveItem(id);
-		//	remove the following two lines if and when the
-		//	shelf option returns
+		// remove the following two lines if and when the
+		// shelf option returns
 		} else if (message->FindString("name", &name) == B_OK)
 			fBarView->RemoveItem(name, B_DESKBAR_TRAY);
 
@@ -632,3 +638,4 @@ TBarWindow::_IsFocusMessage(BMessage* message)
 
 	return true;
 }
+

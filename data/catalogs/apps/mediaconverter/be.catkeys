@@ -1,13 +1,11 @@
-1	belarusian	x-vnd.Haiku-MediaConverter	3383482196
+1	belarusian	x-vnd.Haiku-MediaConverter	424866547
 %.1f kHz %ld channel / %lld frames	MediaFileInfo		%.1f кГц %ld каналаў / %lld фрэймаў
 %.1f kHz mono / %lld frames	MediaFileInfo		%.1f кГц моно / %lld фрэймаў
 %.1f kHz stereo / %lld frames	MediaFileInfo		%.1f кГц стэрэа / %lld фрэймаў
-%Ld x %Ld, %Ld fps / %Ld frames	MediaFileInfo	Width x Height, fps / frames	%Ld x %Ld, %Ld fps / %Ld фрэймаў
 %amountOfFiles files were not recognized as supported media files:	MediaConverter		%amountOfFiles файлаў не былі прызнаныя як медыя, іх немагчыма апрацаваць:
 %d bit 	MediaFileInfo		%d біт
 %d byte 	MediaFileInfo		%d байтаў
-About MediaConverter…	Menu		Пра КанвертарМедыя…
-About…	MediaConverter		Пра праграму…
+%u x %u, %.2ffps / %Ld frames	MediaFileInfo	Width x Height, fps / frames	%u x %u, %.2f fps / %Ld фрэймаў
 An error has occurred reading the file info.\n\nError : 	MediaConverter-FileInfo		Не ўдалося прачытаць інфармацыю пра файл.\n\nПамылка :
 Audio encoding:	MediaConverter		Аўдыё кадаванне:
 Audio quality not supported	MediaConverter		Якасць аўдыё не падтрымліваецца
@@ -40,9 +38,8 @@ File details	MediaConverter		Падрабязнасці пра файл
 File format:	MediaConverter		Фармат файла:
 High	MediaConverter		Найвышэйшая
 Low	MediaConverter		Нізкая
-MediaConverter	MediaConverter		Канвертар Медыа
+MediaConverter	System name		Канвертар медыя
 MediaConverter+:SaveDirectory	MediaConverter		КанвертарМедыя+:Захаваць папку
-MediaConverter\n1.3.0\n© 1999, Be Incorporated.\n© 2000-2004 Jun Suzuki\n© 2007 Stephan Aßmus\n© 2010 Haiku, Inc.	MediaConverter		Канвертар Медыя\n1.3.0\n© 1999, Be Incorporated.\n© 2000-2004 Jun Suzuki\n© 2007 Stephan Aßmus\n© 2010 Haiku, Inc.
 No audio	Audio codecs list		Няма аўдыё
 No file selected	MediaConverter-FileInfo		Не абрана ні воднага файла
 No video	Video codecs list		Няма відэа
@@ -66,6 +63,6 @@ Video quality not supported	MediaConverter		Якасць відэа не пад�
 Video quality: %3d%%	MediaConverter		Якасць відэа: %3d%%
 Video using parameters form settings	MediaConverter		Відэа карыстае параметры з наладак
 Video:	MediaConverter-FileInfo		Відэа:
-Writing audio track: %Ld %% complete	MediaConverter		Запіс аўдыё трэку: выканана на %Ld %%
-Writing video track: %Ld %% complete	MediaConverter		Запіс відэа трэку: выканана на %Ld %%
+Writing audio track: %ld%% complete	MediaConverter		Запіс аўдыё трэку: выканана на %Ld%%
+Writing video track: %ld%% complete	MediaConverter		Запіс відэа трэку: выканана на %Ld%%
 seconds	MediaFileInfo		секунд

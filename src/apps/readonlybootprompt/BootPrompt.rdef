@@ -1,6 +1,8 @@
 
 resource app_signature "application/x-vnd.Haiku-ReadOnlyBootPrompt";
 
+resource app_name_catalog_entry "x-vnd.Haiku-ReadOnlyBootPrompt:System name:ReadOnlyBootPrompt";
+
 resource app_version {
 	major  = 1,
 	middle = 0,
@@ -10,10 +12,7 @@ resource app_version {
 	internal = 0,
 
 	short_info = "ReadOnlyBootPrompt",
-	long_info  = "ReadOnlyBootPrompt ©2010 The Haiku Project"
+	long_info  = "ReadOnlyBootPrompt ©2011 The Haiku Project"
 };
 
-resource(1, "leaf.png") #'PNG ' import "../../../data/artwork/HAIKU Background Leaf - outline.png";
-
 resource app_flags B_EXCLUSIVE_LAUNCH;
-

@@ -10,7 +10,7 @@
 
 IMAPFolders::IMAPFolders()
 {
-
+	fHandlerList.AddItem(&fCapabilityHandler);
 }
 
 
@@ -18,7 +18,7 @@ IMAPFolders::IMAPFolders(IMAPProtocol& connection)
 	:
 	IMAPProtocol(connection)
 {
-	
+	fHandlerList.AddItem(&fCapabilityHandler);
 }
 
 
@@ -82,6 +82,25 @@ IMAPFolders::UnsubscribeFolder(const char* folder)
 {
 	UnsubscribeCommand command(folder);
 	return ProcessCommand(&command);
+}
+
+
+status_t
+IMAPFolders::GetQuota(double& used, double& total)
+{
+	if (fCapabilityHandler.Capabilities() == "")
+		ProcessCommand(fCapabilityHandler.Command());
+	if (fCapabilityHandler.Capabilities().FindFirst("QUOTA") < 0)
+		return B_ERROR;
+
+	GetQuotaCommand quotaCommand;
+	status_t status = ProcessCommand(&quotaCommand);
+	if (status != B_OK)
+		return status;
+
+	used = quotaCommand.UsedStorage();
+	total = quotaCommand.TotalStorage();
+	return status;
 }
 
 

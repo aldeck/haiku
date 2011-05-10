@@ -10,13 +10,16 @@
 
 #include "DataTranslationsSettings.h"
 
-#include <Application.h>
-#include <FindDirectory.h>
-#include <File.h>
-#include <Path.h>
-#include <Message.h>
-
 #include <stdio.h>
+
+#include <Application.h>
+#include <File.h>
+#include <FindDirectory.h>
+#include <Message.h>
+#include <Path.h>
+
+
+static DataTranslationsSettings sDataTranslationsSettings;
 
 
 DataTranslationsSettings::DataTranslationsSettings()
@@ -60,4 +63,11 @@ void
 DataTranslationsSettings::SetWindowCorner(BPoint corner)
 {
 	fCorner = corner;
+}
+
+
+DataTranslationsSettings*
+DataTranslationsSettings::Instance()
+{
+	return &sDataTranslationsSettings;
 }

@@ -181,34 +181,32 @@ TPrefsWindow::TPrefsWindow(BRect rect, BFont* font, int32* level, bool* wrap,
 	int32 layoutRow = 0;
 
 	fButtonBarMenu = _BuildButtonBarMenu(*buttonBar);
-	menu = new BMenuField("bar", B_TRANSLATE("Button bar:"),
-		fButtonBarMenu, NULL);
+	menu = new BMenuField("bar", B_TRANSLATE("Button bar:"), fButtonBarMenu);
 	add_menu_to_layout(menu, interfaceLayout, layoutRow);
 
 	fFontMenu = _BuildFontMenu(font);
-	menu = new BMenuField("font", B_TRANSLATE("Font:"),
-		fFontMenu, NULL);
+	menu = new BMenuField("font", B_TRANSLATE("Font:"), fFontMenu);
 	add_menu_to_layout(menu, interfaceLayout, layoutRow);
 
 	fSizeMenu = _BuildSizeMenu(font);
-	menu = new BMenuField("size", B_TRANSLATE("Size:"), fSizeMenu, NULL);
+	menu = new BMenuField("size", B_TRANSLATE("Size:"), fSizeMenu);
 	add_menu_to_layout(menu, interfaceLayout, layoutRow);
 
 	fColoredQuotesMenu = _BuildColoredQuotesMenu(fColoredQuotes);
 	menu = new BMenuField("cquotes", B_TRANSLATE("Colored quotes:"),
-		fColoredQuotesMenu, NULL);
+		fColoredQuotesMenu);
 	add_menu_to_layout(menu, interfaceLayout, layoutRow);
 
 	fSpellCheckStartOnMenu = _BuildSpellCheckStartOnMenu(fSpellCheckStartOn);
 	menu = new BMenuField("spellCheckStartOn",
 		B_TRANSLATE("Initial spell check mode:"),
-		fSpellCheckStartOnMenu, NULL);
+		fSpellCheckStartOnMenu);
 	add_menu_to_layout(menu, interfaceLayout, layoutRow);
 
 	fAutoMarkReadMenu = _BuildAutoMarkReadMenu(fAutoMarkRead);
 	menu = new BMenuField("autoMarkRead",
 		B_TRANSLATE("Automatically mark mail as read:"),
-		fAutoMarkReadMenu,	NULL);
+		fAutoMarkReadMenu);
 	add_menu_to_layout(menu, interfaceLayout, layoutRow);
 	// Mail Accounts
 
@@ -216,12 +214,12 @@ TPrefsWindow::TPrefsWindow(BRect rect, BFont* font, int32* level, bool* wrap,
 
 	fAccountMenu = _BuildAccountMenu(fAccount);
 	menu = new BMenuField("account", B_TRANSLATE("Default account:"),
-		fAccountMenu, NULL);
+		fAccountMenu);
 	add_menu_to_layout(menu, mailLayout, layoutRow);
 
 	fReplyToMenu = _BuildReplyToMenu(fReplyTo);
 	menu = new BMenuField("replyTo", B_TRANSLATE("Reply account:"),
-		fReplyToMenu, NULL);
+		fReplyToMenu);
 	add_menu_to_layout(menu, mailLayout, layoutRow);
 
 	// Mail Contents
@@ -232,7 +230,7 @@ TPrefsWindow::TPrefsWindow(BRect rect, BFont* font, int32* level, bool* wrap,
 	fReplyPreamble->SetAlignment(B_ALIGN_RIGHT, B_ALIGN_LEFT);
 
 	fReplyPreambleMenu = _BuildReplyPreambleMenu();
-	menu = new BMenuField("replyPreamble", NULL, fReplyPreambleMenu, NULL);
+	menu = new BMenuField("replyPreamble", NULL, fReplyPreambleMenu);
 	menu->SetExplicitMaxSize(BSize(27, B_SIZE_UNSET));
 
 	mailLayout->AddItem(fReplyPreamble->CreateLabelLayoutItem(), 0, layoutRow);
@@ -243,28 +241,25 @@ TPrefsWindow::TPrefsWindow(BRect rect, BFont* font, int32* level, bool* wrap,
 
 	fSignatureMenu = _BuildSignatureMenu(*sig);
 	menu = new BMenuField("sig", B_TRANSLATE("Auto signature:"),
-		fSignatureMenu, NULL);
+		fSignatureMenu);
 	add_menu_to_layout(menu, mailLayout, layoutRow);
 
 	fEncodingMenu = _BuildEncodingMenu(fEncoding);
-	menu = new BMenuField("enc", B_TRANSLATE("Encoding:"),
-		fEncodingMenu, NULL);
+	menu = new BMenuField("enc", B_TRANSLATE("Encoding:"), fEncodingMenu);
 	add_menu_to_layout(menu, mailLayout, layoutRow);
 
 	fWarnUnencodableMenu = _BuildWarnUnencodableMenu(fWarnUnencodable);
 	menu = new BMenuField("warnUnencodable", B_TRANSLATE("Warn unencodable:"),
-		fWarnUnencodableMenu, NULL);
+		fWarnUnencodableMenu);
 	add_menu_to_layout(menu, mailLayout, layoutRow);
 
 	fWrapMenu = _BuildWrapMenu(*wrap);
-	menu = new BMenuField("wrap", B_TRANSLATE("Text wrapping:"),
-		fWrapMenu, NULL);
+	menu = new BMenuField("wrap", B_TRANSLATE("Text wrapping:"), fWrapMenu);
 	add_menu_to_layout(menu, mailLayout, layoutRow);
 
 	fAttachAttributesMenu = _BuildAttachAttributesMenu(*attachAttributes);
-	menu = new BMenuField("attachAttributes",
-		B_TRANSLATE("Attach attributes:"),
-		fAttachAttributesMenu, NULL);
+	menu = new BMenuField("attachAttributes", B_TRANSLATE("Attach attributes:"),
+		fAttachAttributesMenu);
 	add_menu_to_layout(menu, mailLayout, layoutRow);
 
 	SetLayout(new BGroupLayout(B_HORIZONTAL));
@@ -484,8 +479,12 @@ TPrefsWindow::MessageReceived(BMessage* msg)
 			}
 
 			BTextView *text = fReplyPreamble->TextView();
-			// To do: insert at selection point rather than at the end.
-			text->Insert(text->TextLength(), item->Label(), 2);
+			int32 selectionStart;
+			int32 selectionEnd;
+			text->GetSelection(&selectionStart, &selectionEnd);
+			if (selectionStart != selectionEnd)
+				text->Delete(selectionStart, selectionEnd);
+			text->Insert(item->Label(), 2);
 		}
 		case P_SIG:
 			free(*fNewSignature);
@@ -629,7 +628,7 @@ TPrefsWindow::_BuildAccountMenu(int32 account)
 
 	//menu->SetRadioMode(true);
 	BMailAccounts accounts;
-	if (accounts.CountAccounts()) {
+	if (accounts.CountAccounts() == 0) {
 		menu->AddItem(item = new BMenuItem("<no account found>", NULL));
 		item->SetEnabled(false);
 		return menu;
@@ -677,29 +676,21 @@ TPrefsWindow::_BuildReplyToMenu(int32 account)
 BMenu*
 TPrefsWindow::_BuildReplyPreambleMenu()
 {
-	const char *substitutes[] = {
-/* To do: Not yet working, leave out for 2.0.0 beta 4:
-		"%f - First name",
-		"%l - Last name",
-*/
-		B_TRANSLATE("%n - Full name"),
-		B_TRANSLATE("%e - E-mail address"),
-		B_TRANSLATE("%d - Date"),
-		"",
-		B_TRANSLATE("\\n - Newline"),
-		NULL
-	};
-
 	BMenu *menu = new BMenu(B_EMPTY_STRING);
 
-	for (int32 i = 0; substitutes[i]; i++) {
-		if (*substitutes[i] == '\0') {
-			menu->AddSeparatorItem();
-		} else {
-			menu->AddItem(new BMenuItem(substitutes[i],
-				new BMessage(P_REPLY_PREAMBLE)));
-		}
-	}
+	menu->AddItem(new BMenuItem(B_TRANSLATE("%n - Full name"),
+		new BMessage(P_REPLY_PREAMBLE)));
+
+	menu->AddItem(new BMenuItem(B_TRANSLATE("%e - E-mail address"),
+		new BMessage(P_REPLY_PREAMBLE)));
+
+	menu->AddItem(new BMenuItem(B_TRANSLATE("%d - Date"),
+		new BMessage(P_REPLY_PREAMBLE)));
+
+	menu->AddSeparatorItem();
+
+	menu->AddItem(new BMenuItem(B_TRANSLATE("\\n - Newline"),
+		new BMessage(P_REPLY_PREAMBLE)));
 
 	return menu;
 }

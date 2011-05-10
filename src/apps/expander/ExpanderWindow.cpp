@@ -50,8 +50,8 @@ const uint32 MSG_SHOWCONTENTS	= 'mSCT';
 ExpanderWindow::ExpanderWindow(BRect frame, const entry_ref* ref,
 		BMessage* settings)
 	:
-	BWindow(frame, B_TRANSLATE_COMMENT("Expander", "!! Window Title !!"),
-		B_TITLED_WINDOW, B_NORMAL_WINDOW_FEEL),
+	BWindow(frame, B_TRANSLATE_SYSTEM_NAME("Expander"), B_TITLED_WINDOW,
+		B_NORMAL_WINDOW_FEEL),
 	fSourcePanel(NULL),
 	fDestPanel(NULL),
 	fSourceChanged(true),
@@ -514,11 +514,6 @@ ExpanderWindow::_AddMenuBar(BLayout* layout)
 {
 	fBar = new BMenuBar("menu_bar", B_ITEMS_IN_ROW, B_INVALIDATE_AFTER_LAYOUT);
 	BMenu* menu = new BMenu(B_TRANSLATE("File"));
-	BMenuItem* item;
-	menu->AddItem(item = new BMenuItem(B_TRANSLATE("About Expander…"),
-		new BMessage(B_ABOUT_REQUESTED)));
-	item->SetTarget(be_app_messenger);
-	menu->AddSeparatorItem();
 	menu->AddItem(fSourceItem = new BMenuItem(B_TRANSLATE("Set source…"),
 		new BMessage(MSG_SOURCE), 'O'));
 	menu->AddItem(fDestItem = new BMenuItem(B_TRANSLATE("Set destination…"),

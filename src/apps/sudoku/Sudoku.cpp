@@ -1,5 +1,5 @@
 /*
- * Copyright 2007, Axel Dörfler, axeld@pinc-software.de. All rights reserved.
+ * Copyright 2007-2011, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -12,14 +12,20 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Catalog.h>
 #include <TextView.h>
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "Sudoku"
 
 
 const char* kSignature = "application/x-vnd.Haiku-Sudoku";
 
 
 Sudoku::Sudoku()
-	: BApplication(kSignature)
+	:
+	BApplication(kSignature)
 {
 }
 
@@ -48,33 +54,6 @@ void
 Sudoku::MessageReceived(BMessage* message)
 {
 	BApplication::MessageReceived(message);
-}
-
-
-void
-Sudoku::AboutRequested()
-{
-	Sudoku::DisplayAbout();
-}
-
-
-void
-Sudoku::DisplayAbout()
-{
-	BAlert *alert = new BAlert("about", "Sudoku\n"
-		"\twritten by Axel Dörfler\n"
-		"\tCopyright 2007, Haiku Inc.\n", "OK");
-	BTextView *view = alert->TextView();
-	BFont font;
-
-	view->SetStylable(true);
-
-	view->GetFont(&font);
-	font.SetSize(18);
-	font.SetFace(B_BOLD_FACE);
-	view->SetFontAndColor(0, 6, &font);
-
-	alert->Go();
 }
 
 

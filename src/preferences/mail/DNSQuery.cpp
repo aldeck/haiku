@@ -4,7 +4,6 @@
 #include <stdio.h>
 
 #include <ByteOrder.h>
-#include <Catalog.h>
 #include <FindDirectory.h>
 #include <NetAddress.h>
 #include <NetEndpoint.h>
@@ -18,9 +17,6 @@
 #else
 #define PRINT(a...)
 #endif
-
-#undef B_TRANSLATE_CONTEXT
-#define B_TRANSLATE_CONTEXT "E-Mail"
 
 
 static vint32 gID = 1;
@@ -98,26 +94,11 @@ BRawNetBuffer::ReadUint32(uint32& value)
 status_t
 BRawNetBuffer::ReadString(BString& string)
 {
-	char* buffer = (char*)fBuffer.Buffer();
-	buffer = &buffer[fReadPosition];
-
-	// if the string is compressed we have to follow the links to the
-	// sub strings
-	while (*buffer != 0) {
-		if (uint8(*buffer) == 192) {
-			// found a pointer mark
-			buffer++;
-			// pointer takes 2 byte
-			fReadPosition = fReadPosition + 1;
-			off_t pos = uint8(*buffer);
-			_ReadSubString(string, pos);
-			break;
-		}
-		string.Append(buffer, 1);
-		buffer++;
-		fReadPosition++;
-	}
-	fReadPosition++;
+	string = "";
+	ssize_t bytesRead = _ReadStringAt(string, fReadPosition);
+	if (bytesRead < 0)
+		return B_ERROR;
+	fReadPosition += bytesRead;
 	return B_OK;
 }
 
@@ -141,13 +122,32 @@ BRawNetBuffer::_Init(const void* buf, size_t size)
 }
 
 
-void
-BRawNetBuffer::_ReadSubString(BString& string, off_t pos)
+ssize_t
+BRawNetBuffer::_ReadStringAt(BString& string, off_t pos)
 {
-	// sub strings have no links to other substrings so we can read it in one
-	// piece
+	if (pos >= fBuffer.BufferLength())
+		return -1;
+
+	ssize_t bytesRead = 0;
 	char* buffer = (char*)fBuffer.Buffer();
-	string.Append(&buffer[pos]);
+	buffer = &buffer[pos];
+	// if the string is compressed we have to follow the links to the
+	// sub strings
+	while (pos < fBuffer.BufferLength() && *buffer != 0) {
+		if (uint8(*buffer) == 192) {
+			// found a pointer mark
+			buffer++;
+			bytesRead++;
+			off_t subPos = uint8(*buffer);
+			_ReadStringAt(string, subPos);
+			break;
+		}
+		string.Append(buffer, 1);
+		buffer++;
+		bytesRead++;
+	}
+	bytesRead++;
+	return bytesRead;
 }
 
 
@@ -172,8 +172,8 @@ DNSTools::GetDNSServers(BObjectList<BString>* serverList)
 
 	register FILE* fp = fopen(path.Path(), "r");
 	if (fp == NULL) {
-		fprintf(stderr, B_TRANSLATE("failed to open '%s' to read "
-			"nameservers: %s\n"), path.Path(), strerror(errno));
+		fprintf(stderr, "failed to open '%s' to read nameservers: %s\n",
+			path.Path(), strerror(errno));
 		return B_ENTRY_NOT_FOUND;
 	}
 
@@ -245,11 +245,16 @@ DNSTools::ConvertToDNSName(const BString& string)
 BString
 DNSTools::ConvertFromDNSName(const BString& string)
 {
+	if (string.Length() == 0)
+		return string;
+
 	BString outString = string;
 	int32 dot = string[0];
 	int32 nextDot = dot;
 	outString.Remove(0, sizeof(char));
 	while (true) {
+		if (nextDot >= outString.Length())
+			break;
 		dot = outString[nextDot];
 		if (dot == 0)
 			break;
@@ -288,14 +293,14 @@ DNSQuery::ReadDNSServer(in_addr* add)
 	if (firstDNS == NULL || inet_aton(firstDNS->String(), add) != 1)
 		return B_ERROR;
 
-	PRINT(B_TRANSLATE("dns server found: %s \n"), firstDNS->String());
+	PRINT("dns server found: %s \n", firstDNS->String());
 	return B_OK;
 }
 
 
 status_t
-DNSQuery::GetMXRecords(BString serverName, BObjectList<mx_record>* mxList,
-	bigtime_t timeout)
+DNSQuery::GetMXRecords(const BString&  serverName,
+	BObjectList<mx_record>* mxList, bigtime_t timeout)
 {
 	// get the DNS server to ask for the mx record
 	in_addr dnsAddress;
@@ -309,12 +314,12 @@ DNSQuery::GetMXRecords(BString serverName, BObjectList<mx_record>* mxList,
 	_AppendQueryHeader(buffer, &header);
 
 	BString serverNameConv = DNSTools::ConvertToDNSName(serverName);
-	buffer.AppendString(serverNameConv.String());
+	buffer.AppendString(serverNameConv);
 	buffer.AppendUint16(uint16(MX_RECORD));
 	buffer.AppendUint16(uint16(1));
 
 	// send the buffer
-	PRINT(B_TRANSLATE("send buffer\n"));
+	PRINT("send buffer\n");
 	BNetAddress netAddress(dnsAddress, 53);
 	BNetEndpoint netEndpoint(SOCK_DGRAM);
 	if (netEndpoint.InitCheck() != B_OK)
@@ -322,30 +327,31 @@ DNSQuery::GetMXRecords(BString serverName, BObjectList<mx_record>* mxList,
 
 	if (netEndpoint.Connect(netAddress) != B_OK)
 		return B_ERROR;
-	PRINT(B_TRANSLATE("Connected\n"));
+	PRINT("Connected\n");
 
-#ifdef DEBUG
-	int32 bytesSend =
-#endif
-	netEndpoint.Send(buffer.Data(), buffer.Size());
-	PRINT(B_TRANSLATE("bytes send %i\n"), int(bytesSend));
+	int32 bytesSend = netEndpoint.Send(buffer.Data(), buffer.Size());
+	if (bytesSend == B_ERROR)
+		return B_ERROR;
+	PRINT("bytes send %i\n", int(bytesSend));
 
 	// receive buffer
 	BRawNetBuffer receiBuffer(512);
 	netEndpoint.SetTimeout(timeout);
-#ifdef DEBUG
-	int32 bytesRecei =
-#endif
-	netEndpoint.ReceiveFrom(receiBuffer.Data(), 512, netAddress);
-	PRINT(B_TRANSLATE("bytes received %i\n"), int(bytesRecei));
+
+	int32 bytesRecei = netEndpoint.ReceiveFrom(receiBuffer.Data(), 512,
+		netAddress);
+	if (bytesRecei == B_ERROR)
+		return B_ERROR;
+	PRINT("bytes received %i\n", int(bytesRecei));
+
 	dns_header receiHeader;
 
 	_ReadQueryHeader(receiBuffer, &receiHeader);
-	PRINT(B_TRANSLATE("Package contains :"));
-	PRINT(B_TRANSLATE("%d Questions, "), receiHeader.q_count);
-	PRINT(B_TRANSLATE("%d Answers, "), receiHeader.ans_count);
-	PRINT(B_TRANSLATE("%d Authoritative Servers, "), receiHeader.auth_count);
-	PRINT(B_TRANSLATE("%d Additional records\n"), receiHeader.add_count);
+	PRINT("Package contains :");
+	PRINT("%d Questions, ", receiHeader.q_count);
+	PRINT("%d Answers, ", receiHeader.ans_count);
+	PRINT("%d Authoritative Servers, ", receiHeader.auth_count);
+	PRINT("%d Additional records\n", receiHeader.add_count);
 
 	// remove name and Question
 	BString dummyS;
@@ -359,11 +365,10 @@ DNSQuery::GetMXRecords(BString serverName, BObjectList<mx_record>* mxList,
 		resource_record_head rrHead;
 		_ReadResourceRecord(receiBuffer, &rrHead);
 		if (rrHead.type == MX_RECORD) {
-			mx_record *mxRec = new mx_record;
+			mx_record* mxRec = new mx_record;
 			_ReadMXRecord(receiBuffer, mxRec);
-			PRINT(B_TRANSLATE("MX record found pri %i, name %s\n"),
-					mxRec->priority,
-					mxRec->serverName.String());
+			PRINT("MX record found pri %i, name %s\n",
+				mxRec->priority, mxRec->serverName.String());
 			// Add mx record to the list
 			mxList->AddItem(mxRec);
 			mxRecordFound = true;

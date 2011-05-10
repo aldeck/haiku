@@ -457,15 +457,6 @@ PoorManWindow::BuildFileMenu() const
 		new BMessage(MSG_MENU_FILE_SAVE_SELECTION)));
 		
 	ptrFileMenu->AddSeparatorItem();
-	
-	// about box
-	BMenuItem * AboutItem = new BMenuItem(STR_MNU_FILE_ABOUT,
-		new BMessage(B_ABOUT_REQUESTED));
-	AboutItem->SetTarget(NULL, be_app);
-	ptrFileMenu->AddItem(AboutItem);
-
-	ptrFileMenu->AddSeparatorItem();
-	
 
 	ptrFileMenu->AddItem(new BMenuItem(STR_MNU_FILE_QUIT,
 		new BMessage(B_QUIT_REQUESTED), CMD_FILE_QUIT));

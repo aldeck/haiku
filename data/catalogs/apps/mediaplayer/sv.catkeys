@@ -1,4 +1,5 @@
-1	swedish	x-vnd.Haiku-MediaPlayer	1983120721
+1	swedish	x-vnd.Haiku-MediaPlayer	303149893
+%app% encountered an internal error. The file could not be opened.	MediaPlayer-Main		Ett internt fel inträffade i %app%. Filen kunde inte öppnas.
 1.85 : 1 (American)	MediaPlayer-Main		1.85 : 1 (Amerikanskt format)
 100% scale	MediaPlayer-Main		Skala till 100%
 2.35 : 1 (Cinemascope)	MediaPlayer-Main		2.35 : 1 (Cinemascope)
@@ -12,7 +13,6 @@
 <unknown>	PlaylistItem-author		<okänd>
 <unnamed>	PlaylistItem-name		<odöpt>
 <untitled>	PlaylistItem-title		<odöpt>
-About MediaPlayer…	MediaPlayer-Main		Om MediaSpelaren...
 All files could not be moved into Trash.	MediaPlayer-RemovePLItemsCmd		Alla filer kunde inte flyttas till Papperskorgen.
 Always on top	MediaPlayer-Main		Alltid överst
 Aspect ratio	MediaPlayer-Main		Bildförhållande
@@ -25,14 +25,13 @@ Bottom of video	MediaPlayer-SettingsWindow		Botten av videon
 Cancel	MediaPlayer-SettingsWindow		Avbryt
 Close	MediaPlayer-Main		Stäng
 Close	MediaPlayer-PlaylistWindow		Stäng
-Close window when done playing movies	MediaPlayer-SettingsWindow		Stäng fönstret när filmen är färdigspelad
-Close window when done playing sounds	MediaPlayer-SettingsWindow		Stäng fönstret när ljuden är färdigspelade
 Copy Entries	MediaPlayer-CopyPLItemsCmd		Kopiera poster
 Copy Entry	MediaPlayer-CopyPLItemsCmd		Kopiera post
 Drop files to play	MediaPlayer-Main		Släpp filer för att spela upp
 Edit	MediaPlayer-PlaylistWindow		Redigera
 Error: 	MediaPlayer-Main		Fel:
 Error: 	MediaPlayer-RemovePLItemsCmd		Fel:
+File Info	MediaPlayer-InfoWin		Filinformation
 File info…	MediaPlayer-Main		Filinformation...
 Full screen	MediaPlayer-Main		Fullskärmsläge
 Full volume	MediaPlayer-SettingsWindow		Högsta volym
@@ -47,17 +46,14 @@ Internal error (out of memory). Saving the playlist failed.	MediaPlayer-Playlist
 It appears the media server is not running.\nWould you like to start it ?	MediaPlayer-Main		Det verkar som att mediaservern inte körs.\nVill du starta den?
 Large	MediaPlayer-SettingsWindow		Stor
 Lock Peaks	MediaPlayer-PeakView		Markera toppvärden
-Loop movies by default	MediaPlayer-SettingsWindow		Loopa filmer som förval
-Loop sounds by default	MediaPlayer-SettingsWindow		Loopa ljud som förval
 Low volume	MediaPlayer-SettingsWindow		Låg volym
-MediaPlayer Current Playlist	MediaPlayer-Main		MediaSpelarens nuvarande spellista
-MediaPlayer encountered an internal error. The file could not be opened.	MediaPlayer-Main		Ett internt fel har uppstått i MediaSpelaren. Filen kunde inte öppnas.
+MediaPlayer	System name		MediaSpelare
 MediaPlayer settings	MediaPlayer-SettingsWindow		MediaSpelarens inställningar
-MediaPlayer\n\nWritten by Marcus Overhagen, Stephan Aßmus and Frederik Modéen	MediaPlayer-Main		MediaSpelaren\n\nSkrivet av Marcus Overhagen, Stephan Aßmus och Frederik Modéen
 Medium	MediaPlayer-SettingsWindow		Medium
 Move Entries	MediaPlayer-MovePLItemsCmd		Flytta poster
 Move Entry	MediaPlayer-MovePLItemsCmd		Flytta post
 Move Into Trash Error	MediaPlayer-RemovePLItemsCmd		Fel vid flyttning till Papperskorgen
+Move file to Trash	MediaPlayer-PlaylistWindow		Flytta filen till Papperskorgen
 Mute	MediaPlayer-Main		Tyst läge
 Muted	MediaPlayer-SettingsWindow		Tyst läge aktiverat
 New player…	MediaPlayer-Main		Ny spelare...
@@ -79,7 +75,6 @@ Open…	MediaPlayer-PlaylistWindow		Öppna...
 Pause	MediaPlayer-Main		Pausa
 Pause playback.	MediaPlayer-Main		Pausa uppspelning.
 Play	MediaPlayer-Main		Spela
-Play background clips at	MediaPlayer-SettingsWindow		Spela bakgrundsklipp vid
 Play mode	MediaPlayer-SettingsWindow		Uppspelningsläge
 Playlist	MediaPlayer-PlaylistWindow		Spellista
 Playlist…	MediaPlayer-Main		Spellista...
@@ -89,13 +84,11 @@ Randomize	MediaPlayer-PlaylistWindow		Slumpa
 Randomize Entries	MediaPlayer-RandomizePLItemsCmd		Slumpa poster
 Rating	MediaPlayer-Main		Betyg
 Redo	MediaPlayer-PlaylistWindow		Gör om
-Remove (Del)	MediaPlayer-PlaylistWindow		Ta bort (Del)
+Remove	MediaPlayer-PlaylistWindow		Ta bort
 Remove Entries	MediaPlayer-RemovePLItemsCmd		Ta bort poster
 Remove Entries into Trash	MediaPlayer-RemovePLItemsCmd		Flytta poster till Papperskorgen
 Remove Entry	MediaPlayer-RemovePLItemsCmd		Ta bort post
 Remove Entry into Trash	MediaPlayer-RemovePLItemsCmd		Flytta post till Papperskorgen
-Remove all	MediaPlayer-PlaylistWindow		Ta bort allt
-Remove and put into Trash	MediaPlayer-PlaylistWindow		Ta bort och flytta till Papperskorgen
 Revert	MediaPlayer-SettingsWindow		Återställ
 Save	MediaPlayer-Main		Spara
 Save	MediaPlayer-PlaylistWindow		Spara
@@ -104,8 +97,8 @@ Save as…	MediaPlayer-PlaylistWindow		Spara som...
 Save error	MediaPlayer-PlaylistWindow		Sparningsfel
 Saving the playlist failed.\n\nError: 	MediaPlayer-PlaylistWindow		Kunde inte spara spellistan.\n\nFel:
 Saving the playlist failed:\n\nError: 	MediaPlayer-PlaylistWindow		Misslyckades att spara spellistan:\n\nFel:
-Scale controls in full-screen mode	MediaPlayer-SettingsWindow		Skala kontroller i helskärmsläge
 Scale movies smoothly (non-overlay mode)	MediaPlayer-SettingsWindow		Skala filmer mjukt (icketäckande läge)
+Select all	MediaPlayer-PlaylistWindow		Markera alla
 Settings…	MediaPlayer-Main		Inställningar...
 Skip to the next track.	MediaPlayer-Main		Hoppa till nästa spår.
 Skip to the previous track.	MediaPlayer-Main		Hoppa till föregående spår.
@@ -116,10 +109,9 @@ Start playing.	MediaPlayer-Main		Starta uppspelning.
 Stop	MediaPlayer-Main		Stopp
 Stop playing.	MediaPlayer-Main		Stoppa uppspelning.
 Stream settings	MediaPlayer-Main		Ströminställningar
-Subtitle placement	MediaPlayer-SettingsWindow		Bildtextsplacering
-Subtitle size	MediaPlayer-SettingsWindow		Bildtextsstorlek
+Subtitle placement:	MediaPlayer-SettingsWindow		Undertextsplacering:
+Subtitle size:	MediaPlayer-SettingsWindow		Undertextsstorlek:
 Subtitles	MediaPlayer-Main		Bildtext
-Thanks	MediaPlayer-Main		Tack
 The file'%filename' could not be opened.\n\n	MediaPlayer-Main		Filen '%filename' kunde inte öppnas.\n\n
 There is no decoder installed to handle the file format, or the decoder has trouble with the specific version of the format.	MediaPlayer-Main		Det finns ingen avkodare installerad som kan hantera filformatet, eller så har avkodaren problem med filformatsversionen.
 Toggle mute.	MediaPlayer-Main		Aktivera tyst läge.
@@ -135,6 +127,6 @@ Video	MediaPlayer-Main		Video
 Video track	MediaPlayer-Main		Videospår
 View options	MediaPlayer-SettingsWindow		Visningsalternativ
 Volume	MediaPlayer-Main		Volym
-error	MediaPlayer-Main		fel
+Volume of background clips	MediaPlayer-SettingsWindow		Volym för bakgrundsklipp
 none	Audio track menu		ingen
 none	Subtitles menu		ingen

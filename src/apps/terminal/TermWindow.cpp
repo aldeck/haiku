@@ -188,7 +188,7 @@ TermWindow::TermWindow(const BString& title, Arguments* args)
 	// apply the title settings
 	fTitle.pattern = title;
 	if (fTitle.pattern.Length() == 0) {
-		fTitle.pattern = B_TRANSLATE("Terminal");
+		fTitle.pattern = B_TRANSLATE_SYSTEM_NAME("Terminal");
 
 		if (id >= 0)
 			fTitle.pattern << " " << id + 1;
@@ -426,7 +426,7 @@ TermWindow::_SetupMenu()
 {
 	BLayoutBuilder::Menu<>(fMenuBar = new BMenuBar(Bounds(), "mbar"))
 		// Terminal
-		.AddMenu(B_TRANSLATE("Terminal"))
+		.AddMenu(B_TRANSLATE_SYSTEM_NAME("Terminal"))
 			.AddItem(B_TRANSLATE("Switch Terminals"), MENU_SWITCH_TERM, B_TAB)
 				.GetItem(fSwitchTerminalsMenuItem)
 			.AddItem(B_TRANSLATE("New Terminal"), MENU_NEW_TERM, 'N')
@@ -434,9 +434,6 @@ TermWindow::_SetupMenu()
 			.AddSeparator()
 			.AddItem(B_TRANSLATE("Page setup" B_UTF8_ELLIPSIS), MENU_PAGE_SETUP)
 			.AddItem(B_TRANSLATE("Print"), MENU_PRINT,'P')
-			.AddSeparator()
-			.AddItem(B_TRANSLATE("About Terminal" B_UTF8_ELLIPSIS),
-				B_ABOUT_REQUESTED)
 			.AddSeparator()
 			.AddItem(B_TRANSLATE("Close window"), B_QUIT_REQUESTED, 'W',
 				B_SHIFT_KEY)
@@ -616,10 +613,6 @@ TermWindow::MessageReceived(BMessage *message)
 
 		case B_SELECT_ALL:
 			_ActiveTermView()->SelectAll();
-			break;
-
-		case B_ABOUT_REQUESTED:
-			be_app->PostMessage(B_ABOUT_REQUESTED);
 			break;
 
 		case MENU_CLEAR_ALL:

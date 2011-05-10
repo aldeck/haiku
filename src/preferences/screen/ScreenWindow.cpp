@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2009, Haiku.
+ * Copyright 2001-2011, Haiku.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -142,7 +142,7 @@ refresh_rate_to_string(float refresh, BString &string,
 	string.UnlockBuffer();
 
 	if (appendUnit)
-		string << B_TRANSLATE(" Hz");
+		string << " " << B_TRANSLATE("Hz");
 }
 
 
@@ -165,8 +165,8 @@ screen_errors(status_t status)
 
 ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	:
-	BWindow(settings->WindowFrame(), B_TRANSLATE("Screen"), B_TITLED_WINDOW,
-		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS,
+	BWindow(settings->WindowFrame(), B_TRANSLATE_SYSTEM_NAME("Screen"),
+		B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS,
 		B_ALL_WORKSPACES),
 	fBootWorkspaceApplied(false),
 	fScreenMode(this),
@@ -200,7 +200,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	fAllWorkspacesItem->SetMarked(true);
 
 	BMenuField* workspaceMenuField = new BMenuField("WorkspaceMenu", NULL,
-		popUpMenu, NULL);
+		popUpMenu);
 	workspaceMenuField->ResizeToPreferred();
 
 	// box on the left with workspace count and monitor view
@@ -214,7 +214,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	screenBox->AddChild(fMonitorInfo);
 
 	fMonitorView = new MonitorView(BRect(0.0, 0.0, 80.0, 80.0),
-		B_TRANSLATE("monitor"), screen.Frame().IntegerWidth() + 1,
+		"monitor", screen.Frame().IntegerWidth() + 1,
 		screen.Frame().IntegerHeight() + 1);
 	screenBox->AddChild(fMonitorView);
 
@@ -251,7 +251,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	outerControlsView->GroupLayout()->SetInsets(10, 10, 10, 10);
 	controlsBox->AddChild(outerControlsView);
 
-	fResolutionMenu = new BPopUpMenu(B_TRANSLATE("resolution"), true, true);
+	fResolutionMenu = new BPopUpMenu("resolution", true, true);
 
 	uint16 maxWidth = 0;
 	uint16 maxHeight = 0;
@@ -283,9 +283,9 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	fMonitorView->SetMaxResolution(maxWidth, maxHeight);
 
 	fResolutionField = new BMenuField("ResolutionMenu",
-		B_TRANSLATE("Resolution:"), fResolutionMenu, NULL);
+		B_TRANSLATE("Resolution:"), fResolutionMenu);
 
-	fColorsMenu = new BPopUpMenu(B_TRANSLATE("colors"), true, false);
+	fColorsMenu = new BPopUpMenu("colors", true, false);
 
 	for (int32 i = 0; i < kColorSpaceCount; i++) {
 		if ((fSupportedColorSpaces & (1 << i)) == 0)
@@ -303,9 +303,9 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	}
 
 	fColorsField = new BMenuField("ColorsMenu", B_TRANSLATE("Colors:"),
-		fColorsMenu, NULL);
+		fColorsMenu);
 
-	fRefreshMenu = new BPopUpMenu(B_TRANSLATE("refresh rate"), true, true);
+	fRefreshMenu = new BPopUpMenu("refresh rate", true, true);
 
 	BMessage *message;
 
@@ -314,7 +314,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 		// This is a special case for drivers that only support a single
 		// frequency, like the VESA driver
 		BString name;
-		name << min << B_TRANSLATE(" Hz");
+		name << min << " " << B_TRANSLATE("Hz");
 
 		message = new BMessage(POP_REFRESH_MSG);
 		message->AddFloat("refresh", min);
@@ -333,7 +333,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 				continue;
 
 			BString name;
-			name << kRefreshRates[i] << B_TRANSLATE(" Hz");
+			name << kRefreshRates[i] << " " << B_TRANSLATE("Hz");
 
 			message = new BMessage(POP_REFRESH_MSG);
 			message->AddFloat("refresh", kRefreshRates[i]);
@@ -349,7 +349,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 	}
 
 	fRefreshField = new BMenuField("RefreshMenu", B_TRANSLATE("Refresh rate:"),
-		fRefreshMenu, NULL);
+		fRefreshMenu);
 
 	if (_IsVesa())
 		fRefreshField->Hide();
@@ -369,7 +369,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 		// even if there is no support, we still create all controls
 		// to make sure we don't access NULL pointers later on
 
-		fCombineMenu = new BPopUpMenu(B_TRANSLATE("CombineDisplays"),
+		fCombineMenu = new BPopUpMenu("CombineDisplays",
 			true, true);
 
 		for (int32 i = 0; i < kCombineModeCount; i++) {
@@ -381,12 +381,12 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 		}
 
 		fCombineField = new BMenuField("CombineMenu",
-			B_TRANSLATE("Combine displays:"), fCombineMenu, NULL);
+			B_TRANSLATE("Combine displays:"), fCombineMenu);
 
 		if (!multiMonSupport)
 			fCombineField->Hide();
 
-		fSwapDisplaysMenu = new BPopUpMenu(B_TRANSLATE("SwapDisplays"),
+		fSwapDisplaysMenu = new BPopUpMenu("SwapDisplays",
 			true, true);
 
 		// !order is important - we rely that boolean value == idx
@@ -399,12 +399,12 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 		fSwapDisplaysMenu->AddItem(new BMenuItem(B_TRANSLATE("yes"), message));
 
 		fSwapDisplaysField = new BMenuField("SwapMenu",
-			B_TRANSLATE("Swap displays:"), fSwapDisplaysMenu, NULL);
+			B_TRANSLATE("Swap displays:"), fSwapDisplaysMenu);
 
 		if (!multiMonSupport)
 			fSwapDisplaysField->Hide();
 
-		fUseLaptopPanelMenu = new BPopUpMenu(B_TRANSLATE("UseLaptopPanel"),
+		fUseLaptopPanelMenu = new BPopUpMenu("UseLaptopPanel",
 			true, true);
 
 		// !order is important - we rely that boolean value == idx
@@ -419,12 +419,12 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 			message));
 
 		fUseLaptopPanelField = new BMenuField("UseLaptopPanel",
-			B_TRANSLATE("Use laptop panel:"), fUseLaptopPanelMenu, NULL);
+			B_TRANSLATE("Use laptop panel:"), fUseLaptopPanelMenu);
 
 		if (!useLaptopPanelSupport)
 			fUseLaptopPanelField->Hide();
 
-		fTVStandardMenu = new BPopUpMenu(B_TRANSLATE("TVStandard"), true, true);
+		fTVStandardMenu = new BPopUpMenu("TVStandard", true, true);
 
 		// arbitrary limit
 		uint32 i;
@@ -442,7 +442,7 @@ ScreenWindow::ScreenWindow(ScreenSettings* settings)
 		}
 
 		fTVStandardField = new BMenuField("tv standard",
-			B_TRANSLATE("Video format:"), fTVStandardMenu, NULL);
+			B_TRANSLATE("Video format:"), fTVStandardMenu);
 		fTVStandardField->SetAlignment(B_ALIGN_RIGHT);
 
 		if (!tvStandardSupport || i == 0)
@@ -514,7 +514,7 @@ ScreenWindow::QuitRequested()
 			BString warning = B_TRANSLATE("Could not write VESA mode settings"
 				" file:\n\t");
 			warning << strerror(status);
-			(new BAlert("VesaAlert", warning.String(), B_TRANSLATE("OK"), NULL,
+			(new BAlert(B_TRANSLATE("Warning"), warning.String(), B_TRANSLATE("OK"), NULL,
 				NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go();
 		}
 	}
@@ -1252,7 +1252,7 @@ void
 ScreenWindow::_UpdateColorLabel()
 {
 	BString string;
-	string << fSelected.BitsPerPixel() << B_TRANSLATE(" bits/pixel");
+	string << fSelected.BitsPerPixel() << " " << B_TRANSLATE("bits/pixel");
 	fColorsMenu->Superitem()->SetLabel(string.String());
 }
 
@@ -1294,7 +1294,7 @@ ScreenWindow::_Apply()
 		snprintf(message, sizeof(message),
 			B_TRANSLATE("The screen mode could not be set:\n\t%s\n"),
 			screen_errors(status));
-		BAlert* alert = new BAlert(B_TRANSLATE("Screen Alert"), message,
+		BAlert* alert = new BAlert(B_TRANSLATE("Warning"), message,
 			B_TRANSLATE("OK"), NULL, NULL,
 			B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 		alert->Go();

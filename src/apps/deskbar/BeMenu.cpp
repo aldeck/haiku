@@ -26,9 +26,10 @@ Except as contained in this notice, the name of Be Incorporated shall not be
 used in advertising or otherwise to promote the sale, use or other dealings in
 this Software without prior written authorization from Be Incorporated.
 
-Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
-of Be Incorporated in the United States and other countries. Other brand product
-names are registered trademarks or trademarks of their respective holders.
+Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered
+trademarks of Be Incorporated in the United States and other countries. Other
+brand product names are registered trademarks or trademarks of their respective
+holders.
 All rights reserved.
 */
 
@@ -245,10 +246,10 @@ TBeMenu::AddStandardBeMenuItems()
 
 #ifdef HAIKU_DISTRO_COMPATIBILITY_OFFICIAL
 	static const char* kAboutHaikuMenuItemStr = B_TRANSLATE_MARK(
-		"About Haiku" B_UTF8_ELLIPSIS);
+		"About Haiku");
 #else
 	static const char* kAboutThisSystemMenuItemStr = B_TRANSLATE_MARK(
-		"About this system" B_UTF8_ELLIPSIS);
+		"About this system");
 #endif
 
 	item = new BMenuItem(
@@ -476,9 +477,7 @@ TRecentsMenu::~TRecentsMenu()
 void
 TRecentsMenu::DetachedFromWindow()
 {
-	//
-	//	BNavMenu::DetachedFromWindow sets the TypesList to NULL
-	//
+	// BNavMenu::DetachedFromWindow sets the TypesList to NULL
 	BMenu::DetachedFromWindow();
 }
 
@@ -575,14 +574,14 @@ TRecentsMenu::AddRecents(int32 count)
 				if (doc.CountNames(B_REF_TYPE) > 0) {
 					// create recents menu that will contain the recent docs of
 					// this app
-					TRecentsMenu* docs = new TRecentsMenu(ref.name, fBarView,
-						kRecentAppDocuments, signature, &ref);
+					TRecentsMenu* docs = new TRecentsMenu(model.Name(),
+						fBarView, kRecentAppDocuments, signature, &ref);
 					docs->SetTypesList(TypesList());
 					docs->SetTarget(Target());
 
 					item = new ModelMenuItem(&model, docs);
 				} else
-					item = new ModelMenuItem(&model, ref.name, NULL);
+					item = new ModelMenuItem(&model, model.Name(), NULL);
 
 				if (item) {
 					// add refs-message so that the recent app can be launched

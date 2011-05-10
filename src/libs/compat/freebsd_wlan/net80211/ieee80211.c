@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #ifdef IEEE80211_SUPPORT_SUPERG
 #include <net80211/ieee80211_superg.h>
 #endif
+#include <net80211/ieee80211_ratectl.h>
 
 #include <net/bpf.h>
 
@@ -292,6 +293,9 @@ ieee80211_ifattach(struct ieee80211com *ic,
 	ieee80211_scan_attach(ic);
 	ieee80211_regdomain_attach(ic);
 	ieee80211_dfs_attach(ic);
+#if defined(__HAIKU__)
+	ieee80211_ratectl_attach(ic);
+#endif
 
 	ieee80211_sysctl_attach(ic);
 
@@ -336,6 +340,9 @@ ieee80211_ifdetach(struct ieee80211com *ic)
 	ieee80211_waitfor_parent(ic);
 
 	ieee80211_sysctl_detach(ic);
+#if defined(__HAIKU__)
+	ieee80211_ratectl_detach(ic);
+#endif
 	ieee80211_dfs_detach(ic);
 	ieee80211_regdomain_detach(ic);
 	ieee80211_scan_detach(ic);
@@ -393,11 +400,10 @@ ieee80211_vap_setup(struct ieee80211com *ic, struct ieee80211vap *vap,
 	ifp->if_flags = IFF_SIMPLEX | IFF_BROADCAST | IFF_MULTICAST;
 	ifp->if_start = ieee80211_start;
 	ifp->if_ioctl = ieee80211_ioctl;
-	ifp->if_watchdog = NULL;		/* NB: no watchdog routine */
 	ifp->if_init = ieee80211_init;
 	/* NB: input+output filled in by ether_ifattach */
-	IFQ_SET_MAXLEN(&ifp->if_snd, IFQ_MAXLEN);
-	ifp->if_snd.ifq_drv_maxlen = IFQ_MAXLEN;
+	IFQ_SET_MAXLEN(&ifp->if_snd, ifqmaxlen);
+	ifp->if_snd.ifq_drv_maxlen = ifqmaxlen;
 	IFQ_SET_READY(&ifp->if_snd);
 
 	vap->iv_ifp = ifp;
@@ -443,6 +449,9 @@ ieee80211_vap_setup(struct ieee80211com *ic, struct ieee80211vap *vap,
 	/* auto-enable s/w beacon miss support */
 	if (flags & IEEE80211_CLONE_NOBEACONS)
 		vap->iv_flags_ext |= IEEE80211_FEXT_SWBMISS;
+	/* auto-generated or user supplied MAC address */
+	if (flags & (IEEE80211_CLONE_BSSID|IEEE80211_CLONE_MACADDR))
+		vap->iv_flags_ext |= IEEE80211_FEXT_UNIQMAC;
 	/*
 	 * Enable various functionality by default if we're
 	 * capable; the driver can override us if it knows better.
@@ -486,6 +495,7 @@ ieee80211_vap_setup(struct ieee80211com *ic, struct ieee80211vap *vap,
 	ieee80211_scan_vattach(vap);
 	ieee80211_regdomain_vattach(vap);
 	ieee80211_radiotap_vattach(vap);
+	ieee80211_ratectl_set(vap, IEEE80211_RATECTL_NONE);
 
 	return 0;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright Karsten Heimrich, host.haiku@gmx.de. All rights reserved.
+ * Copyright 2008 Karsten Heimrich, host.haiku@gmx.de. All rights reserved.
  * Distributed under the terms of the MIT License.
  */
 
@@ -24,7 +24,16 @@ using BPrivate::B_WEEK_START_SUNDAY;
 using BPrivate::B_WEEK_START_MONDAY;
 
 
-// #pragma mark -- FlatButton
+enum {
+	kInvokationMessage,
+	kMonthDownMessage,
+	kMonthUpMessage,
+	kYearDownMessage,
+	kYearUpMessage
+};
+
+
+//	#pragma mark - FlatButton
 
 
 class FlatButton : public BButton {
@@ -66,16 +75,7 @@ FlatButton::Draw(BRect updateRect)
 }
 
 
-// #pragma mark -- CalendarMenuWindow
-
-
-enum {
-	kInvokationMessage,
-	kMonthDownMessage,
-	kMonthUpMessage,
-	kYearDownMessage,
-	kYearUpMessage
-};
+//	#pragma mark - CalendarMenuWindow
 
 
 CalendarMenuWindow::CalendarMenuWindow(BPoint where)
@@ -95,15 +95,11 @@ CalendarMenuWindow::CalendarMenuWindow(BPoint where)
 	AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
 
 	fYearLabel = new BStringView("year", "");
-	fYearLabel->SetFontSize(10.0);
-
 	fMonthLabel = new BStringView("month", "");
-	fMonthLabel->SetFontSize(10.0);
 
 	fCalendarView = new BCalendarView(Bounds(), "calendar",
 		startOfWeek, B_FOLLOW_ALL);
 	fCalendarView->SetInvocationMessage(new BMessage(kInvokationMessage));
-	fCalendarView->SetFontSize(10.0);
 
 	BGroupLayout* layout = new BGroupLayout(B_HORIZONTAL);
 	SetLayout(layout);
@@ -132,7 +128,7 @@ CalendarMenuWindow::CalendarMenuWindow(BPoint where)
 	AddChild(groupView);
 
 	MoveTo(where);
-	_UpdateUI(BDate::CurrentDate(B_LOCAL_TIME));
+	_UpdateDate(BDate::CurrentDate(B_LOCAL_TIME));
 }
 
 
@@ -204,7 +200,7 @@ CalendarMenuWindow::MessageReceived(BMessage* message)
 			message->FindInt32("month", &month);
 			message->FindInt32("year", &year);
 
-			_UpdateUI(BDate(year, month, day));
+			_UpdateDate(BDate(year, month, day));
 			break;
 		}
 
@@ -212,25 +208,8 @@ CalendarMenuWindow::MessageReceived(BMessage* message)
 		case kMonthUpMessage:
 		{
 			BDate date = fCalendarView->Date();
-
-			int32 day = date.Day();
-			int32 year = date.Year();
-			int32 month = date.Month();
-
-			month += (kMonthDownMessage == message->what) ? -1 : 1;
-			if (month < 1) {
-				year--;
-				month = 12;
-			} else if (month > 12) {
-				year++;
-				month = 1;
-			}
-			date.SetDate(year, month, day);
-
-			if (day > date.DaysInMonth())
-				day = date.DaysInMonth();
-
-			_UpdateUI(BDate(year, month, day));
+			date.AddMonths(kMonthDownMessage == message->what ? -1 : 1);
+			_UpdateDate(date);
 			break;
 		}
 
@@ -238,8 +217,8 @@ CalendarMenuWindow::MessageReceived(BMessage* message)
 		case kYearUpMessage:
 		{
 			BDate date = fCalendarView->Date();
-			int32 i = kYearDownMessage == message->what ? -1 : 1;
-			_UpdateUI(BDate(date.Year() + i, date.Month(), date.Day()));
+			date.AddYears(kYearDownMessage == message->what ? -1 : 1);
+			_UpdateDate(date);
 			break;
 		}
 
@@ -251,7 +230,7 @@ CalendarMenuWindow::MessageReceived(BMessage* message)
 
 
 void
-CalendarMenuWindow::_UpdateUI(const BDate& date)
+CalendarMenuWindow::_UpdateDate(const BDate& date)
 {
 	if (!date.IsValid())
 		return;
@@ -271,7 +250,6 @@ CalendarMenuWindow::_SetupButton(const char* label, uint32 what, float height)
 {
 	FlatButton* button = new FlatButton(label, what);
 	button->SetExplicitMinSize(BSize(height, height));
-	button->SetFontSize(be_plain_font->Size() * 0.8);
 
 	return button;
 }

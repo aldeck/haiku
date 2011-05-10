@@ -38,7 +38,7 @@ makeIndices()
 		B_MAIL_ATTR_CC, B_MAIL_ATTR_FROM, B_MAIL_ATTR_NAME,
 		B_MAIL_ATTR_PRIORITY, B_MAIL_ATTR_REPLY, B_MAIL_ATTR_STATUS,
 		B_MAIL_ATTR_SUBJECT, B_MAIL_ATTR_TO, B_MAIL_ATTR_THREAD,
-		NULL
+		B_MAIL_ATTR_ACCOUNT, NULL
 	};
 
 	// add mail indices for all devices capable of querying
@@ -57,7 +57,7 @@ makeIndices()
 		fs_create_index(device, "MAIL:draft", B_INT32_TYPE, 0);
 		fs_create_index(device, B_MAIL_ATTR_WHEN, B_INT32_TYPE, 0);
 		fs_create_index(device, B_MAIL_ATTR_FLAGS, B_INT32_TYPE, 0);
-		fs_create_index(device, B_MAIL_ATTR_ACCOUNT, B_INT32_TYPE, 0);
+		fs_create_index(device, B_MAIL_ATTR_ACCOUNT_ID, B_INT32_TYPE, 0);
 		fs_create_index(device, B_MAIL_ATTR_READ, B_INT32_TYPE, 0);
 	}
 }
@@ -193,19 +193,19 @@ MailDaemonApp::RefsReceived(BMessage* message)
 			continue;
 
 		int32 account;
-		if (node.ReadAttr("MAIL:account", B_INT32_TYPE, 0, &account,
+		if (node.ReadAttr(B_MAIL_ATTR_ACCOUNT_ID, B_INT32_TYPE, 0, &account,
 			sizeof(account)) < 0)
 			continue;
 
-		InboundProtocolThread* protocol = _FindInboundProtocol(account);
-		if (!protocol)
+		InboundProtocolThread* protocolThread = _FindInboundProtocol(account);
+		if (!protocolThread)
 			continue;
 
-		BMessage* launchMessage = message;
-		BMessage temp;
-		if (message->FindMessage("launch", &temp) == B_OK)
-			launchMessage = &temp;
-		protocol->FetchBody(ref, launchMessage);
+		BMessenger target;
+		BMessenger* messenger = &target;
+		if (message->FindMessenger("target", &target) != B_OK)
+			messenger = NULL;
+		protocolThread->FetchBody(ref, messenger);
 	}
 }
 
@@ -223,8 +223,13 @@ void
 MailDaemonApp::_InitAccount(BMailAccountSettings& settings)
 {
 	account_protocols account;
-	account.inboundProtocol = _CreateInboundProtocol(settings,
-		account.inboundImage);
+	// inbound
+	if (settings.IsInboundEnabled()) {
+		account.inboundProtocol = _CreateInboundProtocol(settings,
+			account.inboundImage);
+	} else {
+		account.inboundProtocol = NULL;
+	}
 	if (account.inboundProtocol) {
 		DefaultNotifier* notifier = new DefaultNotifier(settings.Name(), true,
 			fErrorLogWindow, fMailStatusWindow);
@@ -235,8 +240,13 @@ MailDaemonApp::_InitAccount(BMailAccountSettings& settings)
 		account.inboundThread->Run();
 	}
 
-	account.outboundProtocol = _CreateOutboundProtocol(settings,
-		account.outboundImage);
+	// outbound
+	if (settings.IsOutboundEnabled()) {
+		account.outboundProtocol = _CreateOutboundProtocol(settings,
+			account.outboundImage);
+	} else {
+		account.outboundProtocol = NULL;
+	}
 	if (account.outboundProtocol) {
 		DefaultNotifier* notifier = new DefaultNotifier(settings.Name(), false,
 			fErrorLogWindow, fMailStatusWindow);
@@ -638,13 +648,12 @@ MailDaemonApp::MakeMimeTypes(bool remakeMIMETypes)
 	// do a full rebuild from nothing, or just add on the new attributes that
 	// we support which the regular BeOS mail daemon didn't have.
 
-	const char* types[2] = {"text/x-email", "text/x-partial-email"};
-	BMimeType mime;
-	BMessage info;
+	const uint8 kNTypes = 2;
+	const char* types[kNTypes] = {"text/x-email", "text/x-partial-email"};
 
-	for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
-		info.MakeEmpty();
-		mime.SetTo(types[i]);
+	for (size_t i = 0; i < kNTypes; i++) {
+		BMessage info;
+		BMimeType mime(types[i]);
 		if (mime.InitCheck() != B_OK) {
 			fputs("could not init mime type.\n", stderr);
 			return;
@@ -652,7 +661,7 @@ MailDaemonApp::MakeMimeTypes(bool remakeMIMETypes)
 
 		if (!mime.IsInstalled() || remakeMIMETypes) {
 			// install the full mime type
-			mime.Delete ();
+			mime.Delete();
 			mime.Install();
 
 			// Set up the list of e-mail related attributes that Tracker will
@@ -682,39 +691,9 @@ MailDaemonApp::MakeMimeTypes(bool remakeMIMETypes)
 			} else {
 				mime.SetShortDescription("Partial E-mail");
 				mime.SetLongDescription("A Partially Downloaded E-mail");
-				mime.SetPreferredApp("application/x-vnd.Be-POST");
+				mime.SetPreferredApp("application/x-vnd.Be-MAIL");
 			}
-		} else {
-			// Just add the e-mail related attribute types we use to the MIME
-			// system.
-			mime.GetAttrInfo(&info);
-			bool hasAccount = false;
-			bool hasThread = false;
-			bool hasSize = false;
-			const char* result;
-			for (int32 index = 0; info.FindString("attr:name", index, &result)
-					== B_OK; index++) {
-				if (!strcmp(result, B_MAIL_ATTR_ACCOUNT))
-					hasAccount = true;
-				if (!strcmp(result, B_MAIL_ATTR_THREAD))
-					hasThread = true;
-				if (!strcmp(result, "MAIL:fullsize"))
-					hasSize = true;
-			}
-
-			if (!hasAccount) {
-				addAttribute(info, B_MAIL_ATTR_ACCOUNT, "Account",
-					B_STRING_TYPE, true, false, 100);
-			}
-			if (!hasThread)
-				addAttribute(info, B_MAIL_ATTR_THREAD, "Thread");
-			/*if (!hasSize)
-				addAttribute(info,"MAIL:fullsize","Message Size",B_SIZE_T_TYPE,true,false,100);*/
-			// TODO: Tracker can't display SIZT attributes. What a pain.
-			if (!hasAccount || !hasThread/* || !hasSize*/)
-				mime.SetAttrInfo(&info);
 		}
-		mime.Unset();
 	}
 }
 
@@ -755,7 +734,7 @@ MailDaemonApp::SendPendingMessages(BMessage* msg)
 			query.PushOp(B_EQ);
 
 			if (account >= 0) {
-				query.PushAttr("MAIL:account");
+				query.PushAttr(B_MAIL_ATTR_ACCOUNT_ID);
 				query.PushInt32(account);
 				query.PushOp(B_EQ);
 				query.PushOp(B_AND);
@@ -775,7 +754,7 @@ MailDaemonApp::SendPendingMessages(BMessage* msg)
 					continue;
 
 				int32 messageAccount;
-				if (node.ReadAttr("MAIL:account", B_INT32_TYPE, 0,
+				if (node.ReadAttr(B_MAIL_ATTR_ACCOUNT_ID, B_INT32_TYPE, 0,
 					&messageAccount, sizeof(int32)) < 0)
 					messageAccount = -1;
 

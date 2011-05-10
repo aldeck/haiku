@@ -27,10 +27,12 @@ public:
 			bool				Lock();
 			void				Unlock();
 
-			void				HeaderFetched(int32 uid, BPositionIO* data);
+			void				HeaderFetched(int32 uid, BPositionIO* data,
+									bool bodyIsComming);
 			void				BodyFetched(int32 uid, BPositionIO* data);
 
 			void				NewMessagesToFetch(int32 nMessages);
+			void				FetchEnd();
 private:
 			MailProtocol&		fProtocol;
 			IMAPStorage&		fStorage;
@@ -39,24 +41,34 @@ private:
 
 class IMAPInboundProtocol;
 
+
+int32 watch_mailbox(void* data);
+
+
 /*! Just wait for a IDLE (watching) IMAP response in this thread. */
-class IMAPMailboxThread : public BLooper {
+class IMAPMailboxThread {
 public:
 								IMAPMailboxThread(IMAPInboundProtocol& protocol,
 									IMAPMailbox& mailbox);
-
-			void				MessageReceived(BMessage* message);
+								~IMAPMailboxThread();
 
 			bool				IsWatching();
 			status_t			SyncAndStartWatchingMailbox();
 			status_t			StopWatchingMailbox();
 
 private:
+			void				_Watch();
+
+	friend	int32 watch_mailbox(void* data);
+
 			IMAPInboundProtocol&	fProtocol;
 			IMAPMailbox&		fIMAPMailbox;
 
 			BLocker				fLock;
 			bool				fIsWatching;
+
+			thread_id			fThread;
+			sem_id				fWatchSyncSem;
 };
 
 

@@ -1,4 +1,4 @@
-1	swedish	x-vnd.Haiku-DriveSetup	2723551013
+1	swedish	x-vnd.Haiku-DriveSetup	1209826930
 %ld MiB	Support		%ld MiB
 <empty>	DiskView		<tom>
 <empty>	PartitionList		<tom>
@@ -29,7 +29,7 @@ Device	DiskView		Enhet
 Device	PartitionList		Enhet
 Disk	MainWindow		Disk
 Disk system \"%s\"\" not found!	MainWindow		Disksystemet \"%s\" hittades ej!
-DriveSetup	MainWindow		DiskHantering
+DriveSetup	System name		DiskHanterare
 Eject	MainWindow		Mata ut
 End: %ld MB	Support		Slut: %ld MB
 Error: 	MainWindow	in any error alert	Fel: 
@@ -45,7 +45,7 @@ Mount	MainWindow		Montera
 Mount all	MainWindow		Montera alla
 Mounted at	PartitionList		Monterad vid
 No disk devices have been recognized.	DiskView		Inga diskenheter har identifierats.
-OK	MainWindow		Okej
+OK	MainWindow		OK
 Offset: %ld MB	Support		Offset: %ld MB
 Parameters	PartitionList		Parametrar
 Partition	MainWindow		Partition

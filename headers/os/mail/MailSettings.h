@@ -164,6 +164,11 @@ class BMailAccountSettings
 			bool				HasInbound();
 			bool				HasOutbound();
 
+			void				SetInboundEnabled(bool enabled = true);
+			bool				IsInboundEnabled() const;
+			void				SetOutboundEnabled(bool enabled = true);
+			bool				IsOutboundEnabled() const;
+
 			status_t			Reload();
 			status_t			Save();
 			status_t			Delete();
@@ -172,7 +177,7 @@ class BMailAccountSettings
 
 	const	BEntry&				AccountFile();
 private:
-			status_t			_CreateAccountFile();
+			status_t			_CreateAccountFilePath();
 
 			status_t			fStatus;
 			BEntry				fAccountFile;
@@ -185,6 +190,9 @@ private:
 
 			MailAddonSettings	fInboundSettings;
 			MailAddonSettings	fOutboundSettings;
+
+			bool				fInboundEnabled;
+			bool				fOutboundEnabled;
 
 			bool				fModified;
 };

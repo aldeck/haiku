@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include <FindDirectory.h>
+#include <LocaleRoster.h>
 #include <NodeInfo.h>
 #include <Path.h>
 #include <View.h>
@@ -19,21 +20,32 @@
 static const int32 kItemMargin = 2;
 
 
-TeamListItem::TeamListItem(team_info &tinfo)
+bool gLocalizedNamePreferred;
+
+
+TeamListItem::TeamListItem(team_info &teamInfo)
 	:
-	fInfo(tinfo),
-	fIcon(BRect(0, 0, 15, 15), B_RGBA32),
-	fLargeIcon(BRect(0, 0, 31, 31), B_RGBA32)
+	fTeamInfo(teamInfo),
+	fAppInfo(),
+	fMiniIcon(BRect(0, 0, 15, 15), B_RGBA32),
+	fLargeIcon(BRect(0, 0, 31, 31), B_RGBA32),
+	fFound(false),
+	fRefusingToQuit(false)
 {
 	int32 cookie = 0;
 	image_info info;
-	if (get_next_image_info(tinfo.team, &cookie, &info) == B_OK) {
+	if (get_next_image_info(teamInfo.team, &cookie, &info) == B_OK) {
 		fPath = BPath(info.name);
 		BNode node(info.name);
 		BNodeInfo nodeInfo(&node);
-		nodeInfo.GetTrackerIcon(&fIcon, B_MINI_ICON);
+		nodeInfo.GetTrackerIcon(&fMiniIcon, B_MINI_ICON);
 		nodeInfo.GetTrackerIcon(&fLargeIcon, B_LARGE_ICON);
 	}
+
+	if (be_roster->GetRunningAppInfo(fTeamInfo.team, &fAppInfo) != B_OK)
+		fAppInfo.signature[0] = '\0';
+
+	CacheLocalizedName();
 }
 
 
@@ -43,11 +55,21 @@ TeamListItem::~TeamListItem()
 
 
 void
-TeamListItem::DrawItem(BView *owner, BRect frame, bool complete)
+TeamListItem::CacheLocalizedName()
 {
-	rgb_color kHighlight = { 140,140,140,0 };
-	rgb_color kBlack = { 0,0,0,0 };
-	rgb_color kBlue = { 0,0,255,0 };
+	if (BLocaleRoster::Default()->GetLocalizedFileName(fLocalizedName,
+			fAppInfo.ref, true) != B_OK)
+		fLocalizedName = fPath.Leaf();
+}
+
+
+void
+TeamListItem::DrawItem(BView* owner, BRect frame, bool complete)
+{
+	rgb_color kHighlight = { 140, 140, 140, 0 };
+	rgb_color kBlack = { 0, 0, 0, 0 };
+	rgb_color kBlue = { 0, 0, 255, 0 };
+	rgb_color kRed = { 255, 0, 0, 0 };
 
 	BRect r(frame);
 
@@ -72,11 +94,14 @@ TeamListItem::DrawItem(BView *owner, BRect frame, bool complete)
 		iconFrame.top + 16);
 	owner->SetDrawingMode(B_OP_ALPHA);
 	owner->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
-	owner->DrawBitmap(&fIcon, iconFrame);
+	owner->DrawBitmap(&fMiniIcon, iconFrame);
 	owner->SetDrawingMode(B_OP_COPY);
 
 	frame.left += 16;
-	owner->SetHighColor(IsSystemServer() ? kBlue : kBlack);
+	if (fRefusingToQuit)
+		owner->SetHighColor(kRed);
+	else
+		owner->SetHighColor(IsSystemServer() ? kBlue : kBlack);
 
 	BFont font = be_plain_font;
 	font_height	finfo;
@@ -85,7 +110,11 @@ TeamListItem::DrawItem(BView *owner, BRect frame, bool complete)
 	owner->MovePenTo(frame.left + 8, frame.top + ((frame.Height()
 			- (finfo.ascent + finfo.descent + finfo.leading)) / 2)
 		+ finfo.ascent);
-	owner->DrawString(fPath.Leaf());
+
+	if (gLocalizedNamePreferred)
+		owner->DrawString(fLocalizedName.String());
+	else
+		owner->DrawString(fPath.Leaf());
 }
 
 
@@ -110,7 +139,7 @@ TeamListItem::Update(BView* owner, const BFont* font)
 const team_info*
 TeamListItem::GetInfo()
 {
-	return &fInfo;
+	return &fTeamInfo;
 }
 
 
@@ -134,14 +163,38 @@ TeamListItem::IsSystemServer()
 		firstCall = false;
 	}
 	
-	if (strncmp(systemServersPath.Path(), fInfo.args, strlen(systemServersPath.Path())) == 0)
+	if (strncmp(systemServersPath.Path(), fTeamInfo.args,
+			strlen(systemServersPath.Path())) == 0)
 		return true;
 
-	if (strncmp(trackerPath.Path(), fInfo.args, strlen(trackerPath.Path())) == 0)
+	if (strncmp(trackerPath.Path(), fTeamInfo.args,
+			strlen(trackerPath.Path())) == 0)
 		return true;
 
-	if (strncmp(deskbarPath.Path(), fInfo.args, strlen(deskbarPath.Path())) == 0)
+	if (strncmp(deskbarPath.Path(), fTeamInfo.args,
+			strlen(deskbarPath.Path())) == 0)
 		return true;
 	
 	return false;		
+}
+
+
+bool
+TeamListItem::IsApplication() const
+{
+	return fAppInfo.signature[0] != '\0';
+}
+
+
+void
+TeamListItem::SetRefusingToQuit(bool refusing)
+{
+	fRefusingToQuit = refusing;
+}
+
+
+bool
+TeamListItem::IsRefusingToQuit()
+{
+	return fRefusingToQuit;
 }

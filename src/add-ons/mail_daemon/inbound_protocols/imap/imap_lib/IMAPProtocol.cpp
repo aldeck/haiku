@@ -101,7 +101,7 @@ ConnectionReader::_GetNextDataBunch(BString& line, bigtime_t timeout,
 	}
 
 	int nReaded = fServerConnection->Read(buffer, maxNewLength);
-	if (nReaded < 0)
+	if (nReaded <= 0)
 		return B_ERROR;
 
 	fStringBuffer.SetTo(buffer, nReaded);
@@ -135,7 +135,8 @@ IMAPProtocol::IMAPProtocol()
 	fServerConnection(&fOwnServerConnection),
 	fConnectionReader(fServerConnection),
 	fCommandId(0),
-	fStopNow(0)
+	fStopNow(0),
+	fIsConnected(false)
 {
 
 }
@@ -146,7 +147,8 @@ IMAPProtocol::IMAPProtocol(IMAPProtocol& connection)
 	fServerConnection(connection.fServerConnection),
 	fConnectionReader(fServerConnection),
 	fCommandId(0),
-	fStopNow(0)
+	fStopNow(0),
+	fIsConnected(false)
 {
 
 }
@@ -196,12 +198,16 @@ IMAPProtocol::Connect(const char* server, const char* username,
 
 	TRACE("Login\n");
 
+	fIsConnected = true;
+
 	BString command = "LOGIN ";
 	command << "\"" << username << "\" ";
 	command << "\"" << password << "\"";
 	status = ProcessCommand(command);
-	if (status != B_OK)
+	if (status != B_OK) {
+		_Disconnect();
 		return status;
+	}
 
 	return B_OK;
 }
@@ -211,7 +217,14 @@ status_t
 IMAPProtocol::Disconnect()
 {
 	ProcessCommand("LOGOUT");
-	return fOwnServerConnection.Disconnect();
+	return _Disconnect();
+}
+
+
+bool
+IMAPProtocol::IsConnected()
+{
+	return fIsConnected;
 }
 
 
@@ -281,8 +294,11 @@ IMAPProtocol::SendCommand(const char* command, int32 commandId)
 
 	TRACE("_SendCommand: %s\n", cmd);
 	int commandLength = strlen(cmd);
-	if (fServerConnection->Write(cmd, commandLength) != commandLength)
+	if (fServerConnection->Write(cmd, commandLength) != commandLength) {
+		// we might lost the connection, clear the connection state
+		_Disconnect();
 		return B_ERROR;
+	}
 
 	fOngoingCommands.push_back(commandId);
 	return B_OK;
@@ -290,7 +306,7 @@ IMAPProtocol::SendCommand(const char* command, int32 commandId)
 
 
 status_t
-IMAPProtocol::HandleResponse(int32 commandId, bigtime_t timeout)
+IMAPProtocol::HandleResponse(int32 commandId, bigtime_t timeout, bool disconnectOnTimeout)
 {
 	status_t commandStatus = B_ERROR;
 
@@ -299,9 +315,14 @@ IMAPProtocol::HandleResponse(int32 commandId, bigtime_t timeout)
 		BString line;
 		status_t status = fConnectionReader.GetNextLine(line, timeout);
 		if (status != B_OK) {
-			if (status != B_TIMED_OUT)
+			// we might lost the connection, clear the connection state
+			if (status != B_TIMED_OUT) {
 				TRACE("S:read error %s", line.String());
-			break;
+				_Disconnect();
+			} else if (disconnectOnTimeout) {
+				_Disconnect();				
+			}
+			return status;
 		}
 		//TRACE("S: %s", line.String());
 
@@ -392,4 +413,13 @@ IMAPProtocol::_ProcessCommandWithoutAfterQuake(const char* command,
 		return status;
 
 	return HandleResponse(commandId, timeout);
+}
+
+
+status_t
+IMAPProtocol::_Disconnect()
+{
+	fOngoingCommands.clear();
+	fIsConnected = false;
+	return fOwnServerConnection.Disconnect();
 }

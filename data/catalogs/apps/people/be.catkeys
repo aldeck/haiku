@@ -1,5 +1,5 @@
-1	belarusian	x-vnd.Be-PEPL	3209429794
-About	People		Пра праграму
+1	belarusian	x-vnd.Be-PEPL	382829331
+%name% picture	People		Выява %name%
 Address	People		Адрас
 Cancel	People		Адмена
 City	People		Горад
@@ -12,6 +12,7 @@ Copy	People		Капіяваць
 Could not create %s.	People		Не ўдалося стварыць %s.
 Country	People		Краіна
 Cut	People		Выразаць
+Drop an image here,\nor use the contextual menu.	People		Перацягніце выяву сюды,\nці выкарыстайце кантэкстнае меню.
 E-mail	People		Эл. пошта
 Edit	People		Правіць
 Error	People		Памылка
@@ -20,6 +21,7 @@ File	People		Файл
 Group	People		Група
 Home phone	People		Хатні тэлефон
 Launching the FileTypes preflet to configure Person attributes has failed.\n\nError: 	People		Не ўдалося запусціць наладкі FileTypes каб сканфігураваць атрыбуты файла Асобы.\n\nПамылка:
+Load image…	People		Загрузіць выяву…
 Name	People		Імя
 New person	People		Новая персона
 New person…	People		Новая персона
@@ -29,6 +31,7 @@ Paste	People		Уставіць
 Person	Short mimetype description		Персона
 Quit	People		Выйсці
 Redo	People		Перарабіць
+Remove image	People		Выдаліць выяву
 Revert	People		Вярнуць
 Save	People		Захаваць
 Save as…	People		Захаваць як...
@@ -36,8 +39,10 @@ Save changes before quitting?	People		Захаваць змены перад в�
 Select all	People		Выбраць усё
 Sorry	People		Sorry
 State	People		Вобласць
+The file '%name%' could not be written.	People		Немагчыма запісаць файл '%name%'.
 URL	People		URL
 Undo	People		Адмяніць
+Unnamed person	People		Неназваная асоба
 Work phone	People		Рабочы тэлефон
 Zip	People		Zip-код
 none	Groups list		няма

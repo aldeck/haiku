@@ -1,8 +1,7 @@
-1	finnish	x-vnd.Haiku-Terminal	3567257702
--h,     --help               print this help\n  -t,     --title              set window title\n  -f,     --fullscreen         start fullscreen\n	Terminal TermApp		-h, --help tulosta tämä opaste\n -t, --title aseta ikkunan otsikko\n -f, --fullscreen aloita kokoruutitilassa\n  	
-
+1	finnish	x-vnd.Haiku-Terminal	2225488941
+%app% settings	Terminal PrefWindow	window title	%app%-asetukset
+-h,     --help               print this help\n  -t,     --title              set window title\n  -f,     --fullscreen         start fullscreen\n	Terminal TermApp		-h, --help tulosta tämä opaste\n -t, --title aseta ikkunan otsikko\n -f, --fullscreen aloita kokoruututilassa\n
 Abort	Terminal Shell		Keskeytä
-About Terminal…	Terminal TermWindow		Ohjelmasta Pääteikkuna...
 Appearance	Terminal PrefWindow		Ulkoasu
 Background	Terminal AppearancePrefView		Tausta
 Black on White	Terminal colors schema		Musta valkoisella
@@ -26,12 +25,10 @@ Copy here	Terminal TermView		Kopioi tänne
 Create link here	Terminal TermView		Luo linkki tänne
 Custom	Terminal colors schema		Räätälöity
 Decrease	Terminal TermWindow		Vähennä
-Didn't find any available pseudo ttys.	Terminal Shell		Ei löytynyt yhtään käytettävissä olevaa vale-etäpäätettä.
 Don't save	Terminal PrefWindow		Älä tallenna
 Edit	Terminal TermWindow		Muokkaa
 Edit tab title…	Terminal TermWindow		Muokkaa välilehtiotsikkoa...
 Error!	Terminal getString		Virhe!
-Failed to init pseudo tty.	Terminal Shell		Vale-etäpäätteen alustaminen epäonnistui.
 Find	Terminal FindWindow		Etsi
 Find failed	Terminal TermWindow		Etsintä epäonnistui
 Find next	Terminal TermWindow		Löydä seuraava
@@ -53,11 +50,9 @@ Nothing is selected.	Terminal TermWindow		Mitään ei ole valittu.
 OK	Terminal PrefWindow		Valmis
 OK	Terminal SetTitleWindow		Valmis
 OK	Terminal TermApp		Valmis
-OK	Terminal TermView		Valmis
 OK	Terminal TermWindow		Valmis
 Page setup…	Terminal TermWindow		Sivuasetus...
 Paste	Terminal TermWindow		Liitä
-PrefHandler::getRGB(%s) - key not found\n	Terminal getRGB		PrefHandler::getRGB(%s) - avainta ei löytynyt\n
 Print	Terminal TermWindow		Tulosta
 Print cancelled.	Terminal TermWindow		Tulostus peruttu.
 Quit	Terminal TermWindow		Poistu
@@ -67,7 +62,6 @@ Save as default	Terminal TermWindow		Tallenna oletuksena
 Save changes to this settings panel?	Terminal PrefWindow		Tallennetaan muutokset tähän asetuspaneeliin?
 Save to file…	Terminal PrefWindow		Tallenna tiedostoon…
 Search forward	Terminal FindWindow		Etsintä eteenpäin
-Secondary mouse button drop menu	Terminal TermView		Hiiren kakkospainikkeen pudotusvalikko
 Select all	Terminal TermWindow		Valitse kaikki
 Selected background	Terminal AppearancePrefView		Valitse tausta
 Selected text	Terminal AppearancePrefView		Valittu teksti
@@ -80,10 +74,8 @@ Size:	Terminal AppearancePrefView		Koko:
 Switch Terminals	Terminal TermWindow		Vaihda pääteikkunoita
 Tab title:	Terminal AppearancePrefView		Välilehtiotsikko:
 Tab title:	Terminal TermWindow		Välilehtiotsikko:
-Terminal	Terminal TermWindow		Pääteikkuna
-Terminal couldn't start the shell. Sorry.	Terminal TermApp		Pääteikkuna ei voinut valitettavasti käynnistää komentotulkkia.
-Terminal settings	Terminal PrefWindow		Pääteikkunan asetukset
-Terminal\n\nwritten by Kazuho Okui and Takashi Murai\nupdated by Kian Duffy and others\n\nCopyright ©2003-2009, Haiku.\n	Terminal TermView		Pääteikkuna\n\ntekijät: Kazuho Okui ja Takashi Murai\npäivittänyt: Kian Duffy ja muut\n\nCopyright ©2003-2009, Haiku.\n
+Terminal	System name		Pääteikkuna
+Terminal couldn't start the shell. Sorry.	Terminal TermApp		Pääteikkuna ei voinut käynnistää komentotulkkia.
 Text	Terminal AppearancePrefView		Teksti
 Text encoding	Terminal TermWindow		Tekstikoodaus
 Text not found.	Terminal TermWindow		Tekstiä ei löydy.
@@ -107,9 +99,4 @@ Window title:	Terminal TermWindow		Ikkunaotsikko:
 Window title…	Terminal TermWindow		Ikkunaotsikko...
 \t%d\t-\tThe current working directory of the active process in the\n\t\t\tcurrent tab. Optionally the maximum number of path components\n\t\t\tcan be specified. E.g. '%2d' for at most two components.\n\t%i\t-\tThe index of the window.\n\t%p\t-\tThe name of the active process in the current tab.\n\t%t\t-\tThe title of the current tab.\n\t%%\t-\tThe character '%'.	Terminal ToolTips		\t%d\t-\tKäynnissä olevan prosessin nykyinen työhakemisto\n\t\t\tnykyisessä välilehdessä. Valinnaisesti määriteltävien polkukomponenttien\n\t\t\tenimmäismäärä. Esim.: ’%2d’ kahdelle yleisimmälle komponentille.\n\t%i\t-\tIkkunan indeksi.\n\t%p\t-\tKäynnissä olevan prosessin nimi nykyisessä välilehdessä.\n\t%t\t-\tNykyisen välilehden otsikko.\n\t%%\t-\tMerkki ’%’.
 \t%d\t-\tThe current working directory of the active process.\n\t\t\tOptionally the maximum number of path components can be\n\t\t\tspecified. E.g. '%2d' for at most two components.\n\t%i\t-\tThe index of the tab.\n\t%p\t-\tThe name of the active process.\n\t%%\t-\tThe character '%'.	Terminal ToolTips		\t%d\t-\tKäynnissä olevan prosessin nykyinen työhakemisto.\n\t\t\tValinnaisesti määriteltävien polkukomponenttien\n\t\t\tenimmäismäärä. Esim.: ’%2d’ kahdelle yleisimmälle komponentille.\n\t%i\t-\tVälilehden indeksi.\n\t%p\t-\tKäytössä olevan prosessin nimi.\n\t%%\t-\tMerkki ’%’.
-can't open tty (%s).	Terminal Shell		ei voida avata päätettä (%s)
-could not set session leader.	Terminal Shell		ei voitu asettaa istuntojohtajaa.
-failed set terminal interface (TERMIOS).	Terminal Shell		pääteikkunan rajapinnan (TERMIOS) asettaminen epäonnistui.
-mismatch handshake.	Terminal Shell		täsmäämätön kättely.
-sigaction() failed: %s\n	Terminal TermApp		sigaction() epäonnistui: %s\n
 size	Terminal TermView		koko

@@ -1,4 +1,4 @@
-1	czech	x-vnd.Haiku-Network	2440177840
+1	czech	x-vnd.Haiku-Network	3810742593
 <no wireless networks found>	EthernetSettingsView		<nebyly nalezeny žádné bezdrátové sítě>
 Adapter:	EthernetSettingsView		Adaptér:
 Apply	EthernetSettingsView		Použít
@@ -13,7 +13,6 @@ Gateway:	EthernetSettingsView		Brána:
 IP address:	EthernetSettingsView		IP adresa:
 Mode:	EthernetSettingsView		Mód
 Netmask:	EthernetSettingsView		Maska sítě:
-Network	NetworkWindow		Síť
 Network:	EthernetSettingsView		Síť:
 OK	EthernetSettingsView		OK
 Revert	EthernetSettingsView		Vrátit

@@ -41,6 +41,9 @@ NetworkSettings::NetworkSettings(const char* name)
 	fName = name;
 	_DetectProtocols();
 
+	fNetworkDevice = new BNetworkDevice(fName);
+	fNetworkInterface = new BNetworkInterface(fName);
+
 	ReadConfiguration();
 }
 
@@ -56,6 +59,8 @@ NetworkSettings::~NetworkSettings()
 
 		close(socket_id);
 	}
+
+	delete fNetworkInterface;
 }
 
 
@@ -101,20 +106,24 @@ NetworkSettings::_DetectProtocols()
 // -- Interface address read code
 
 
+/*!	ReadConfiguration pulls the current interface settings
+	from the interfaces via BNetworkInterface and friends
+	and populates this classes private settings BAddresses
+	with them.
+*/
 void
 NetworkSettings::ReadConfiguration()
 {
-	BNetworkInterface fNetworkInterface(fName);
-	fDisabled = (fNetworkInterface.Flags() & IFF_UP) == 0;
+	fDisabled = (fNetworkInterface->Flags() & IFF_UP) == 0;
 
 	for (int index = 0; index < MAX_PROTOCOLS; index++) {
 		int inet_id = fProtocols[index].inet_id;
 
 		if (fProtocols[index].present) {
 			// --- Obtain IP Addresses
-			int32 zeroAddr = fNetworkInterface.FindFirstAddress(inet_id);
+			int32 zeroAddr = fNetworkInterface->FindFirstAddress(inet_id);
 			if (zeroAddr >= 0) {
-				fNetworkInterface.GetAddressAt(zeroAddr,
+				fNetworkInterface->GetAddressAt(zeroAddr,
 					fInterfaceAddressMap[inet_id]);
 				fAddress[inet_id].SetTo(
 					fInterfaceAddressMap[inet_id].Address());
@@ -200,7 +209,7 @@ NetworkSettings::ReadConfiguration()
 			//        AutoConfiguration on the IP level doesn't exist yet
 			//		  ( fInterfaceAddressMap[AF_INET].Flags() )
 			if (fProtocols[index].socket_id >= 0) {
-				fAutoConfigure[inet_id] = (fNetworkInterface.Flags()
+				fAutoConfigure[inet_id] = (fNetworkInterface->Flags()
 					& (IFF_AUTO_CONFIGURED | IFF_CONFIGURING)) != 0;
 			}
 		}
@@ -272,10 +281,75 @@ NetworkSettings::ReadConfiguration()
 }
 
 
+/*!	SetConfiguration sets this classes current BNetworkAddress settings
+	to the interface directly via BNetworkInterface and friends
+*/
+void
+NetworkSettings::SetConfiguration()
+{
+	printf("Setting %s\n", Name());
+	for (int index = 0; index < MAX_PROTOCOLS; index++) {
+		int inet_id = fProtocols[index].inet_id;
+		if (fProtocols[index].present) {
+			int32 zeroAddr = fNetworkInterface->FindFirstAddress(inet_id);
+			if (zeroAddr >= 0) {
+				BNetworkInterfaceAddress interfaceConfig;
+				fNetworkInterface->GetAddressAt(zeroAddr,
+					interfaceConfig);
+				interfaceConfig.SetAddress(fAddress[inet_id]);
+				interfaceConfig.SetMask(fNetmask[inet_id]);
+				fNetworkInterface->SetAddress(interfaceConfig);
+				fNetworkInterface->SetTo(zeroAddr);
+			} else {
+				// TODO : test this case (no address set for this protocol)
+				printf("no zeroAddr found for %s(%d), found %lu\n",
+					fProtocols[index].name, inet_id, zeroAddr);
+				BNetworkInterfaceAddress interfaceConfig;
+				interfaceConfig.SetAddress(fAddress[inet_id]);
+				interfaceConfig.SetMask(fNetmask[inet_id]);
+				fNetworkInterface->AddAddress(interfaceConfig);
+			}
+
+		}
+	}
+}
+
+
+/*!	LoadConfiguration reads the current interface configuration
+	file that NetServer looks for and populates this class with it
+*/
+void
+NetworkSettings::LoadConfiguration()
+{
+
+}
+
+
+/*!	WriteConfiguration reads this classes settings and write them to
+	the current interface configuration file that NetServer watches for.
+*/
 void
 NetworkSettings::WriteConfiguration()
 {
 
-
 }
 
+
+/*! RenegotiateAddresses performs a address renegotiation in an attempt to fix
+	connectivity problems
+*/
+status_t
+NetworkSettings::RenegotiateAddresses()
+{
+	for (int index = 0; index < MAX_PROTOCOLS; index++) {
+		int inet_id = fProtocols[index].inet_id;
+		if (fProtocols[index].present
+			&& AutoConfigure(inet_id)) {
+			// If protocol is active, and set to auto
+			fNetworkInterface->AutoConfigure(inet_id);
+				// Perform AutoConfiguration
+		}
+	}
+
+	return B_OK;
+}

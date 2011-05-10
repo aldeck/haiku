@@ -51,6 +51,7 @@ All rights reserved.
 #include "PoseViewController.h"
 #include "Tracker.h"
 #include "tracker_private.h"
+#include "Utilities.h"
 
 #include <Alert.h>
 #include <Application.h>
@@ -180,6 +181,9 @@ TFilePanel::TFilePanel(file_panel_mode mode, BMessenger *target,
 		fMessage = new BMessage(B_SAVE_REQUESTED);
 	else
 		fMessage = new BMessage(B_REFS_RECEIVED);
+
+	gLocalizedNamePreferred
+		= BLocaleRoster::Default()->IsFilesystemTranslationPreferred();
 
 	// check for legal starting directory
 	Model *model = new Model();
@@ -776,9 +780,13 @@ TFilePanel::Init(BRefFilter *filter, bool multipleSelection)
 
 	app_info info;
 	BString title;
-	if (be_app->GetAppInfo(&info) == B_OK)
-		title << info.ref.name << ": ";
-
+	if (be_app->GetAppInfo(&info) == B_OK) {
+		if (!gLocalizedNamePreferred
+			|| BLocaleRoster::Default()->GetLocalizedFileName(
+				title, info.ref, false) != B_OK)
+			title = info.ref.name;
+		title << ": ";
+	}
 	title << fButtonText;	// Open or Save
 
 	SetTitle(title.String());

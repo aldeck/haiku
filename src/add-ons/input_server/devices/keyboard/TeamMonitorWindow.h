@@ -13,6 +13,7 @@
 #include <Box.h>
 #include <Button.h>
 #include <ListView.h>
+#include <MessageFilter.h>
 #include <Window.h>
 
 #include "TeamListItem.h"
@@ -30,6 +31,10 @@ public:
 
 			void			Enable();
 			void			Disable();
+			void			DeselectAll();
+			void			LocaleChanged();
+			void			QuitTeam(TeamListItem* item);
+			void			MarkUnquittableTeam(BMessage* message);
 
 private:
 			void			UpdateList();
@@ -39,10 +44,14 @@ private:
 			BListView*		fListView;
 			BButton*		fCancelButton;
 			BButton*		fKillButton;
+			BButton*		fQuitButton;
 			BButton*		fRestartButton;
-			TeamDescriptionView*		fDescriptionView;
+			TeamDescriptionView*	fDescriptionView;
+			BList			fTeamQuitterList;
 };
 
 static const uint32 kMsgCtrlAltDelPressed = 'TMcp';
+static const uint32 kMsgDeselectAll = 'TMds';
+static const uint32 kMsgQuitFailed = 'TMqf';
 
 #endif	// TEAM_MONITOR_WINDOW_H

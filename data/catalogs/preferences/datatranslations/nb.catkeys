@@ -1,0 +1,16 @@
+1	norwegian_bokmål	x-vnd.Haiku-DataTranslations	764083640
+An item named '%name' already exists in the Translators folder! Shall the existing translator be overwritten?	DataTranslations		Et element kalt '%name' finnes allerede i oversettermappen! Skal den eksisterende oversetteren overskrives?
+Cancel	DataTranslations		Avbryt
+Could not install %s:\n%s	DataTranslations		Kunne ikke installere %s:\n%s
+DataTranslations	System name		Formatoversetter
+DataTranslations - Error	DataTranslations		Formatoverstter - Feil
+DataTranslations - Note	DataTranslations		Formatoversetter - Notiser
+Info	DataTranslations		informasjon
+Info:	DataTranslations		Informasjon:
+Name:	DataTranslations		Navn:
+OK	DataTranslations		OK
+Overwrite	DataTranslations		Overskriv
+Path:	DataTranslations		Sti:
+The item '%name' does not appear to be a Translator and will not be installed.	DataTranslations		Elementet '%name' ser ikke ut til å være en oversetter og vil ikke bli installert.
+The new translator has been installed successfully.	DataTranslations		Installasjonen av den nye oversetteren var vellykket.
+Version:	DataTranslations		Versjon:

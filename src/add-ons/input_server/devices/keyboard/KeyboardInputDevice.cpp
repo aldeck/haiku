@@ -48,7 +48,7 @@ public:
 			fFunctionName.String());
 	}
 
-	 ~FunctionTracer()
+	~FunctionTracer()
 	{
 		debug_printf("%p -> %s}\n", fPointer, fPrepend.String());
 		sFunctionDepth--;
@@ -137,7 +137,7 @@ KeyboardDevice::KeyboardDevice(KeyboardInputDevice* owner, const char* path)
 {
 	KD_CALLED();
 
-	strcpy(fPath, path);
+	strlcpy(fPath, path, B_PATH_NAME_LENGTH);
 	fDeviceRef.name = get_short_name(path);
 	fDeviceRef.type = B_KEYBOARD_DEVICE;
 	fDeviceRef.cookie = this;
@@ -207,6 +207,7 @@ KeyboardDevice::Start()
 
 	return fFD >= 0 ? B_OK : B_ERROR;
 }
+
 
 void
 KeyboardDevice::Stop()

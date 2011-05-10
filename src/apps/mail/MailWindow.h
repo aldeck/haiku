@@ -96,10 +96,9 @@ class TMailWindow : public BWindow {
 				void			CopyMessage(entry_ref* ref, TMailWindow* src);
 				status_t		Send(bool);
 				status_t		SaveAsDraft();
-				status_t		OpenMessage(entry_ref* ref,
+				status_t		OpenMessage(const entry_ref* ref,
 									uint32 characterSetForDecoding
-										= B_MAIL_NULL_CONVERSION,
-										BMessage* trackerMsg = NULL);
+										= B_MAIL_NULL_CONVERSION);
 
 				status_t		GetMailNodeRef(node_ref &nodeRef) const;
 				BEmailMessage*	Mail() const { return fMail; }
@@ -109,7 +108,8 @@ class TMailWindow : public BWindow {
 				void			SaveTrackerPosition(entry_ref*);
 				void			SetOriginatingWindow(BWindow* window);
 
-				void			SetCurrentMessageRead(read_flags flag);
+				void			MarkMessageRead(entry_ref* message,
+									read_flags flag);
 				void			SetTrackerSelectionToCurrent();
 				TMailWindow*	FrontmostWindow();
 				void			UpdateViews();
@@ -130,7 +130,9 @@ class TMailWindow : public BWindow {
  
  				void			_AddReadButton();
 				void			_UpdateReadButton();
-				
+
+				void			_SetDownloading(bool downloading);
+
 				TMailApp*		fApp;
 
 				BEmailMessage*	fMail;
@@ -203,6 +205,10 @@ class TMailWindow : public BWindow {
 				bool			fAutoMarkRead : 1;
 				BmapButton*		fReadButton;
 				BmapButton*		fNextButton;
+
+				bool			fKeepStatusOnQuit;
+
+				bool			fDownloading;
 };
 
 #endif // _MAIL_WINDOW_H

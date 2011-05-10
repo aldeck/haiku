@@ -33,7 +33,6 @@ IMAPMailbox::IMAPMailbox(IMAPStorage& storage)
 	fStorage(storage),
 
 	fMailboxSelectHandler(*this),
-	fCapabilityHandler(*this),
 	fExistsHandler(*this),
 	fExpungeHandler(*this),
 	fFlagsHandler(*this),
@@ -122,21 +121,26 @@ IMAPMailbox::SupportWatching()
 
 
 status_t
-IMAPMailbox::StartWatchingMailbox()
+IMAPMailbox::StartWatchingMailbox(sem_id startedSem)
 {
-	//TODO set it when we actually watching
 	atomic_set(&fWatching, 1);
 
-	// refresh every 29 min TODO: check if it works this way
+	bool firstIDLE = true;
+	// refresh every 29 min
 	bigtime_t timeout = 1000 * 1000 * 60 * 29; // 29 min
 	status_t status;
 	while (true) {
 		int32 commandId = NextCommandId();
 		TRACE("IDLE ...\n");
 		status = SendCommand("IDLE", commandId);
+		if (firstIDLE) {
+			release_sem(startedSem);
+			firstIDLE = false;
+		}
 		if (status != B_OK)
 			break;
-		status = HandleResponse(commandId, timeout);
+
+		status = HandleResponse(commandId, timeout, false);
 		ProcessAfterQuacks(kIMAP4ClientTimeout);
 
 		if (atomic_get(&fWatching) == 0)
@@ -157,6 +161,7 @@ IMAPMailbox::StartWatchingMailbox()
 		if (status != B_OK)
 			break;
 	}
+
 	atomic_set(&fWatching, 0);
 	return status;
 }
@@ -289,14 +294,18 @@ IMAPMailbox::MessageNumberToUID(int32 messageNumber)
 
 
 status_t
-IMAPMailbox::DeleteMessage(int32 messageNumber)
+IMAPMailbox::DeleteMessage(int32 uid, bool permanently)
 {
-	int32 index = messageNumber - 1;
-	if (index < 0 || index >= (int32)fMessageList.size())
-		return B_BAD_VALUE;
-	status_t status = fStorage.DeleteMessage(MessageNumberToUID(messageNumber));
-	fMessageList.erase(fMessageList.begin() + index);
-	return status;
+	int32 flags = fStorage.GetFlags(uid);
+	flags |= kDeleted;
+	status_t status = SetFlags(UIDToMessageNumber(uid), flags);
+
+	if (!permanently || status != B_OK)
+		return status;
+
+	// delete permanently by invoking expunge
+	ExpungeCommmand expungeCommand(*this);
+	return ProcessCommand(&expungeCommand);
 }
 
 

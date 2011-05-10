@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <AboutWindow.h>
 #include <Alert.h>
 #include <Bitmap.h>
 #include <Catalog.h>
@@ -265,20 +266,21 @@ ProcessController::MessageReceived(BMessage *message)
 				info_pack infos;
 				if (get_team_info(team, &infos.team_info) == B_OK) {
 					get_team_name_and_icon(infos);
-					sprintf(question,
+					snprintf(question, sizeof(question),
 					B_TRANSLATE("Do you really want to kill the team \"%s\"?"),
 					infos.team_name);
-					alert = new BAlert("", question,
+					alert = new BAlert(B_TRANSLATE("Please confirm"), question,
 					B_TRANSLATE("Cancel"), B_TRANSLATE("Yes, kill this team!"),
 					NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT);
 					alert->SetShortcut(0, B_ESCAPE);
 					if (alert->Go())
 						kill_team(team);
 				} else {
-					alert = new BAlert("", B_TRANSLATE("This team is already "
-					"gone"B_UTF8_ELLIPSIS),
-					B_TRANSLATE("Ok!"), NULL, NULL, B_WIDTH_AS_USUAL,
+					alert = new BAlert(B_TRANSLATE("Info"),
+						B_TRANSLATE("This team is already gone"B_UTF8_ELLIPSIS),
+						B_TRANSLATE("Ok!"), NULL, NULL, B_WIDTH_AS_USUAL,
 						B_STOP_ALERT);
+					alert->SetShortcut(0, B_ESCAPE);
 					alert->Go();
 				}
 			}
@@ -289,19 +291,21 @@ ProcessController::MessageReceived(BMessage *message)
 				thread_info	thinfo;
 				if (get_thread_info(thread, &thinfo) == B_OK) {
 					#if DEBUG_THREADS
-					sprintf(question, B_TRANSLATE("What do you want to do "
-					"with the thread \"%s\"?"), thinfo.name);
-					alert = new BAlert("", question, B_TRANSLATE("Cancel"),
-					B_TRANSLATE("Debug this thread!"),
-					B_TRANSLATE("Kill this thread!"), B_WIDTH_AS_USUAL,
-					B_STOP_ALERT);
+					snprintf(question, sizeof(question),
+						B_TRANSLATE("What do you want to do "
+						"with the thread \"%s\"?"), thinfo.name);
+					alert = new BAlert(B_TRANSLATE("Please confirm"), question,
+						B_TRANSLATE("Cancel"), B_TRANSLATE("Debug this thread!"),
+						B_TRANSLATE("Kill this thread!"), B_WIDTH_AS_USUAL,
+						B_STOP_ALERT);
 					#define KILL 2
 					#else
-					sprintf(question, B_TRANSLATE("Are you sure you want "
-					"to kill the thread \"%s\"?"), thinfo.name);
-					alert = new BAlert("", question, B_TRANSLATE("Cancel"),
-					B_TRANSLATE("Kill this thread!"), NULL, B_WIDTH_AS_USUAL,
-					B_STOP_ALERT);
+					snprintf(question, sizeof(question),
+						B_TRANSLATE("Are you sure you want "
+						"to kill the thread \"%s\"?"), thinfo.name);
+					alert = new BAlert(B_TRANSLATE("Please confirm"), question,
+						B_TRANSLATE("Cancel"), B_TRANSLATE("Kill this thread!"),
+						NULL, B_WIDTH_AS_USUAL,	B_STOP_ALERT);
 					#define KILL 1
 					#endif
 					alert->SetShortcut(0, B_ESCAPE);
@@ -322,9 +326,11 @@ ProcessController::MessageReceived(BMessage *message)
 					}
 					#endif
 				} else {
-					alert = new BAlert("", B_TRANSLATE("This thread is "
-					"already gone"B_UTF8_ELLIPSIS), B_TRANSLATE("Ok!"),
-					NULL, NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT);
+					alert = new BAlert(B_TRANSLATE("Info"),
+						B_TRANSLATE("This thread is already gone"B_UTF8_ELLIPSIS),
+						B_TRANSLATE("Ok!"),	NULL, NULL,
+						B_WIDTH_AS_USUAL, B_STOP_ALERT);
+					alert->SetShortcut(0, B_ESCAPE);
 					alert->Go();
 				}
 			}
@@ -374,10 +380,12 @@ ProcessController::MessageReceived(BMessage *message)
 					}
 				}
 				if (last) {
-					alert = new BAlert("", B_TRANSLATE("This is the last "
-					"active processor...\nYou can't turn it off!"),
+					alert = new BAlert(B_TRANSLATE("Info"),
+						B_TRANSLATE("This is the last active processor...\n"
+						"You can't turn it off!"),
 						B_TRANSLATE("That's no Fun!"), NULL, NULL,
 						B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+					alert->SetShortcut(0, B_ESCAPE);
 					alert->Go();
 				} else
 					_kern_set_cpu_enabled(cpu, !_kern_cpu_enabled(cpu));
@@ -398,23 +406,15 @@ ProcessController::MessageReceived(BMessage *message)
 void
 ProcessController::AboutRequested()
 {
-	BAlert *alert = new BAlert(B_TRANSLATE("About"),
-		B_TRANSLATE("ProcessController\n\n"
-					"Copyright 1997-2001,\n"
-					"Georges-Edouard Berenger.\n\n"
-					"Copyright "B_UTF8_COPYRIGHT" 2007 Haiku, Inc.\n"),
-		B_TRANSLATE("OK"));
-	BTextView *view = alert->TextView();
-	BFont font;
+	const char* authors[] = {
+		"Georges-Edouard Berenger",
+		NULL
+	};
 
-	view->SetStylable(true);
-
-	view->GetFont(&font);
-	font.SetSize(font.Size() * 1.5);
-	font.SetFace(B_BOLD_FACE);
-	view->SetFontAndColor(0, strlen(B_TRANSLATE("ProcessController")), &font);
-
-	alert->Go();
+	BAboutWindow about(B_TRANSLATE_SYSTEM_NAME("ProcessController"), 2007, authors,
+		"Copyright 1997-2001\n"
+		"Georges-Edouard Berenger.");
+	about.Show();
 }
 
 
@@ -668,7 +668,7 @@ thread_popup(void *arg)
 		}
 	}
 
-	BPopUpMenu* popup = new BPopUpMenu(B_TRANSLATE("Global Popup"), false, false);
+	BPopUpMenu* popup = new BPopUpMenu("Global Popup", false, false);
 	popup->SetFont(be_plain_font);
 
 	// Quit section

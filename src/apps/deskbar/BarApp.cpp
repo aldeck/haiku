@@ -26,9 +26,10 @@ Except as contained in this notice, the name of Be Incorporated shall not be
 used in advertising or otherwise to promote the sale, use or other dealings in
 this Software without prior written authorization from Be Incorporated.
 
-Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
-of Be Incorporated in the United States and other countries. Other brand product
-names are registered trademarks or trademarks of their respective holders.
+Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered
+trademarks of Be Incorporated in the United States and other countries. Other
+brand product names are registered trademarks or trademarks of their respective
+holders.
 All rights reserved.
 */
 
@@ -60,8 +61,7 @@ All rights reserved.
 #include "PublicCommands.h"
 #include "ResourceSet.h"
 #include "Switcher.h"
-#include "TeamMenu.h"
-#include "WindowMenuItem.h"
+#include "Utilities.h"
 
 
 BLocker TBarApp::sSubscriberLock;
@@ -72,8 +72,8 @@ BList TBarApp::sSubscribers;
 const uint32 kShowBeMenu = 'BeMn';
 const uint32 kShowTeamMenu = 'TmMn';
 
-const BRect kIconSize(0.0f, 0.0f, 15.0f, 15.0f);
 
+const BRect kIconRect(0.0f, 0.0f, 15.0f, 15.0f);
 static const color_space kIconFormat = B_RGBA32;
 
 
@@ -96,6 +96,9 @@ TBarApp::TBarApp()
 	InitIconPreloader();
 
 	be_roster->StartWatching(this);
+
+	gLocalizedNamePreferred
+		= BLocaleRoster::Default()->IsFilesystemTranslationPreferred();
 
 	sBarTeamInfoList.MakeEmpty();
 
@@ -190,26 +193,19 @@ TBarApp::SaveSettings()
 		storedSettings.AddFloat("width", fSettings.width);
 		storedSettings.AddBool("showTime", fSettings.showTime);
 		storedSettings.AddPoint("switcherLoc", fSettings.switcherLoc);
-		storedSettings.AddInt32("recentAppsCount",
-			fSettings.recentAppsCount);
-		storedSettings.AddInt32("recentDocsCount",
-			fSettings.recentDocsCount);
-		storedSettings.AddBool("timeShowSeconds",
-			fSettings.timeShowSeconds);
+		storedSettings.AddInt32("recentAppsCount", fSettings.recentAppsCount);
+		storedSettings.AddInt32("recentDocsCount", fSettings.recentDocsCount);
+		storedSettings.AddBool("timeShowSeconds", fSettings.timeShowSeconds);
 		storedSettings.AddInt32("recentFoldersCount",
 			fSettings.recentFoldersCount);
 		storedSettings.AddBool("alwaysOnTop", fSettings.alwaysOnTop);
 		storedSettings.AddBool("timeFullDate", fSettings.timeFullDate);
 		storedSettings.AddBool("trackerAlwaysFirst",
 			fSettings.trackerAlwaysFirst);
-		storedSettings.AddBool("sortRunningApps",
-			fSettings.sortRunningApps);
-		storedSettings.AddBool("superExpando",
-			fSettings.superExpando);
-		storedSettings.AddBool("expandNewTeams",
-			fSettings.expandNewTeams);
-		storedSettings.AddBool("autoRaise",
-			fSettings.autoRaise);
+		storedSettings.AddBool("sortRunningApps", fSettings.sortRunningApps);
+		storedSettings.AddBool("superExpando", fSettings.superExpando);
+		storedSettings.AddBool("expandNewTeams", fSettings.expandNewTeams);
+		storedSettings.AddBool("autoRaise", fSettings.autoRaise);
 		storedSettings.AddBool("recentAppsEnabled",
 			fSettings.recentAppsEnabled);
 		storedSettings.AddBool("recentDocsEnabled",
@@ -291,12 +287,9 @@ TBarApp::InitSettings()
 				&settings.trackerAlwaysFirst);
 			storedSettings.FindBool("sortRunningApps",
 				&settings.sortRunningApps);
-			storedSettings.FindBool("superExpando",
-				&settings.superExpando);
-			storedSettings.FindBool("expandNewTeams",
-				&settings.expandNewTeams);
-			storedSettings.FindBool("autoRaise",
-				&settings.autoRaise);
+			storedSettings.FindBool("superExpando", &settings.superExpando);
+			storedSettings.FindBool("expandNewTeams", &settings.expandNewTeams);
+			storedSettings.FindBool("autoRaise", &settings.autoRaise);
 			storedSettings.FindBool("recentAppsEnabled",
 				&settings.recentAppsEnabled);
 			storedSettings.FindBool("recentDocsEnabled",
@@ -313,8 +306,6 @@ TBarApp::InitSettings()
 void
 TBarApp::MessageReceived(BMessage* message)
 {
-	int32 count;
-	bool enabled;
 	switch (message->what) {
 		case 'gloc':
 		case 'sloc':
@@ -353,6 +344,9 @@ TBarApp::MessageReceived(BMessage* message)
 			break;
 
 		case kUpdateRecentCounts:
+			int32 count;
+			bool enabled;
+
 			if (message->FindInt32("applications", &count) == B_OK)
 				fSettings.recentAppsCount = count;
 			if (message->FindBool("applicationsEnabled", &enabled) == B_OK)
@@ -413,44 +407,35 @@ TBarApp::MessageReceived(BMessage* message)
 			break;
 
 		case kAlwaysTop:
- 			fSettings.alwaysOnTop = !fSettings.alwaysOnTop;
+			fSettings.alwaysOnTop = !fSettings.alwaysOnTop;
 
- 			fBarWindow->SetFeel(fSettings.alwaysOnTop ?
- 				B_FLOATING_ALL_WINDOW_FEEL : B_NORMAL_WINDOW_FEEL);
- 			break;
+			fBarWindow->SetFeel(fSettings.alwaysOnTop ?
+				B_FLOATING_ALL_WINDOW_FEEL : B_NORMAL_WINDOW_FEEL);
+			break;
 
 		case kAutoRaise:
-		{
 			fSettings.autoRaise = !fSettings.autoRaise;
 
-			TBarView* barView = static_cast<TBarApp*>(be_app)->BarView();
 			fBarWindow->Lock();
-			barView->UpdateAutoRaise();
+			BarView()->UpdateAutoRaise();
 			fBarWindow->Unlock();
 			break;
-		}
 
 		case kTrackerFirst:
-		{
 			fSettings.trackerAlwaysFirst = !fSettings.trackerAlwaysFirst;
 
-			TBarView* barView = static_cast<TBarApp*>(be_app)->BarView();
 			fBarWindow->Lock();
-			barView->UpdatePlacement();
+			BarView()->UpdatePlacement();
 			fBarWindow->Unlock();
 			break;
-		}
 
 		case kSortRunningApps:
-		{
 			fSettings.sortRunningApps = !fSettings.sortRunningApps;
 
-			TBarView* barView = static_cast<TBarApp*>(be_app)->BarView();
 			fBarWindow->Lock();
-			barView->UpdatePlacement();
+			BarView()->UpdatePlacement();
 			fBarWindow->Unlock();
 			break;
-		}
 
 		case kUnsubscribe:
 		{
@@ -461,26 +446,20 @@ TBarApp::MessageReceived(BMessage* message)
 		}
 
 		case kSuperExpando:
-		{
 			fSettings.superExpando = !fSettings.superExpando;
 
-			TBarView* barView = static_cast<TBarApp*>(be_app)->BarView();
 			fBarWindow->Lock();
-			barView->UpdatePlacement();
+			BarView()->UpdatePlacement();
 			fBarWindow->Unlock();
 			break;
-		}
 
 		case kExpandNewTeams:
-		{
 			fSettings.expandNewTeams = !fSettings.expandNewTeams;
 
-			TBarView* barView = static_cast<TBarApp*>(be_app)->BarView();
 			fBarWindow->Lock();
-			barView->UpdatePlacement();
+			BarView()->UpdatePlacement();
 			fBarWindow->Unlock();
 			break;
-		}
 
 		case 'TASK':
 			fSwitcherMessenger.SendMessage(message);
@@ -520,6 +499,10 @@ TBarApp::MessageReceived(BMessage* message)
 		case B_LOCALE_CHANGED:
 		{
 			BLocaleRoster::Default()->Refresh();
+
+			bool localize;
+			if (message->FindBool("filesys", &localize) == B_OK)
+				gLocalizedNamePreferred = localize;
 
 			BMessenger(fBarWindow->FindView("_deskbar_tv_")).SendMessage(
 				message);
@@ -635,8 +618,13 @@ TBarApp::AddTeam(team_id team, uint32 flags, const char* sig, entry_ref* ref)
 	BFile file(ref, B_READ_ONLY);
 	BAppFileInfo appMime(&file);
 
+	BString name;
+	if (!gLocalizedNamePreferred
+		|| BLocaleRoster::Default()->GetLocalizedFileName(name, *ref) != B_OK)
+		name = ref->name;
+
 	BarTeamInfo* barInfo = new BarTeamInfo(new BList(), flags, strdup(sig),
-		new BBitmap(kIconSize, kIconFormat), strdup(ref->name));
+		new BBitmap(kIconRect, kIconFormat), strdup(name.String()));
 
 	barInfo->teams->AddItem((void*)team);
 	if (appMime.GetIcon(barInfo->icon, B_MINI_ICON) != B_OK)
@@ -682,7 +670,7 @@ TBarApp::RemoveTeam(team_id team)
 			int32 subsCount = sSubscribers.CountItems();
 			if (subsCount > 0) {
 				BMessage message((barInfo->teams->CountItems() == 1) ?
-					 B_SOME_APP_QUIT : kRemoveTeam);
+					B_SOME_APP_QUIT : kRemoveTeam);
 
 				message.AddInt32("team", team);
 				for (int32 i = 0; i < subsCount; i++) {
@@ -706,7 +694,7 @@ TBarApp::ShowPreferencesWindow()
 {
 	if (fPreferencesWindow)
 		fPreferencesWindow->Activate();
- 	else {
+	else {
 		fPreferencesWindow = new PreferencesWindow(BRect(0, 0, 320, 240));
 		fPreferencesWindow->Show();
 	}

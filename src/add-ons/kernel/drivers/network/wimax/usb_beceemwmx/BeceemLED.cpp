@@ -11,8 +11,10 @@
  *	driver what GPIO led register is used for what device state.
  */
 
+
 #include "Settings.h"
 #include "BeceemLED.h"
+
 
 BeceemLED::BeceemLED()
 {
@@ -270,7 +272,7 @@ BeceemLED::LEDOff(unsigned int index)
 status_t
 BeceemLED::LEDThread(void *cookie)
 {
-	bool LEDisON = false;
+	bool ledactive = false;
 	BeceemLED *led = (BeceemLED *)cookie;
 
 	// While the driver is active
@@ -325,15 +327,15 @@ BeceemLED::LEDThread(void *cookie)
 			uiLedIndex, led->pwmxdevice->driverState);
 
 		if (blink == true) {
-				led->LEDOff(uiLedIndex);
-				LEDisON = false;
-				snooze(500000);
-				led->LEDOn(uiLedIndex);
-				LEDisON = true;
+			led->LEDOff(uiLedIndex);
+			ledactive = false;
+			snooze(500000);
+			led->LEDOn(uiLedIndex);
+			ledactive = true;
 		} else {
 			// else we just flip on the color it needs to be.
 			led->LEDOn(uiLedIndex);
-			LEDisON = true;
+			ledactive = true;
 			snooze(500000);
 		}
 

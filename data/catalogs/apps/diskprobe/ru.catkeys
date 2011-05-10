@@ -1,11 +1,11 @@
-1	russian	x-vnd.Haiku-DiskProbe	1552395580
+1	russian	x-vnd.Haiku-DiskProbe	3441574721
 %ld (native)	ProbeView		%ld (родной)
-(native)	ProbeView		 (родной)
+(native)	ProbeView		 (нативный)
 15 bit	TypeEditors		15 бит
 16 bit	TypeEditors		16 бит
 16 bit signed value:	TypeEditors		16-ти битное знаковое значение:
 16 bit unsigned value:	TypeEditors		16-ти битное беззнаковое значение:
-32 bit	TypeEditors		32 бит
+32 bit	TypeEditors		32 бита
 32 bit signed value:	TypeEditors		32-х битное знаковое значение:
 32 bit size or status:	TypeEditors		32-х битный размер или статус:
 32 bit unsigned pointer:	TypeEditors		32-х битный беззнаковый указатель:
@@ -17,7 +17,6 @@
 8 bit palette	TypeEditors		8 битная палитра
 8 bit signed value:	TypeEditors		8-ми битное знаковое значение:
 8 bit unsigned value:	TypeEditors		8-ми битное беззнаковое значение:
-About DiskProbe…	FileWindow		О программе…
 Add	ProbeView		Добавить
 Attribute	AttributeWindow		Атрибут
 Attribute	ProbeView		Атрибут
@@ -53,11 +52,10 @@ Decimal	ProbeView	A menu item, as short as possible, noun is recommended if it i
 Device	ProbeView		Устройство
 Device offset: 	ProbeView		Смещение устройства: 
 Device: 	ProbeView		Устройство: 
-DiskProbe	OpenWindow		DiskProbe
+DiskProbe	System name		Редактор диска
 DiskProbe request	AttributeWindow		Запрос DiskProbe
 DiskProbe request	DiskProbe		Запрос DiskProbe
 DiskProbe request	ProbeView		Запрос DiskProbe
-DiskProbe\n\twritten by Axel Dörfler\n\tCopyright 2004-2007, Haiku.\n\nOriginal Be version by Robert Polic\n	DiskProbe		DiskProbe\n\tразработал Axel Dörfler\n\tCopyright 2004-2007, Haiku.\n\nОригинальную Be версию разработал Robert Polic\n
 Do you really want to remove the attribute \"%s\" from the file \"%s\"?\n\nYou cannot undo this action.	AttributeWindow		Вы действительно хотите удалить атрибут \"%s\" из файла \"%s\"?\n\nЭту операцию будет невозможно отменить.
 Don't save	ProbeView		Не сохранять
 Double precision floating-point value:	TypeEditors		Значение плавающей запятой двойной точности:
@@ -87,7 +85,7 @@ Message	TypeEditors	This is the type of view	Сообщение
 Message View	TypeEditors		Вид сообщения
 Mode:	FindWindow		Режим:
 Native: %Ld (0x%0*Lx)	ProbeView		Родной: %Ld (0x%0*Lx)
-Native: 0x%0*Lx	ProbeView		Родной: 0x%0*Lx
+Native: 0x%0*Lx	ProbeView		Нативное: 0x%0*Lx
 New…	FileWindow		Новый…
 Next	ProbeView		Вперед
 No type editor available	AttributeWindow		Нет доступного редактора для данного типа
@@ -118,7 +116,7 @@ Selection	ProbeView		Выделение
 Stop	ProbeView		Стоп
 String editor	TypeEditors		Редактор строк
 Swapped: %Ld (0x%0*Lx)	ProbeView		Перевернутый: %Ld (0x%0*Lx)
-Swapped: 0x%0*Lx	ProbeView		Перевернутый: 0x%0*Lx
+Swapped: 0x%0*Lx	ProbeView		Перевернутое: 0x%0*Lx
 Text	FindWindow		Текст
 Text	TypeEditors	This is the type of editor	Текст
 Type editor	AttributeWindow		Редактор типа

@@ -321,14 +321,6 @@ BTextWidget::StartEdit(BRect bounds, BPoseView *view, BPose *pose)
 	if (!IsEditable())
 		return;
 
-	// don't allow editing of the trash directory name
-	if (pose->TargetModel()->IsTrash())
-		return;
-
-	// don't allow editing of the "Disks" icon name
-	if (pose->TargetModel()->IsRoot())
-		return;
-
 	BEntry entry(pose->TargetModel()->EntryRef());
 	if (entry.InitCheck() == B_OK
 		&& !ConfirmChangeIfWellKnownDirectory(&entry,

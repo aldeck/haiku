@@ -1,4 +1,4 @@
-1	belarusian	x-vnd.Haiku-PowerStatus	51899741
+1	belarusian	x-vnd.Haiku-PowerStatus	4269725527
 About	PowerStatus		пра праграму
 About…	PowerStatus		Пра праграму...
 Battery charging	PowerStatus		Акумулятар зараджаецца
@@ -23,6 +23,7 @@ OEM info: 	PowerStatus		Інфа OEM:
 OK	PowerStatus		ОК
 Power status box	PowerStatus		Вакно стану сілкавання
 PowerStatus	PowerStatus		Статус сілкавання
+PowerStatus	System name		Статус сілкавання
 PowerStatus\nwritten by Axel Dörfler, Clemens Zeidler\nCopyright 2006, Haiku, Inc.\n	PowerStatus		PowerStatus\nАўтары: Axel Dörfler, Clemens Zeidler\nCopyright 2006, Haiku, Inc.\n
 Quit	PowerStatus		Выйсці
 Run in window	PowerStatus		Запускаць у вакне

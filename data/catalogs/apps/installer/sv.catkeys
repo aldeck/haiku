@@ -1,4 +1,4 @@
-1	swedish	x-vnd.Haiku-Installer	482356557
+1	swedish	x-vnd.Haiku-Installer	2528334782
 %1ld of %2ld	InstallerWindow	number of files copied	%1ld av %2ld
 1)   If you are installing Haiku onto real hardware (not inside an emulator) it is recommended that you have already prepared a hard disk partition. The Installer and the DriveSetup tool offer to initialize existing partitions with the Haiku native file system, but the options to change the actual partition layout may not have been tested on a sufficiently great variety of computer configurations so we do not recommend using it.\n	InstallerApp		1) Om du installerar Haiku på riktigt hårdvara (inte i en emulator) så rekommenderar vi att har förberett en partiton för ändamålet. Programmen Installeraren och DiskHantering kan skapa nya partitioner för Haiku men funktionerna att ändra på befintliga partitoner har ännu inte testats tillräckligt för att anses som tillförlitligt. Vi rekommenderar därför att du inte ändrar på befintliga partitioner.\n
 2)   The Installer will make the Haiku partition itself bootable, but takes no steps to integrate Haiku into an existing boot menu. If you have GRUB already installed, you can add Haiku to its boot menu. Depending on what version of GRUB you use, this is done differently.\n\n\n	InstallerApp		2) Installeraren kommer att göra Haikus partition startbar. Däremot kommer inte Haiku att göra några ändringar i befintliga starthanterare. Om du har GRUB installerat så bör du lägga till Haiku till startmenyn. Det görs på olika sätt beroende på vilken version av GRUB som används.\n\n\n
@@ -9,17 +9,19 @@
 ?? of ??	InstallerWindow	Unknown progress	?? av ??
 ???	InstallerWindow	Unknown currently copied item	???
 ???	InstallerWindow	Unknown partition name	???
+Abort	InstallerWindow		Avbryt
 Additional disk space required: %s	InstallerWindow		Ytterligare diskutrymme behövs: %s
 Additional disk space required: 0.0 KiB	InstallerWindow		Ytterligare nödvändigt diskutrymme: 0.0 KiB
 Additionally you have to edit another file to actually display the boot menu:\n\n	InstallerApp		Eventuellt så måste du redigera en annan fil för att se startmenyn:\n\n
 All hard disks start with \"hd\".\n	InstallerApp		Alla hårddiskar börjar med \"hd\".\n
 An error was encountered and the installation was not completed:\n\nError:  %s	InstallerWindow		Ett fel uppstod och installationen kunde ej slutföras:\n\nFelmeddelande:  %s
 Are you sure you want to abort the installation and restart the system?	InstallerWindow		Är du säker på att du vill avbryta installationen och starta om systemet
+Are you sure you want to abort the installation?	InstallerWindow		Är du säker på att du vill stoppa installationen?
 Are you sure you want to install onto the current boot disk? The Installer will have to reboot your machine if you proceed.	InstallProgress		Är du säker på att du vill installera på den valda startdisken? Om du fortsätter måste Installeraren starta om datorn.
 Are you sure you want to to stop the installation?	InstallerWindow		Är du säker att du vill avbryta installationen?
 Begin	InstallerWindow		Starta
 Boot sector not written because of an internal error.	InstallProgress		Startsektorn kunde inte skrivas på grund av ett internt fel.
-Boot sector successfully written.	InstallProgress		Skrivning av startsektor lyckades.
+Boot sector successfully written.	InstallProgress		Skrivning av startsektorn lyckades.
 Bootman, the application to configure the Haiku boot menu, could not be launched.	InstallerWindow		Starthanteraren, applikationen för inställning av Haikus startmeny kunde inte startas.
 Cancel	InstallProgress		Avbryt
 Cancel	InstallerWindow		Avbryt
@@ -41,12 +43,12 @@ IMPORTANT INFORMATION BEFORE INSTALLING HAIKU\n\n	InstallerApp		VIKTIG INFORMATI
 If you have not created a partition yet, simply reboot, create the partition using whatever tool you feel most comfortable with, and reboot into Haiku to continue with the installation. You could for example use the GParted Live-CD, it can also resize existing partitions to make room.\n\n\n	InstallerApp		Om du inte har skapat något partiton, starta om datorn och skapa en partition med det verktyg som passar dig. Starta sedan Haikus installationsprogram för att fortsätta med installationen. Exempelvis så kan du använda GParteds Live-CD för att ändra storleken på existerande partitioner så att Haiku får plats på hårddisken.\n\n\n
 Install anyway	InstallProgress		Installera ändå
 Install from:	InstallerWindow		Installera från:
-Install progress:  	InstallerWindow		Installationsprocess:
+Install progress:  	InstallerWindow		Installationsförlopp:  
 Installation canceled.	InstallProgress		Installationen avbröts.
 Installation completed. Boot sector has been written to '%s'. Press Quit to leave the Installer or choose a new target volume to perform another installation.	InstallerWindow		Installationen är klar. Startsektorn har skrivits till '%s'. Klicka på Avsluta för att lämna installationsprogrammet eller välj en ny volym att installera på.
 Installation completed. Boot sector has been written to '%s'. Press Quit to restart the computer or choose a new target volume to perform another installation.	InstallerWindow		Installationen är klar. Startsektorn har skrivits till '%s'. Klicka på Avsluta för att starta om datorn eller välj en ny volym att installera på.
-Installer	InstallerWindow		Installeraren
-Installer\n\twritten by Jérôme Duval and Stephan Aßmus\n\tCopyright 2005-2010, Haiku.\n\n	InstallerApp		Installeraren\n\tskriven av Jérôme Duval och Stephan Aßmus\n\tCopyright 2005-2010, Haiku.\n\n
+Installer	System name		Installerare
+Installer\n\twritten by Jérôme Duval and Stephan Aßmus\n\tCopyright 2005-2010, Haiku.\n\n	InstallerApp		Installerare\n\tskriven av Jérôme Duval och Stephan Aßmus\n\tCopyright 2005-2010, Haiku.\n\n
 Launch the DriveSetup utility to partition\navailable hard drives and other media.\nPartitions can be initialized with the\nBe File System needed for a Haiku boot\npartition.	InstallerWindow		Starta DiskHanteringsverktyget för att partitionera\ntillgängliga hårddiskar och annan media.\nPartitioner can formateras med Be-filsystemet\n som krävs för en Haiku boot-partition.
 NOTE: While the naming strategy for hard disks is still as described under 2.1) the naming scheme for partitions has changed.\n\n	InstallerApp		NOTERA: Fastän namnstandarden för hårddiskar fortfarande är som beskrivet under 2.1) så har namnstandarden för partitoner ändrats.\n\n
 Newer versions of GRUB use an extra configuration file to add custom entries to the boot menu. To add them to the top, you have to create/edit a file by launching your favorite editor from a Terminal like this:\n\n	InstallerApp		Nyare versioner av GRUB använder en extra konfigurationsfil för att lägga till egna poster i startmenyn. För att lägga till dem överst så måste du skapa/redigera en fil genom att starta din favorit editor från en Terminal så här:\n\n
@@ -54,8 +56,9 @@ No optional packages available.	PackagesView		Inga valbara paket tillgängliga.
 No partitions have been found that are suitable for installation. Please set up partitions and initialize at least one partition with the Be File System.	InstallerWindow		Inga partitioner har hittats som är dugliga för installation. Var god ställ in partitioner och initialisera minst en partition med Be-filsystemet.
 OK	InstallProgress		OK
 OK	InstallerApp		OK
+OK	InstallerWindow		OK
 Onto:	InstallerWindow		Till:
-Performing installation.	InstallProgress		Verkställer installation.
+Performing installation.	InstallProgress		Verkställer installationen.
 Please choose target	InstallerWindow		Välj mål
 Please close the Boot Manager and DriveSetup windows before closing the Installer window.	InstallerWindow		Vänligen stäng Starthanterarens- och DiskHanterings fönster innan du stänger Installerarens fönster.
 Please close the Boot Manager window before closing the Installer window.	InstallerWindow		Vänligen stäng Starthanteraren innan du stänger Installeraren.
@@ -76,7 +79,7 @@ Set up boot menu	InstallerWindow		Ställ in startmeny
 Set up partitions…	InstallerWindow		Ställ in partitioner...
 Show optional packages	InstallerWindow		Visa valfria paket
 So behind the other menu entries towards the bottom of the file, add something similar to these lines:\n\n	InstallerApp		Efter de andra menyposterna mot slutet av filen, lägg till något som liknar dessa rader:\n\n
-So below the heading that must not be edited, add something similar to these lines:\n\n	InstallerApp		So below the heading that must not be edited, add something similar to these lines:\n\n
+So below the heading that must not be edited, add something similar to these lines:\n\n	InstallerApp		Under huvudet, som inte ändras, kan du lägga till några rader liknande de här:\n\n
 Starting Installation.	InstallProgress		Startar installationen.
 Stop	InstallerWindow		Stopp
 Stop	InstallerWindow	In alert after pressing Stop	Stopp

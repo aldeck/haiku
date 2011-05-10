@@ -122,9 +122,10 @@ private:
 
 
 CharacterWindow::CharacterWindow()
-	: BWindow(BRect(100, 100, 700, 550), B_TRANSLATE("CharacterMap"), 
+	:
+	BWindow(BRect(100, 100, 700, 550), B_TRANSLATE_SYSTEM_NAME("CharacterMap"), 
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE
-			| B_AUTO_UPDATE_SIZE_LIMITS)
+		| B_AUTO_UPDATE_SIZE_LIMITS)
 {
 	BMessage settings;
 	_LoadSettings(settings);
@@ -226,15 +227,9 @@ CharacterWindow::CharacterWindow()
 	BMenu* menu = new BMenu(B_TRANSLATE("File"));
 	BMenuItem* item;
 
-	menu->AddItem(item = new BMenuItem(B_TRANSLATE("About CharacterMap"
-		 B_UTF8_ELLIPSIS), new BMessage(B_ABOUT_REQUESTED)));
-
-	menu->AddSeparatorItem();
-
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menu->SetTargetForItems(this);
-	item->SetTarget(be_app);
 	menuBar->AddItem(menu);
 
 	menu = new BMenu(B_TRANSLATE("View"));
@@ -429,7 +424,7 @@ CharacterWindow::_OpenSettings(BFile& file, uint32 mode)
 	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) != B_OK)
 		return B_ERROR;
 
-	path.Append(B_TRANSLATE("CharacterMap settings"));
+	path.Append("CharacterMap settings");
 
 	return file.SetTo(path.Path(), mode);
 }

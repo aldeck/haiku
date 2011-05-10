@@ -122,8 +122,7 @@ TMailApp::TMailApp()
 	fAutoMarkRead = true;
 	fSignature = (char*)malloc(strlen(B_TRANSLATE("None")) + 1);
 	strcpy(fSignature, B_TRANSLATE("None"));
-	fReplyPreamble = (char*)malloc(1);
-	fReplyPreamble[0] = '\0';
+	fReplyPreamble = strdup(B_TRANSLATE("%e wrote:\\n"));
 
 	fMailWindowFrame.Set(0, 0, 0, 0);
 	fSignatureWindowFrame.Set(6, TITLE_BAR_HEIGHT, 6 + kSigWidth,
@@ -141,32 +140,6 @@ TMailApp::TMailApp()
 
 TMailApp::~TMailApp()
 {
-}
-
-
-void
-TMailApp::AboutRequested()
-{
-	BString aboutText;
-	aboutText << B_TRANSLATE("Mail\n\n");
-	int titleLength = aboutText.Length();
-	aboutText << B_TRANSLATE(
-		"Written by Robert Polic.\n"
-		"Enhanced by the Dr. Zoidberg crew.\n\n"
-		"Copyright 1991-2001, Be Incorporated.\n"
-		"Copyright 2005-2010 Haiku, Inc.\n");
-	BAlert *alert = new BAlert("about", aboutText, B_TRANSLATE("OK"));
-	BTextView *view = alert->TextView();
-	BFont font;
-
-	view->SetStylable(true);
-
-	view->GetFont(&font);
-	font.SetSize(font.Size() + 7.0f);
-	font.SetFace(B_BOLD_FACE);
-	view->SetFontAndColor(0, titleLength, &font);
-
-	alert->Go();
 }
 
 
@@ -280,10 +253,10 @@ TMailApp::MessageReceived(BMessage *msg)
 				{
 					msg->FindRef("ref", &ref);
 					BNode file(&ref);
-					BString string = "";
+					BString string;
 
 					if (file.InitCheck() == B_OK)
-						ReadAttrString(&file, B_MAIL_ATTR_TO, &string);
+						file.ReadAttrString(B_MAIL_ATTR_TO, &string);
 
 					window = NewWindow(&ref, string.String(), true);
 					break;
@@ -590,10 +563,11 @@ TMailApp::RefsReceived(BMessage *msg)
 			if (file.InitCheck() == B_NO_ERROR) {
 				BNodeInfo	node(&file);
 				node.GetType(type);
-				if (!strcmp(type, B_MAIL_TYPE)) {
+				if (strcmp(type, B_MAIL_TYPE) == 0
+					|| strcmp(type, B_PARTIAL_MAIL_TYPE) == 0) {
 					window = NewWindow(&ref, NULL, false, &messenger);
 					window->Show();
-				} else if(!strcmp(type, "application/x-person")) {
+				} else if(strcmp(type, "application/x-person") == 0) {
 					/* Got a People contact info file, see if it has an Email address. */
 					BString name;
 					BString email;
@@ -631,8 +605,7 @@ TMailApp::RefsReceived(BMessage *msg)
 						}
 					}
 				}
-				else if (!strcmp(type, kDraftType))
-				{
+				else if (strcmp(type, kDraftType) == 0) {
 					window = NewWindow();
 
 					// If it's a draft message, open it
@@ -1115,15 +1088,15 @@ TMailApp::NewWindow(const entry_ref* ref, const char* to, bool resend,
 	BFile file;
 	if (!resend && ref && file.SetTo(ref, O_RDONLY) == B_OK) {
 		BString name;
-		if (ReadAttrString(&file, B_MAIL_ATTR_NAME, &name) == B_OK) {
+		if (file.ReadAttrString(B_MAIL_ATTR_NAME, &name) == B_OK) {
 			title << name;
 			BString subject;
-			if (ReadAttrString(&file, B_MAIL_ATTR_SUBJECT, &subject) == B_OK)
+			if (file.ReadAttrString(B_MAIL_ATTR_SUBJECT, &subject) == B_OK)
 				title << " -> " << subject;
 		}
 	}
 	if (title == "")
-		title = B_TRANSLATE("Mail");
+		title = B_TRANSLATE_SYSTEM_NAME("Mail");
 
 	TMailWindow* window = new TMailWindow(r, title.String(), this, ref, to,
 		&fContentFont, resend, trackerMessenger);

@@ -1,17 +1,16 @@
-1	german	x-vnd.Haiku-libtracker	2572087072
+1	german	x-vnd.Haiku-libtracker	2699246155
 %BytesPerSecond/s	StatusWindow		%BytesPerSecond/s
 %Ld B	WidgetAttributeText		%Ld B
 %Ld bytes	WidgetAttributeText		%Ld Bytes
 %capacity (%used used -- %free free)	InfoWindow		%capacity (%used benutzt -- %free frei)
 %name info	InfoWindow	InfoWindow Title	%name Info
 %num items	CountView		%num Objekte
-(%SizeProcessed of %TotalSize, %BytesPerSecond/s)	StatusWindow		(%SizeProcessed von %TotalSize, %BytesPerSecond/s)	
+(%SizeProcessed of %TotalSize, %BytesPerSecond/s)	StatusWindow		(%SizeProcessed von %TotalSize, %BytesPerSecond/s)
 (%bytes bytes)	InfoWindow		(%bytes Bytes)
 (Finish: %time - %finishtime minutes left)	StatusWindow		(Fertig: %time - %finishtime Minuten übrig)
 (Finish: %time - %finishtime seconds left)	StatusWindow		(Fertig: %time - %finishtime Sekunden übrig)
 (Finish: %time - Over %finishtime days left)	StatusWindow		(Fertig: %time - Über %finishtime Tage übrig)
-(Finish: %time - Over %finishtime hours left)	StatusWindow		(Fertig: %time - Über %finishtime Stunden übrig)	
-
+(Finish: %time - Over %finishtime hours left)	StatusWindow		(Fertig: %time - Über %finishtime Stunden übrig)
 (Finish: %time)	StatusWindow		(Fertig: %time)
 1 item	CountView		1 Objekt
 32 x 32	ContainerWindow		32 x 32
@@ -75,7 +74,7 @@ Could not open \"%document\" (Missing libraries: %library). \n	FSUtils		\"%docum
 Could not open \"%document\" (Missing symbol: %symbol). \n	FSUtils		\"%document\" konnte nicht geöffnet werden (Fehlendes Symbol: %symbol).\n
 Could not open \"%document\" because application \"%app\" is in the Trash. 	FSUtils		Die Datei \"%document\" kann nicht geöffnet werden, weil sich das zugehörige Programm \"%app\" im Papierkorb befindet.
 Could not open \"%document\" with application \"%app\" (%error). 	FSUtils		\"%document\" konnte nicht mit der Anwendung \"%app\" geöffnet werden (%error).
-Could not open \"%document\" with application \"%app\" (Missing libraries: %library). \n	FSUtils		\"%document\" konnte nicht mit der Anwendung \"%app\" geöffnet werden. Fehlende Bibliothek: %library. \n
+Could not open \"%document\" with application \"%app\" (Missing libraries: %library). \n	FSUtils		\"%document\" konnte nicht mit der Anwendung \"%app\" geöffnet werden (fehlende Bibliothek: %library.). \n
 Could not open \"%document\" with application \"%app\" (Missing symbol: %symbol). \n	FSUtils		\"%document\" konnte nicht mit der Anwendung \"%app\" geöffnet werden (Fehlendes Symbol: %symbol).\n
 Could not open \"%name\" (%error). 	FSUtils		\"%name\" konnte nicht geöffnet werden (%error).
 Could not open \"%name\". The file is mistakenly marked as executable. 	FSUtils		\"%name\" konnte nicht geöffnet werden. Die Datei ist fälschlicherweise als ausführbar gekennzeichnet.
@@ -104,6 +103,7 @@ Delete	FilePanelPriv		Löschen
 Delete	PoseView		Löschen
 Deleting: 	StatusWindow		Löschen:
 Description:	InfoWindow		Beschreibung:
+Desktop	B_DESKTOP_DIRECTORY		Desktop
 Desktop	Model		Desktop
 Desktop	TrackerSettingsWindow		Desktop
 Disk mount settings	AutoMounterSettings		Einhänge-Einstellungen
@@ -169,11 +169,12 @@ Icon view	DeskWindow		Icon-Ansicht
 Icon view	VolumeWindow		Icon-Ansicht
 Identify	ContainerWindow		Identifizieren
 Identify	InfoWindow		Identifizieren
-If you %action the config folder, Haiku may not behave properly! Are you sure you want to do this? To %action the config folder anyway, click \"Do it\".	FSUtils		Wird der config-Ordner %action, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um es dennoch zu tun, \"Trotzdem\" klicken.
-If you %action the home folder, Haiku may not behave properly! Are you sure you want to do this? To %action the home anyway, click \"Do it\".	FSUtils		Wird der home-Ordner %action, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um es dennoch zu tun, \"Trotzdem\" klicken.
-If you %action the mime settings, Haiku may not behave properly! Are you sure you want to do this? To %action the mime settings anyway, click \"Do it\".	FSUtils		Werden die MIME Einstellungen %action, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um es dennoch zu tun, \"Trotzdem\" klicken.
-If you %action the settings folder, Haiku may not behave properly! Are you sure you want to do this? To %action the settings folder anyway, click \"Do it\".	FSUtils		Wird der settings-Ordner %action, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um es dennoch zu tun, \"Trotzdem\" klicken.
-If you %action the system folder or its contents, you won't be able to boot Haiku! Are you sure you want to do this? To %action the system folder or its contents anyway, hold down the Shift key and click \"Do it\".	FSUtils		Der System-Ordner oder seine Inhalte sollen %action werden. Dadurch kann Haiku nicht mehr gestartet werden! Um es dennoch zu tun, Shift-Taste gedrückt halten und \"Trotzdem\" klicken.
+If you %ifYouDoAction the common folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the common folder anyway, hold down the Shift key and click \"Do it\".	FSUtils		Wird der common-Ordner %ifYouDoAction, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um ihn dennoch %toDoAction, Shift-Taste gedrückt halten und \"Trotzdem\" klicken.
+If you %ifYouDoAction the config folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the config folder anyway, click \"Do it\".	FSUtils		Wird der config-Ordner %ifYouDoAction, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um ihn dennoch %toDoAction, \"Trotzdem\" klicken.
+If you %ifYouDoAction the home folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the home folder anyway, hold down the Shift key and click \"Do it\".	FSUtils		Wird der home-Ordner %ifYouDoAction, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten. Um ihn und seine Inhalte dennoch %toDoAction, Shift-Taste gedrückt halten und \"Trotzdem\" klicken.
+If you %ifYouDoAction the mime settings, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the mime settings anyway, click \"Do it\".	FSUtils		Wird der mime-Ordner %ifYouDoAction, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um ihn dennoch %toDoAction, \"Trotzdem\" klicken.
+If you %ifYouDoAction the settings folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the settings folder anyway, click \"Do it\".	FSUtils		Wird der settings-Ordner %ifYouDoAction, kann Haiku vielleicht nicht mehr fehlerfrei arbeiten! Um ihn dennoch %toDoAction, \"Trotzdem\" klicken.
+If you %ifYouDoAction the system folder or its contents, you won't be able to boot Haiku! Are you sure you want to do this? To %toDoAction the system folder or its contents anyway, hold down the Shift key and click \"Do it\".	FSUtils		Der system-Ordner oder seine Inhalte sollen %ifYouDoAction werden. Dadurch kann Haiku nicht mehr gestartet werden! Um ihn oder seine Inhalte dennoch %toDoAction, Shift-Taste gedrückt halten und \"Trotzdem\" klicken.
 Ignore case	SelectionWindow		Ignoriere Groß-/Kleinschreibung
 Include trash	FindPanel		Einschließlich Papierkorb
 Increase size	ContainerWindow		Vergrößern
@@ -258,7 +259,7 @@ Open selection with:	OpenWithWindow		Auswahl öffnen mit:
 Open with…	ContainerWindow		Öffnen mit...
 Opens with:	InfoWindow		Wird geöffnet mit:
 Or	FindPanel		Oder
-Original name	ContainerWindow		Originalname
+Original name	ContainerWindow		Ursprung
 Other	FilePermissionsView		Andere
 Outline selection rectangle only	SettingsView		Auswahlrahmen als Kontur
 Owner	FilePermissionsView		Besitzer
@@ -284,6 +285,7 @@ Prompt	FSUtils		Nachfragen
 Query name:	FindPanel		Query-Name:
 Query template	FindPanel		Query-Vorlage
 Read	FilePermissionsView		Lesen
+Real name	ContainerWindow		Systemname
 Recalculate folder size	InfoWindow		Neuberechnung der Ordnergröße
 Recent documents	FavoritesMenu		Letzte Dokumente
 Recent folders	ContainerWindow		Letzte Ordner
@@ -336,9 +338,8 @@ Skip	FSUtils		Überspringen
 Some items already exist in this folder with the same names as the items you are %verb.\n \nWould you like to replace them with the ones you are %verb or be prompted for each one?	FSUtils		Manche Objekte in diesem Ordner heißen genauso wie Objekte, die gerade %verb werden sollen.\n\nSollen sie alle ersetzt werden, oder soll jedes Mal einzeln nachgefragt werden?
 Some of the selected items cannot be moved to the Trash. Would you like to delete them instead? (This operation cannot be reverted.)	PoseView		Einige der ausgewählten Objekte können nicht in den Papierkorb verschoben werden. Sollen sie stattdessen gelöscht werden? (Diese Aktion kann nicht rückgängig gemacht werden.)
 Sorry, could not create a new folder.	FSUtils		Der neue Ordner konnte leider nicht erstellt werden.
-Sorry, saving more than one item is not allowed.	FilePanelPriv		Es kann leider im nur ein einzelnes Objekt  gespeichert werden.
+Sorry, saving more than one item is not allowed.	FilePanelPriv		Es kann leider immer nur ein einzelnes Objekt gespeichert werden.
 Sorry, the 'Character' attribute cannot store a multi-byte glyph.	WidgetAttributeText		Das 'Zeichen' Attribut kann leider keine Multi-Byte Zeichen speichern.
-
 Sorry, there is not enough free space on the destination volume to copy the selection.	FSUtils		Es ist nicht genug Speicherplatz auf dem Zieldatenträger frei, um die Auswahl zu kopieren.
 Sorry, you can't copy items to the Trash.	FSClipBoard		Objekte können leider nicht in den Papierkorb kopiert werden.
 Sorry, you can't copy items to the Trash.	PoseView		Objekte können leider nicht in den Papierkorb kopiert werden.
@@ -365,6 +366,7 @@ There was an error resolving the link.	Tracker		Fehler beim Auflösen der Verkn�
 There was an error writing the attribute.	WidgetAttributeText		Fehler beim Schreiben des Attributs.
 TiB	WidgetAttributeText		TiB
 To: %dir	StatusWindow		Nach: %dir
+Tracker New Templates	B_USER_SETTINGS_DIRECTORY/Tracker/Tracker New Templates		Tracker Neu-Vorlagen
 Tracker preferences	TrackerSettingsWindow		Tracker-Einstellungen
 Tracker status	StatusWindow		Trackerstatus
 Trash	Model		Papierkorb
@@ -395,7 +397,7 @@ You can't replace a folder with one of its sub-folders.	FSUtils		Ordner können 
 You cannot copy or move the root directory.	FSUtils		Das Root-Verzeichnis kann nicht kopiert oder bewegt werden.
 You cannot create a link to the root directory.	FSUtils		Auf das Root-Verzeichnis des Laufwerks kann keine Verknüpfung erstellt werden.
 You cannot put the Trash, home or Desktop directory into the trash.	FSUtils		Der Papierkorb, der home-Ordner und der Desktop können nicht in den Papierkorb verschoben werden.
-You cannot replace a file with a folder or a symbolic link.	FSUtils		Dateien können nicht mit Ordnern oder  Verknüpfungen ersetzt werden.
+You cannot replace a file with a folder or a symbolic link.	FSUtils		Dateien können nicht mit Ordnern oder Verknüpfungen ersetzt werden.
 You cannot replace a folder or a symbolic link with a file.	FSUtils		Ordner oder Verknüpfungen können nicht mit einer Datei ersetzt werden.
 You must drop items on one of the disk icons in the \"Disks\" window.	FSClipBoard		Objekte müssen auf eines der Icons im \"Datenträger\" Fenster fallengelassen werden.
 You must drop items on one of the disk icons in the \"Disks\" window.	PoseView		Objekte müssen auf eines der Icons im \"Datenträger\" Fenster fallengelassen werden.
@@ -403,19 +405,24 @@ You must have at least one attribute showing.	PoseView		Es muss mindestens ein A
 \nShould this be fixed?	FSUtils		\nSoll das behoben werden?
 \n\t(%Ld bytes, 	FSUtils		\n\t(%Ld Bytes,
 after	FindPanel		nach
+apps	B_APPS_DIRECTORY		Anwendungen
 before	FindPanel		vor
 by attribute	FindPanel		nach Attribut
 by formula	FindPanel		nach Formel
 by name	FindPanel		nach Name
 calculating…	InfoWindow		Berechnung läuft...
+common	B_COMMON_DIRECTORY		Allgemein
+config	B_USER_CONFIG_DIRECTORY		Konfiguration
 contains	FindPanel		enthält
 contains	SelectionWindow		enthält
-copy	FSUtils	filename copy	 (Kopie)
+copy	FSUtils	filename copy	Kopie
 copying	FSUtils		kopiert
+develop	B_COMMON_DEVELOP_DIRECTORY		Programmierung
 ends with	FindPanel		endet mit
 ends with	SelectionWindow		endet mit
 for %num files	InfoWindow		für %num Dateien
 greater than	FindPanel		größer als
+home	B_USER_DIRECTORY		Benutzer
 is	FindPanel		ist
 is not	FindPanel		ist nicht
 label too long	PoseView		Beschriftung zu lang
@@ -423,15 +430,22 @@ less than	FindPanel		kleiner als
 link	FSUtils	filename link	Verknüpfung
 matches regular expression	SelectionWindow		entspricht regulärem Ausdruck
 matches wildcard expression	SelectionWindow		entspricht Platzhalter-Ausdruck
-move	FSUtils		verschoben
+move	FSUtils	As in 'If you move ...'	verschoben
+move	FSUtils	As in 'To move ...'	zu verschieben
 moving	FSUtils		verschoben
 multiple disks	FindPanel		mehrere Datenträger
 no items	CountView		keine
 no supporting apps	OpenWithWindow		keine unterstützenden Anwendungen
 of %items	StatusWindow		von %items
+optional	/boot/optional		Optional
 parent folder	NavMenu		Übergeordneter Ordner
-rename	InfoWindow		umbenannt
-rename	TextWidget		umbenannt
+preferences	B_PREFERENCES_DIRECTORY		Einstellungen
+rename	InfoWindow	As in 'If you rename ...'	umbenannt
+rename	InfoWindow	As in 'To rename ...'	umzubenennen
+rename	TextWidget	As in 'If you rename ...'	umbenannt
+rename	TextWidget	As in 'To rename ...'	umzubenennen
 save text	FilePanelPriv		Text speichern
 starts with	FindPanel		beginnt mit
 starts with	SelectionWindow		beginnt mit
+system	B_SYSTEM_DIRECTORY		System
+trash	B_TRASH_DIRECTORY		Papierkorb

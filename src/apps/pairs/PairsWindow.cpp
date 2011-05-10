@@ -39,9 +39,9 @@ const uint32 MENU_QUIT					= 'MGqu';
 
 PairsWindow::PairsWindow()
 	:
-	BWindow(BRect(100, 100, 405, 423), B_TRANSLATE("Pairs"), B_TITLED_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE
-			| B_NOT_RESIZABLE | B_NOT_ZOOMABLE),
+	BWindow(BRect(100, 100, 405, 423), B_TRANSLATE_SYSTEM_NAME("Pairs"),
+		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE
+		| B_NOT_RESIZABLE | B_NOT_ZOOMABLE),
 	fPairComparing(NULL),
 	fIsFirstClick(true),
 	fIsPairsActive(true),
@@ -219,17 +219,17 @@ PairsWindow::MessageReceived(BMessage* message)
 
 				// game end and results
 				if (fFinishPairs == fPairsView->fNumOfCards / 2) {
-					BString strAbout;
 					BString score;
 					score << fButtonClicks;
-					strAbout
-						<< B_TRANSLATE("Pairs\n"
+					BString strAbout = B_TRANSLATE("%app%\n"
 						"\twritten by Ralf Schülke\n"
 						"\tCopyright 2008-2010, Haiku Inc.\n"
 						"\n"
-						"You completed the game in %s clicks.\n");
-
-					strAbout.Replace("%s", score.String(), 1);
+						"You completed the game in %num% clicks.\n");
+					
+					strAbout.ReplaceFirst("%app%",
+						B_TRANSLATE_SYSTEM_NAME("Pairs"));
+					strAbout.ReplaceFirst("%num%", score);
 
 					BAlert* alert = new BAlert("about",
 						strAbout.String(),
@@ -244,7 +244,8 @@ PairsWindow::MessageReceived(BMessage* message)
 					view->GetFont(&font);
 					font.SetSize(18);
 					font.SetFace(B_BOLD_FACE);
-					view->SetFontAndColor(0, 6, &font);
+					view->SetFontAndColor(0,
+						strlen(B_TRANSLATE_SYSTEM_NAME("Pairs")), &font);
 					view->ResizeToPreferred();
 
 					if (alert->Go() == 0) {

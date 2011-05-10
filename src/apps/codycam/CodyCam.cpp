@@ -56,7 +56,8 @@ namespace {
 void
 ErrorAlert(const char* message, status_t err, BWindow *window = NULL)
 {
-	BAlert *alert = new BAlert("", message, B_TRANSLATE("OK"));
+	BAlert *alert = new BAlert(B_TRANSLATE_SYSTEM_NAME("CodyCam"), message,
+		B_TRANSLATE("OK"));
 	if (window != NULL)
 		alert->CenterIn(window->Frame());
 	alert->Go();
@@ -140,7 +141,7 @@ const char* UploadClientAt(int32 i)
 
 CodyCam::CodyCam()
 	:
-	BApplication("application/x-vnd.Haiku.CodyCam"),
+	BApplication("application/x-vnd.Haiku-CodyCam"),
 	fMediaRoster(NULL),
 	fVideoConsumer(NULL),
 	fWindow(NULL),
@@ -190,7 +191,7 @@ void
 CodyCam::ReadyToRun()
 {
 	fWindow = new VideoWindow(BRect(28, 28, 28, 28),
-		(const char*) B_TRANSLATE("CodyCam"), B_TITLED_WINDOW,
+		(const char*) B_TRANSLATE_SYSTEM_NAME("CodyCam"), B_TITLED_WINDOW,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS, &fPort);
 
 	_SetUpNodes();
@@ -253,11 +254,6 @@ CodyCam::MessageReceived(BMessage *message)
 			}
 			break;
 		}
-
-		case msg_about:
-			(new BAlert(B_TRANSLATE("About CodyCam"), B_TRANSLATE("CodyCam\n\n"
-				"The Original BeOS webcam"), B_TRANSLATE("Close")))->Go();
-			break;
 
 		case msg_control_win:
 			// our control window is being asked to go away
@@ -509,13 +505,6 @@ VideoWindow::VideoWindow(BRect frame, const char* title, window_type type,
 
 	menu->AddSeparatorItem();
 
-	menuItem = new BMenuItem(B_TRANSLATE("About Codycam" B_UTF8_ELLIPSIS),
-		new BMessage(msg_about), 'B');
-	menuItem->SetTarget(be_app);
-	menu->AddItem(menuItem);
-
-	menu->AddSeparatorItem();
-
 	menuItem = new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(B_QUIT_REQUESTED), 'Q');
 	menuItem->SetTarget(be_app);
@@ -699,7 +688,7 @@ VideoWindow::_BuildCaptureControls()
 		fImageFormatMenu->ItemAt(0)->SetMarked(true);
 
 	fImageFormatSelector = new BMenuField("Format", B_TRANSLATE("Format:"),
-		fImageFormatMenu, NULL);
+		fImageFormatMenu);
 
 	// capture rate
 	fCaptureRateMenu = new BPopUpMenu(B_TRANSLATE("Capture Rate Menu"));
@@ -712,7 +701,7 @@ VideoWindow::_BuildCaptureControls()
 	fCaptureRateMenu->SetTargetForItems(this);
 	fCaptureRateMenu->FindItem(fCaptureRateSetting->Value())->SetMarked(true);
 	fCaptureRateSelector = new BMenuField("Rate", B_TRANSLATE("Rate:"),
-		fCaptureRateMenu, NULL);
+		fCaptureRateMenu);
 
 	BLayoutBuilder::Grid<>(controlsLayout)
 		.AddTextControl(fFileName, 0, 0)
@@ -732,7 +721,7 @@ VideoWindow::_BuildCaptureControls()
 	fUploadClientMenu->SetTargetForItems(this);
 	fUploadClientMenu->FindItem(fUploadClientSetting->Value())->SetMarked(true);
 	fUploadClientSelector = new BMenuField("UploadClient", NULL,
-		fUploadClientMenu, NULL);
+		fUploadClientMenu);
 
 	fFtpSetupBox->SetLabel(B_TRANSLATE("Output"));
 	// this doesn't work with the layout manager

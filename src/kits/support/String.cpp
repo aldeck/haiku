@@ -14,7 +14,6 @@
 
 /*! String class supporting common string operations. */
 
-
 #include <String.h>
 
 #include <ctype.h>
@@ -425,20 +424,33 @@ BString::AdoptChars(BString& string, int32 charCount)
 
 
 BString&
-BString::SetToArguments(const char *format, ...)
+BString::SetToFormat(const char* format, ...)
 {
+	int32 bufferSize = 1024;
+	char buffer[bufferSize];
+	
 	va_list arg;
 	va_start(arg, format);
-	int32 bytes = vsnprintf(LockBuffer(0), 0, format, arg);
+	int32 bytes = vsnprintf(buffer, bufferSize, format, arg);
 	va_end(arg);
-	UnlockBuffer(0);
-	
+
+	if (bytes < 0)
+		return Truncate(0);
+
+	if (bytes < bufferSize) {
+		SetTo(buffer);
+		return *this;
+	}
+
 	va_list arg2;
 	va_start(arg2, format);
 	bytes = vsnprintf(LockBuffer(bytes), bytes + 1, format, arg2);
 	va_end(arg2);
-	UnlockBuffer(bytes);
 
+	if (bytes < 0)
+		bytes = 0;
+
+	UnlockBuffer(bytes);
 	return *this;
 }
 
@@ -1951,25 +1963,28 @@ BString::CharacterDeescape(char escapeChar)
 BString&
 BString::Trim()
 {
+	if (Length() <= 0)
+		return *this;
+
 	const char* string = String();
 
+	// string is \0 terminated thus we don't need to check if we reached the end
 	int32 startCount = 0;
-	while (isspace(string[startCount])) {
+	while (isspace(string[startCount]))
 		startCount++;
-	}
 
-	int32 endCount = 0;
-	while (isspace(string[Length() - endCount - 1])) {
-		endCount++;
-	}
+	int32 endIndex = Length() - 1;
+	while (endIndex >= startCount && isspace(string[endIndex]))
+		endIndex--;
 
-	if (startCount == 0 && endCount == 0)
+	if (startCount == 0 && endIndex == Length() - 1)
 		return *this;
 
 	// We actually need to trim
 
-	size_t length = Length() - startCount - endCount;
-	if (startCount == 0) {
+	ssize_t length = endIndex + 1 - startCount;
+	ASSERT(length >= 0);	
+	if (startCount == 0 || length == 0) {
 		_MakeWritable(length, true);
 	} else if (_MakeWritable() == B_OK) {
 		memmove(fPrivateData, fPrivateData + startCount, length);

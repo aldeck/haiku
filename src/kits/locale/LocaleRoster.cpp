@@ -26,6 +26,7 @@
 #include <Entry.h>
 #include <File.h>
 #include <FormattingConventions.h>
+#include <fs_attr.h>
 #include <IconUtils.h>
 #include <Language.h>
 #include <Locale.h>
@@ -365,4 +366,96 @@ BLocaleRoster::_GetCatalog(BCatalog* catalog, vint32* catalogInitStatus)
 	*catalogInitStatus = true;
 
 	return catalog;
+}
+
+
+bool
+BLocaleRoster::IsFilesystemTranslationPreferred() const
+{
+	RosterData* rosterData = RosterData::Default();
+	BAutolock lock(rosterData->fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	return rosterData->fIsFilesystemTranslationPreferred;
+}
+
+
+/*!	\brief Looks up a localized filename from a catalog.
+	\param localizedFileName A pre-allocated BString object for the result
+		of the lookup.
+	\param ref An entry_ref with an attribute holding data for catalog lookup.
+	\param traverse A boolean to decide if symlinks are to be traversed.
+	\return
+	- \c B_OK: success
+	- \c B_ENTRY_NOT_FOUND: failure. Attribute not found, entry not found
+		in catalog, etc
+	- other error codes: failure
+
+	Attribute format:  "signature:context:string"
+	(no colon in any of signature, context and string)
+
+	Lookup is done for the top preferred language, only.
+	Lookup fails if a comment is present in the catalog entry.
+*/
+status_t
+BLocaleRoster::GetLocalizedFileName(BString& localizedFileName,
+	const entry_ref& ref, bool traverse)
+{
+	BString signature;
+	BString context;
+	BString string;
+	
+	status_t status = _PrepareCatalogEntry(ref, signature, context, string,
+		traverse);
+
+	if (status != B_OK)
+		return status;
+
+	BCatalog catalog(signature);
+	const char* temp = catalog.GetString(string, context);
+
+	if (temp == NULL)
+		return B_ENTRY_NOT_FOUND;
+
+	localizedFileName = temp;
+	return B_OK;
+}
+
+
+status_t
+BLocaleRoster::_PrepareCatalogEntry(const entry_ref& ref, BString& signature,
+	BString& context, BString& string, bool traverse)
+{
+	BEntry entry(&ref, traverse);
+	if (!entry.Exists())
+		return B_ENTRY_NOT_FOUND;
+
+	BNode node(&entry);
+	status_t status = node.InitCheck();
+	if (status != B_OK)
+		return status;
+
+	status = node.ReadAttrString("SYS:NAME", &signature);
+	if (status != B_OK)
+		return status;
+
+	int32 first = signature.FindFirst(':');
+	int32 last = signature.FindLast(':');
+	if (first == last)
+		return B_ENTRY_NOT_FOUND;
+
+	context = signature;
+	string = signature;
+
+	signature.Truncate(first);
+	context.Truncate(last);
+	context.Remove(0, first + 1);
+	string.Remove(0, last + 1);
+
+	if (signature.Length() == 0 || context.Length() == 0
+		|| string.Length() == 0)
+		return B_ENTRY_NOT_FOUND;
+
+	return B_OK;
 }

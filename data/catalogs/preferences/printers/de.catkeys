@@ -1,4 +1,4 @@
-1	german	x-vnd.Be-PRNT	1563474157
+1	german	x-vnd.Be-PRNT	2065133853
 %.2f KB	JobListView		%.2F KiB
 1 pending job.	PrinterListView		1 offener Druckauftrag.
 <pick one>	AddPrinterDialog		<auswählen>
@@ -27,6 +27,7 @@ Printer name:	AddPrinterDialog		Druckername:
 Printer type:	AddPrinterDialog		Druckertyp:
 Printer: %printer_name%\nDriver:  %driver%\n	TestPageView		Drucker: %printer_name%\nTreiber: %driver%\n
 Printers	PrintersWindow		Printers - Drucker
+Printers	System name		Drucker
 Processing	JobListView		In Bearbeitung
 Red	TestPageView		Rot
 Remove	PrintersWindow		Entfernen

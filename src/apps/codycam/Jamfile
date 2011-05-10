@@ -2,6 +2,8 @@ SubDir HAIKU_TOP src apps codycam ;
 
 SetSubDirSupportedPlatformsBeOSCompatible ;
 
+UsePrivateHeaders shared ;
+
 Application CodyCam :
 	CodyCam.cpp
 	FileUploadClient.cpp
@@ -17,7 +19,7 @@ Application CodyCam :
 ;
 
 DoCatalogs CodyCam :
-	x-vnd.Haiku.CodyCam
+	x-vnd.Haiku-CodyCam
 	:
 	CodyCam.cpp
 	FtpClient.cpp

@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2010, Stephan Aßmus <superstippi@gmx.de>.
+ * Copyright 2006-2011, Stephan Aßmus <superstippi@gmx.de>.
  * All rights reserved. Distributed under the terms of the MIT License.
  */
 
@@ -8,38 +8,57 @@
 #include <new>
 #include <stdio.h>
 
+#include <Alert.h>
+#include <Catalog.h>
 #include <Clipboard.h>
 #include <GridLayout.h>
 #include <GroupLayout.h>
 #include <GroupView.h>
+#include <Directory.h>
+#include <Entry.h>
+#include <File.h>
+#include <fs_attr.h>
+#include <Locale.h>
 #include <Menu.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <Message.h>
 #include <Screen.h>
 #include <ScrollView.h>
-#include <Catalog.h>
-#include <Locale.h>
 
 #include "support_ui.h"
 
 #include "AddPathsCommand.h"
 #include "AddShapesCommand.h"
 #include "AddStylesCommand.h"
+#include "AttributeSaver.h"
+#include "BitmapExporter.h"
+#include "BitmapSetSaver.h"
 #include "CanvasView.h"
 #include "CommandStack.h"
 #include "CompoundCommand.h"
 #include "CurrentColor.h"
 #include "Document.h"
-#include "Exporter.h"
+#include "FlatIconExporter.h"
+#include "FlatIconFormat.h"
+#include "FlatIconImporter.h"
 #include "IconObjectListView.h"
 #include "IconEditorApp.h"
 #include "IconView.h"
+#include "MessageExporter.h"
+#include "MessageImporter.h"
+#include "MessengerSaver.h"
+#include "NativeSaver.h"
 #include "PathListView.h"
+#include "RDefExporter.h"
 #include "ScrollView.h"
+#include "SimpleFileSaver.h"
 #include "ShapeListView.h"
+#include "SourceExporter.h"
 #include "StyleListView.h"
 #include "StyleView.h"
+#include "SVGExporter.h"
+#include "SVGImporter.h"
 #include "SwatchGroup.h"
 #include "TransformerListView.h"
 #include "TransformGradientBox.h"
@@ -72,6 +91,7 @@ using std::nothrow;
 enum {
 	MSG_UNDO						= 'undo',
 	MSG_REDO						= 'redo',
+	MSG_UNDO_STACK_CHANGED			= 'usch',
 
 	MSG_PATH_SELECTED				= 'vpsl',
 	MSG_STYLE_SELECTED				= 'stsl',
@@ -86,15 +106,17 @@ enum {
 };
 
 
-MainWindow::MainWindow(IconEditorApp* app, Document* document,
+MainWindow::MainWindow(BRect frame, IconEditorApp* app,
 		const BMessage* settings)
 	:
-	BWindow(BRect(50, 50, 900, 750), "Icon-O-Matic",
+	BWindow(frame, B_TRANSLATE_SYSTEM_NAME("Icon-O-Matic"),
 		B_DOCUMENT_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
-			B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
+		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
 	fApp(app),
-	fDocument(document),
-	fIcon(NULL)
+	fDocument(new Document(B_TRANSLATE("Untitled"))),
+	fCurrentColor(new CurrentColor()),
+	fIcon(NULL),
+	fMessageAfterSave(NULL)
 {
 	_Init();
 
@@ -106,10 +128,22 @@ MainWindow::~MainWindow()
 {
 	delete fState;
 
-	if (fIcon)
-		fIcon->Release();
+	SetIcon(NULL);
+
+	// Make sure there are no listeners attached to the document anymore.
+	while (BView* child = ChildAt(0L)) {
+		child->RemoveSelf();
+		delete child;
+	}
 
 	fDocument->CommandStack()->RemoveObserver(this);
+
+	// NOTE: it is important that the GUI has been deleted
+	// at this point, so that all the listener/observer
+	// stuff is properly detached
+	delete fDocument;
+
+	delete fMessageAfterSave;
 }
 
 
@@ -121,19 +155,32 @@ MainWindow::MessageReceived(BMessage* message)
 {
 	bool discard = false;
 
-	if (!fDocument || !fDocument->WriteLock()) {
+	// Figure out if we need the write lock on the Document. For most
+	// messages we do, but exporting takes place in another thread and
+	// locking is taken care of there.
+	bool requiresWriteLock = true;
+	switch (message->what) {
+		case MSG_SAVE:
+		case MSG_EXPORT:
+		case MSG_SAVE_AS:
+		case MSG_EXPORT_AS:
+			requiresWriteLock = false;
+			break;
+		default:
+			break;
+	}
+	if (requiresWriteLock && !fDocument->WriteLock()) {
 		BWindow::MessageReceived(message);
 		return;
 	}
 
 	if (message->WasDropped()) {
-		const rgb_color *color;
-		int32 len;
-		int32 i;
+		const rgb_color* color;
+		int32 length;
 		// create styles from dropped colors
-		for (i = 0; message->FindData("RGBColor", B_RGB_COLOR_TYPE, i, 
-			(const void **)&color, &len) == B_OK; i++) {
-			if (len != sizeof(rgb_color))
+		for (int32 i = 0; message->FindData("RGBColor", B_RGB_COLOR_TYPE, i, 
+			(const void**)&color, &length) == B_OK; i++) {
+			if (length != sizeof(rgb_color))
 				continue;
 			char name[30];
 			sprintf(name, 
@@ -157,16 +204,30 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case B_REFS_RECEIVED:
 		case B_SIMPLE_DATA:
+			// If our icon is empty, open the file in this window,
+			// otherwise forward to the application which will open
+			// it in another window, unless we append.
 			message->what = B_REFS_RECEIVED;
-			if (modifiers() & B_SHIFT_KEY)
+			if (fDocument->Icon()->Styles()->CountStyles() == 0
+				&& fDocument->Icon()->Paths()->CountPaths() == 0
+				&& fDocument->Icon()->Shapes()->CountShapes() == 0) {
+				entry_ref ref;
+				if (message->FindRef("refs", &ref) == B_OK)
+					Open(ref);
+				break;
+			}
+			if (modifiers() & B_SHIFT_KEY) {
+				// We want the icon appended to this window.
 				message->AddBool("append", true);
+				message->AddPointer("window", this);
+			}
 			be_app->PostMessage(message);
 			break;
 
 		case B_PASTE:
 		case B_MIME_DATA:
 		{
-			BMessage *clip = message;
+			BMessage* clip = message;
 			status_t err;
 
 			if (discard)
@@ -184,27 +245,103 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 			}
 
-			Icon* icon;
-			icon = new (nothrow) Icon(*fDocument->Icon());
-			if (icon) {
+			Icon* icon = new (std::nothrow) Icon(*fDocument->Icon());
+			if (icon != NULL) {
 				StyledTextImporter importer;
 				err = importer.Import(icon, clip);
 				if (err >= B_OK) {
-						AutoWriteLocker locker(fDocument);
+					AutoWriteLocker locker(fDocument);
 
-						SetIcon(NULL);
+					SetIcon(NULL);
 
-						// incorporate the loaded icon into the document
-						// (either replace it or append to it)
-						fDocument->MakeEmpty(false);
-							// if append, the document savers are preserved
-						fDocument->SetIcon(icon);
-						SetIcon(icon);
+					// incorporate the loaded icon into the document
+					// (either replace it or append to it)
+					fDocument->MakeEmpty(false);
+						// if append, the document savers are preserved
+					fDocument->SetIcon(icon);
+					SetIcon(icon);
 				}
 			}
 
 			if (message->what == B_PASTE)
 				be_clipboard->Unlock();
+			break;
+		}
+
+		case MSG_OPEN:
+			// If our icon is empty, we want the icon to open in this
+			// window.
+			if (fDocument->Icon()->Styles()->CountStyles() == 0
+				&& fDocument->Icon()->Paths()->CountPaths() == 0
+				&& fDocument->Icon()->Shapes()->CountShapes() == 0) {
+				message->AddPointer("window", this);
+			}
+			be_app->PostMessage(message);
+			break;
+
+		case MSG_SAVE:
+		case MSG_EXPORT:
+		{
+			DocumentSaver* saver;
+			if (message->what == MSG_SAVE)
+				saver = fDocument->NativeSaver();
+			else
+				saver = fDocument->ExportSaver();
+			if (saver != NULL) {
+				saver->Save(fDocument);
+				_PickUpActionBeforeSave();
+				break;
+			} // else fall through
+		}
+		case MSG_SAVE_AS:
+		case MSG_EXPORT_AS:
+		{
+			int32 exportMode;
+			if (message->FindInt32("export mode", &exportMode) < B_OK)
+				exportMode = EXPORT_MODE_MESSAGE;
+			entry_ref ref;
+			const char* name;
+			if (message->FindRef("directory", &ref) == B_OK
+				&& message->FindString("name", &name) == B_OK) {
+				// this message comes from the file panel
+				BDirectory dir(&ref);
+				BEntry entry;
+				if (dir.InitCheck() >= B_OK
+					&& entry.SetTo(&dir, name, true) >= B_OK
+					&& entry.GetRef(&ref) >= B_OK) {
+
+					// create the document saver and remember it for later
+					DocumentSaver* saver = _CreateSaver(ref, exportMode);
+					if (saver != NULL) {
+						if (fDocument->WriteLock()) {
+							if (exportMode == EXPORT_MODE_MESSAGE)
+								fDocument->SetNativeSaver(saver);
+							else
+								fDocument->SetExportSaver(saver);
+							_UpdateWindowTitle();
+							fDocument->WriteUnlock();
+						}
+						saver->Save(fDocument);
+						_PickUpActionBeforeSave();
+					}
+				}
+// TODO: ...
+//				_SyncPanels(fSavePanel, fOpenPanel);
+			} else {
+				// configure the file panel
+				uint32 requestRefWhat = MSG_SAVE_AS;
+				bool isExportMode = message->what == MSG_EXPORT_AS
+					|| message->what == MSG_EXPORT;
+				if (isExportMode)
+					requestRefWhat = MSG_EXPORT_AS;
+				const char* saveText = _FileName(isExportMode);
+
+				BMessage requestRef(requestRefWhat);
+				if (saveText != NULL)
+					requestRef.AddString("save text", saveText);
+				requestRef.AddMessenger("target", BMessenger(this, this));
+				be_app->PostMessage(&requestRef);
+			}
 			break;
 		}
 
@@ -214,24 +351,44 @@ MainWindow::MessageReceived(BMessage* message)
 		case MSG_REDO:
 			fDocument->CommandStack()->Redo();
 			break;
+		case MSG_UNDO_STACK_CHANGED:
+		{
+			// relable Undo item and update enabled status
+			BString label(B_TRANSLATE("Undo"));
+			fUndoMI->SetEnabled(fDocument->CommandStack()->GetUndoName(label));
+			if (fUndoMI->IsEnabled())
+				fUndoMI->SetLabel(label.String());
+			else {
+				fUndoMI->SetLabel(B_TRANSLATE_WITH_CONTEXT("<nothing to undo>",
+					"Icon-O-Matic-Menu-Edit"));
+			}
+	
+			// relable Redo item and update enabled status
+			label.SetTo(B_TRANSLATE("Redo"));
+			fRedoMI->SetEnabled(fDocument->CommandStack()->GetRedoName(label));
+			if (fRedoMI->IsEnabled())
+				fRedoMI->SetLabel(label.String());
+			else {
+				fRedoMI->SetLabel(B_TRANSLATE_WITH_CONTEXT("<nothing to redo>",
+					"Icon-O-Matic-Menu-Edit"));
+			}
+			break;
+		}
 
-		case MSG_MOUSE_FILTER_MODE: {
+		case MSG_MOUSE_FILTER_MODE:
+		{
 			uint32 mode;
 			if (message->FindInt32("mode", (int32*)&mode) == B_OK)
 				fCanvasView->SetMouseFilterMode(mode);
 			break;
 		}
 
-		case MSG_SET_ICON:
-			SetIcon(fDocument->Icon());
-			break;
-
 		case MSG_ADD_SHAPE: {
 			AddStylesCommand* styleCommand = NULL;
 			Style* style = NULL;
 			if (message->HasBool("style")) {
-				new_style(CurrentColor::Default()->Color(),
-						  fDocument->Icon()->Styles(), &style, &styleCommand);
+				new_style(fCurrentColor->Color(),
+					fDocument->Icon()->Styles(), &style, &styleCommand);
 			}
 		
 			AddPathsCommand* pathCommand = NULL;
@@ -326,12 +483,9 @@ case MSG_STYLE_TYPE_CHANGED: {
 
 	fState->DeleteManipulators();
 	Gradient* gradient = style ? style->Gradient() : NULL;
-
-	if (gradient) {
+	if (gradient != NULL) {
 		TransformGradientBox* transformBox
-			= new (nothrow) TransformGradientBox(fCanvasView,
-												 gradient,
-												 NULL);
+			= new (nothrow) TransformGradientBox(fCanvasView, gradient, NULL);
 		fState->AddManipulator(transformBox);
 	}
 	break;
@@ -375,18 +529,27 @@ case MSG_SHAPE_SELECTED: {
 			BWindow::MessageReceived(message);
 	}
 
-	fDocument->WriteUnlock();
+	if (requiresWriteLock)
+		fDocument->WriteUnlock();
 }
 
 
 bool
 MainWindow::QuitRequested()
 {
-	// forward this to app but return "false" in order
-	// to have a single code path for quitting
-	be_app->PostMessage(B_QUIT_REQUESTED);
+	if (!_CheckSaveIcon(CurrentMessage()))
+		return false;
 
-	return false;
+	BMessage message(MSG_WINDOW_CLOSED);
+
+	BMessage settings;
+	StoreSettings(&settings);	
+	message.AddMessage("settings", &settings);
+	message.AddRect("window frame", Frame());
+
+	be_app->PostMessage(&message);
+
+	return true;
 }
 
 
@@ -432,33 +595,13 @@ MainWindow::WorkspacesChanged(uint32 oldWorkspaces, uint32 newWorkspaces)
 void
 MainWindow::ObjectChanged(const Observable* object)
 {
-	if (!fDocument)
+	if (!fDocument || !fDocument->ReadLock())
 		return;
 
-	if (!Lock())
-		return;
+	if (object == fDocument->CommandStack())
+		PostMessage(MSG_UNDO_STACK_CHANGED);
 
-	if (object == fDocument->CommandStack()) {
-		// relable Undo item and update enabled status
-		BString label(B_TRANSLATE("Undo"));
-		fUndoMI->SetEnabled(fDocument->CommandStack()->GetUndoName(label));
-		if (fUndoMI->IsEnabled())
-			fUndoMI->SetLabel(label.String());
-		else
-			fUndoMI->SetLabel(B_TRANSLATE_WITH_CONTEXT("<nothing to undo>",
-				"Icon-O-Matic-Menu-Edit"));
-
-		// relable Redo item and update enabled status
-		label.SetTo(B_TRANSLATE("Redo"));
-		fRedoMI->SetEnabled(fDocument->CommandStack()->GetRedoName(label));
-		if (fRedoMI->IsEnabled())
-			fRedoMI->SetLabel(label.String());
-		else
-			fRedoMI->SetLabel(B_TRANSLATE_WITH_CONTEXT("<nothing to redo>",
-				"Icon-O-Matic-Menu-Edit"));
-	}
-
-	Unlock();
+	fDocument->ReadUnlock();
 }
 
 
@@ -479,6 +622,205 @@ MainWindow::MakeEmpty()
 
 
 void
+MainWindow::Open(const entry_ref& ref, bool append)
+{
+	BFile file(&ref, B_READ_ONLY);
+	if (file.InitCheck() < B_OK)
+		return;
+
+	Icon* icon;
+	if (append)
+		icon = new (nothrow) Icon(*fDocument->Icon());
+	else
+		icon = new (nothrow) Icon();
+
+	if (icon == NULL) {
+		// TODO: Report error to user.
+		return;
+	}
+
+	enum {
+		REF_NONE = 0,
+		REF_MESSAGE,
+		REF_FLAT,
+		REF_FLAT_ATTR,
+		REF_SVG
+	};
+	uint32 refMode = REF_NONE;
+
+	// try different file types
+	FlatIconImporter flatImporter;
+	status_t ret = flatImporter.Import(icon, &file);
+	if (ret >= B_OK) {
+		refMode = REF_FLAT;
+	} else {
+		file.Seek(0, SEEK_SET);
+		MessageImporter msgImporter;
+		ret = msgImporter.Import(icon, &file);
+		if (ret >= B_OK) {
+			refMode = REF_MESSAGE;
+		} else {
+			file.Seek(0, SEEK_SET);
+			SVGImporter svgImporter;
+			ret = svgImporter.Import(icon, &ref);
+			if (ret >= B_OK) {
+				refMode = REF_SVG;
+			} else {
+				// fall back to flat icon format but use the icon attribute
+				ret = B_OK;
+				attr_info attrInfo;
+				if (file.GetAttrInfo(kVectorAttrNodeName, &attrInfo) == B_OK) {
+					if (attrInfo.type != B_VECTOR_ICON_TYPE)
+						ret = B_ERROR;
+					// If the attribute is there, we must succeed in reading
+					// an icon! Otherwise we may overwrite an existing icon
+					// when the user saves.
+					uint8* buffer = NULL;
+					if (ret == B_OK) {
+						buffer = new(nothrow) uint8[attrInfo.size];
+						if (buffer == NULL)
+							ret = B_NO_MEMORY;
+					}
+					if (ret == B_OK) {
+						ssize_t bytesRead = file.ReadAttr(kVectorAttrNodeName,
+							B_VECTOR_ICON_TYPE, 0, buffer, attrInfo.size);
+						if (bytesRead != (ssize_t)attrInfo.size) {
+							ret = bytesRead < 0 ? (status_t)bytesRead
+								: B_IO_ERROR;
+						}
+					}
+					if (ret == B_OK) {
+						ret = flatImporter.Import(icon, buffer, attrInfo.size);
+						if (ret == B_OK)
+							refMode = REF_FLAT_ATTR;
+					}
+
+					delete[] buffer;
+				} else {
+					// If there is no icon attribute, simply fall back
+					// to creating an icon for this file. TODO: We may or may
+					// not want to display an alert asking the user if that is
+					// what he wants to do.
+					refMode = REF_FLAT_ATTR;
+				}
+			}
+		}
+	}
+
+	if (ret < B_OK) {
+		// inform user of failure at this point
+		BString helper(B_TRANSLATE("Opening the document failed!"));
+		helper << "\n\n" << B_TRANSLATE("Error: ") << strerror(ret);
+		BAlert* alert = new BAlert(
+			B_TRANSLATE_WITH_CONTEXT("bad news", "Title of error alert"),
+			helper.String(), 
+			B_TRANSLATE_WITH_CONTEXT("Bummer", 
+				"Cancel button - error alert"),	
+			NULL, NULL);
+		// launch alert asynchronously
+		alert->Go(NULL);
+
+		delete icon;
+		return;
+	}
+
+	AutoWriteLocker locker(fDocument);
+
+	// incorporate the loaded icon into the document
+	// (either replace it or append to it)
+	fDocument->MakeEmpty(!append);
+		// if append, the document savers are preserved
+	fDocument->SetIcon(icon);
+	if (!append) {
+		// document got replaced, but we have at
+		// least one ref already
+		switch (refMode) {
+			case REF_MESSAGE:
+				fDocument->SetNativeSaver(new NativeSaver(ref));
+				break;
+			case REF_FLAT:
+				fDocument->SetExportSaver(
+					new SimpleFileSaver(new FlatIconExporter(), ref));
+				break;
+			case REF_FLAT_ATTR:
+				fDocument->SetNativeSaver(
+					new AttributeSaver(ref, kVectorAttrNodeName));
+				break;
+			case REF_SVG:
+				fDocument->SetExportSaver(
+					new SimpleFileSaver(new SVGExporter(), ref));
+				break;
+		}
+	}
+
+	locker.Unlock();
+
+	SetIcon(icon);
+
+	_UpdateWindowTitle();
+}
+
+
+void
+MainWindow::Open(const BMessenger& externalObserver, const uint8* data,
+	size_t size)
+{
+	if (!_CheckSaveIcon(CurrentMessage()))
+		return;
+
+	if (!externalObserver.IsValid())
+		return;
+
+	Icon* icon = new (nothrow) Icon();
+	if (!icon)
+		return;
+
+	if (data && size > 0) {
+		// try to open the icon from the provided data
+		FlatIconImporter flatImporter;
+		status_t ret = flatImporter.Import(icon, const_cast<uint8*>(data),
+			size);
+			// NOTE: the const_cast is a bit ugly, but no harm is done
+			// the reason is that the LittleEndianBuffer knows read and write
+			// mode, in this case it is used read-only, and it does not assume
+			// ownership of the buffer
+
+		if (ret < B_OK) {
+			// inform user of failure at this point
+			BString helper(B_TRANSLATE("Opening the icon failed!"));
+			helper << "\n\n" << B_TRANSLATE("Error: ") << strerror(ret);
+			BAlert* alert = new BAlert(
+				B_TRANSLATE_WITH_CONTEXT("bad news", "Title of error alert"),
+				helper.String(), 
+				B_TRANSLATE_WITH_CONTEXT("Bummer", 
+					"Cancel button - error alert"),	
+				NULL, NULL);
+			// launch alert asynchronously
+			alert->Go(NULL);
+
+			delete icon;
+			return;
+		}
+	}
+
+	AutoWriteLocker locker(fDocument);
+
+	SetIcon(NULL);
+
+	// incorporate the loaded icon into the document
+	// (either replace it or append to it)
+	fDocument->MakeEmpty();
+	fDocument->SetIcon(icon);
+
+	fDocument->SetNativeSaver(new MessengerSaver(externalObserver));
+
+	locker.Unlock();
+
+	SetIcon(icon);
+}
+
+
+void
 MainWindow::SetIcon(Icon* icon)
 {
 	if (fIcon == icon)
@@ -488,20 +830,20 @@ MainWindow::SetIcon(Icon* icon)
 
 	fIcon = icon;
 
-	if (fIcon)
+	if (fIcon != NULL)
 		fIcon->Acquire();
 	else
 		MakeEmpty();
 
 	fCanvasView->SetIcon(fIcon);
 
-	fPathListView->SetPathContainer(fIcon ? fIcon->Paths() : NULL);
-	fPathListView->SetShapeContainer(fIcon ? fIcon->Shapes() : NULL);
+	fPathListView->SetPathContainer(fIcon != NULL ? fIcon->Paths() : NULL);
+	fPathListView->SetShapeContainer(fIcon != NULL ? fIcon->Shapes() : NULL);
 
-	fStyleListView->SetStyleContainer(fIcon ? fIcon->Styles() : NULL);
-	fStyleListView->SetShapeContainer(fIcon ? fIcon->Shapes() : NULL);
+	fStyleListView->SetStyleContainer(fIcon != NULL ? fIcon->Styles() : NULL);
+	fStyleListView->SetShapeContainer(fIcon != NULL ? fIcon->Shapes() : NULL);
 
-	fShapeListView->SetShapeContainer(fIcon ? fIcon->Shapes() : NULL);
+	fShapeListView->SetShapeContainer(fIcon != NULL ? fIcon->Shapes() : NULL);
 
 	// icon previews
 	fIconPreview16Folder->SetIcon(fIcon);
@@ -512,7 +854,7 @@ MainWindow::SetIcon(Icon* icon)
 	fIconPreview64->SetIcon(fIcon);
 
 	// keep this last
-	if (oldIcon)
+	if (oldIcon != NULL)
 		oldIcon->Release();
 }
 
@@ -523,8 +865,6 @@ MainWindow::SetIcon(Icon* icon)
 void
 MainWindow::StoreSettings(BMessage* archive)
 {
-	if (archive->ReplaceRect("main window frame", Frame()) != B_OK)
-		archive->AddRect("main window frame", Frame());
 	if (archive->ReplaceUInt32("mouse filter mode",
 			fCanvasView->MouseFilterMode()) != B_OK) {
 		archive->AddUInt32("mouse filter mode",
@@ -536,15 +876,14 @@ MainWindow::StoreSettings(BMessage* archive)
 void
 MainWindow::RestoreSettings(const BMessage* archive)
 {
-	BRect frame;
-	if (archive->FindRect("main window frame", &frame) == B_OK) {
-		make_sure_frame_is_on_screen(frame, this);
-		MoveTo(frame.LeftTop());
-		ResizeTo(frame.Width(), frame.Height());
-	}
 	uint32 mouseFilterMode;
-	if (archive->FindUInt32("mouse filter mode", &mouseFilterMode) == B_OK)
+	if (archive->FindUInt32("mouse filter mode", &mouseFilterMode) == B_OK) {
 		fCanvasView->SetMouseFilterMode(mouseFilterMode);
+		fMouseFilterOffMI->SetMarked(mouseFilterMode == SNAPPING_OFF);
+		fMouseFilter64MI->SetMarked(mouseFilterMode == SNAPPING_64);
+		fMouseFilter32MI->SetMarked(mouseFilterMode == SNAPPING_32);
+		fMouseFilter16MI->SetMarked(mouseFilterMode == SNAPPING_16);
+	}
 }
 
 
@@ -555,7 +894,7 @@ void
 MainWindow::_Init()
 {
 	// create the GUI
-	_CreateGUI(Bounds());
+	_CreateGUI();
 
 	// fix up scrollbar layout in listviews
 	_ImproveScrollBarLayout(fPathListView);
@@ -570,6 +909,7 @@ MainWindow::_Init()
 	fCanvasView->SetCatchAllEvents(true);
 	fCanvasView->SetCommandStack(fDocument->CommandStack());
 	fCanvasView->SetMouseFilterMode(SNAPPING_64);
+	fMouseFilter64MI->SetMarked(true);
 //	fCanvasView->SetSelection(fDocument->Selection());
 
 	fPathListView->SetMenu(fPathMenu);
@@ -579,9 +919,10 @@ MainWindow::_Init()
 	fStyleListView->SetMenu(fStyleMenu);
 	fStyleListView->SetCommandStack(fDocument->CommandStack());
 	fStyleListView->SetSelection(fDocument->Selection());
+	fStyleListView->SetCurrentColor(fCurrentColor);
 
 	fStyleView->SetCommandStack(fDocument->CommandStack());
-	fStyleView->SetCurrentColor(CurrentColor::Default());
+	fStyleView->SetCurrentColor(fCurrentColor);
 
 	fShapeListView->SetMenu(fShapeMenu);
 	fShapeListView->SetCommandStack(fDocument->CommandStack());
@@ -597,7 +938,7 @@ MainWindow::_Init()
 
 	fDocument->CommandStack()->AddObserver(this);
 
-	fSwatchGroup->SetCurrentColor(CurrentColor::Default());
+	fSwatchGroup->SetCurrentColor(fCurrentColor);
 
 	SetIcon(fDocument->Icon());
 
@@ -608,10 +949,8 @@ MainWindow::_Init()
 
 
 void
-MainWindow::_CreateGUI(BRect bounds)
+MainWindow::_CreateGUI()
 {
-	const float splitWidth = 13 * be_plain_font->Size();
-
 	SetLayout(new BGroupLayout(B_HORIZONTAL));
 
 	BGridLayout* layout = new BGridLayout();
@@ -622,10 +961,15 @@ MainWindow::_CreateGUI(BRect bounds)
 
 	BGroupView* leftTopView = new BGroupView(B_VERTICAL, 0);
 	layout->AddView(leftTopView, 0, 0);
-	leftTopView->SetExplicitMinSize(BSize(splitWidth, B_SIZE_UNSET));
 
 	// views along the left side
-	leftTopView->AddChild(_CreateMenuBar(bounds));
+	leftTopView->AddChild(_CreateMenuBar());
+
+	float splitWidth = 13 * be_plain_font->Size();
+	BSize minSize = leftTopView->MinSize();
+	splitWidth = std::max(splitWidth, minSize.width);
+	leftTopView->SetExplicitMaxSize(BSize(splitWidth, B_SIZE_UNSET));
+	leftTopView->SetExplicitMinSize(BSize(splitWidth, B_SIZE_UNSET));
 
 	BGroupView* iconPreviews = new BGroupView(B_HORIZONTAL);
 	iconPreviews->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -644,7 +988,6 @@ MainWindow::_CreateGUI(BRect bounds)
 		"icon preview 32 desktop");
 	fIconPreview32Desktop->SetLowColor(ui_color(B_DESKTOP_COLOR));
 
-//	fIconPreview48 = new IconView(bounds, "icon preview 48");
 	fIconPreview64 = new IconView(BRect(0, 0, 63, 63), "icon preview 64");
 	fIconPreview64->SetLowColor(ui_color(B_DESKTOP_COLOR));
 
@@ -675,10 +1018,10 @@ MainWindow::_CreateGUI(BRect bounds)
 	
 	BGroupView* leftSideView = new BGroupView(B_VERTICAL, 0);
 	layout->AddView(leftSideView, 0, 1);
-	leftSideView->SetExplicitMinSize(BSize(splitWidth, B_SIZE_UNSET));
+	leftSideView->SetExplicitMaxSize(BSize(splitWidth, B_SIZE_UNSET));
 
 	// path menu and list view
-	BMenuBar* menuBar = new BMenuBar(bounds, "path menu bar");
+	BMenuBar* menuBar = new BMenuBar("path menu bar");
 	menuBar->AddItem(fPathMenu);
 	leftSideView->AddChild(menuBar);
 
@@ -690,7 +1033,7 @@ MainWindow::_CreateGUI(BRect bounds)
 	leftSideView->AddChild(scrollView);
 
 	// shape list view
-	menuBar = new BMenuBar(bounds, "shape menu bar");
+	menuBar = new BMenuBar("shape menu bar");
 	menuBar->AddItem(fShapeMenu);
 	leftSideView->AddChild(menuBar);
 
@@ -701,7 +1044,7 @@ MainWindow::_CreateGUI(BRect bounds)
 	leftSideView->AddChild(scrollView);
 
 	// transformer list view
-	menuBar = new BMenuBar(bounds, "transformer menu bar");
+	menuBar = new BMenuBar("transformer menu bar");
 	menuBar->AddItem(fTransformerMenu);
 	leftSideView->AddChild(menuBar);
 
@@ -712,7 +1055,7 @@ MainWindow::_CreateGUI(BRect bounds)
 	leftSideView->AddChild(scrollView);
 
 	// property list view
-	menuBar = new BMenuBar(bounds, "property menu bar");
+	menuBar = new BMenuBar("property menu bar");
 	menuBar->AddItem(fPropertyMenu);
 	leftSideView->AddChild(menuBar);
 
@@ -750,7 +1093,7 @@ MainWindow::_CreateGUI(BRect bounds)
 	topSide->AddView(styleGroupView);
 
 	// style list view
-	menuBar = new BMenuBar(bounds, "style menu bar");
+	menuBar = new BMenuBar("style menu bar");
 	menuBar->AddItem(fStyleMenu);
 	styleGroup->AddView(menuBar);
 
@@ -771,7 +1114,7 @@ MainWindow::_CreateGUI(BRect bounds)
 	BView* swatchGroupView = new BView("swatch group", 0, swatchGroup);
 	topSide->AddView(swatchGroupView);
 
-	menuBar = new BMenuBar(bounds, "swatches menu bar");
+	menuBar = new BMenuBar("swatches menu bar");
 	menuBar->AddItem(fSwatchMenu);
 	swatchGroup->AddView(menuBar);
 
@@ -786,9 +1129,9 @@ MainWindow::_CreateGUI(BRect bounds)
 }
 
 BMenuBar*
-MainWindow::_CreateMenuBar(BRect frame)
+MainWindow::_CreateMenuBar()
 {
-	BMenuBar* menuBar = new BMenuBar(frame, "main menu");
+	BMenuBar* menuBar = new BMenuBar("main menu");
 
 
 	#undef B_TRANSLATE_CONTEXT
@@ -814,13 +1157,20 @@ MainWindow::_CreateMenuBar(BRect frame)
 	#undef B_TRANSLATE_CONTEXT
 	#define B_TRANSLATE_CONTEXT "Icon-O-Matic-Menu-File"
 	
-	
-	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("New"),
-		new BMessage(MSG_NEW), 'N'));
-	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Open"B_UTF8_ELLIPSIS),
-		new BMessage(MSG_OPEN), 'O'));
-	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Append"B_UTF8_ELLIPSIS),
-		new BMessage(MSG_APPEND), 'O', B_SHIFT_KEY));
+
+	BMenuItem* item = new BMenuItem(B_TRANSLATE("New"),
+		new BMessage(MSG_NEW), 'N');
+	fileMenu->AddItem(item);
+	item->SetTarget(be_app);
+	item = new BMenuItem(B_TRANSLATE("Open"B_UTF8_ELLIPSIS),
+		new BMessage(MSG_OPEN), 'O');
+	fileMenu->AddItem(item);
+	BMessage* appendMessage = new BMessage(MSG_APPEND);
+	appendMessage->AddPointer("window", this);
+	item = new BMenuItem(B_TRANSLATE("Append"B_UTF8_ELLIPSIS),
+		appendMessage, 'O', B_SHIFT_KEY);
+	fileMenu->AddItem(item);
+	item->SetTarget(be_app);
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Save"),
 		new BMessage(MSG_SAVE), 'S'));
@@ -832,10 +1182,12 @@ MainWindow::_CreateMenuBar(BRect frame)
 	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Export as"B_UTF8_ELLIPSIS),
 		new BMessage(MSG_EXPORT_AS), 'P', B_SHIFT_KEY));
 	fileMenu->AddSeparatorItem();
-	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
-		new BMessage(B_QUIT_REQUESTED), 'Q'));
-	fileMenu->SetTargetForItems(be_app);
-
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Close"),
+		new BMessage(B_QUIT_REQUESTED), 'W'));
+	item = new BMenuItem(B_TRANSLATE("Quit"),
+		new BMessage(B_QUIT_REQUESTED), 'Q');
+	fileMenu->AddItem(item);
+	item->SetTarget(be_app);
 
 	// Edit
 	#undef B_TRANSLATE_CONTEXT
@@ -862,21 +1214,24 @@ MainWindow::_CreateMenuBar(BRect frame)
 	BMenu* filterModeMenu = new BMenu(B_TRANSLATE("Snap to grid"));
 	BMessage* message = new BMessage(MSG_MOUSE_FILTER_MODE);
 	message->AddInt32("mode", SNAPPING_OFF);
-	filterModeMenu->AddItem(new BMenuItem(B_TRANSLATE("Off"), message, '4'));
+	fMouseFilterOffMI = new BMenuItem(B_TRANSLATE("Off"), message, '4');
+	filterModeMenu->AddItem(fMouseFilterOffMI);
 
 	message = new BMessage(MSG_MOUSE_FILTER_MODE);
 	message->AddInt32("mode", SNAPPING_64);
-	filterModeMenu->AddItem(new BMenuItem("64 x 64", message, '3'));
+	fMouseFilter64MI = new BMenuItem("64 x 64", message, '3');
+	filterModeMenu->AddItem(fMouseFilter64MI);
 
 	message = new BMessage(MSG_MOUSE_FILTER_MODE);
 	message->AddInt32("mode", SNAPPING_32);
-	filterModeMenu->AddItem(new BMenuItem("32 x 32", message, '2'));
+	fMouseFilter32MI = new BMenuItem("32 x 32", message, '2');
+	filterModeMenu->AddItem(fMouseFilter32MI);
 
 	message = new BMessage(MSG_MOUSE_FILTER_MODE);
 	message->AddInt32("mode", SNAPPING_16);
-	filterModeMenu->AddItem(new BMenuItem("16 x 16", message, '1'));
+	fMouseFilter16MI = new BMenuItem("16 x 16", message, '1');
+	filterModeMenu->AddItem(fMouseFilter16MI);
 
-	filterModeMenu->ItemAt(1)->SetMarked(true);
 	filterModeMenu->SetRadioMode(true);
 
 	settingsMenu->AddItem(filterModeMenu);
@@ -900,3 +1255,161 @@ MainWindow::_ImproveScrollBarLayout(BView* target)
 		scrollBar->ResizeBy(0, 1);
 	}
 }
+
+
+// #pragma mark -
+
+
+bool
+MainWindow::_CheckSaveIcon(const BMessage* currentMessage)
+{
+	if (fDocument->IsEmpty() || fDocument->CommandStack()->IsSaved())
+		return true;
+
+	// Make sure the user sees us.
+	Activate();
+
+	BAlert* alert = new BAlert("save", 
+		B_TRANSLATE("Save changes to current icon?"), B_TRANSLATE("Discard"),
+		 B_TRANSLATE("Cancel"), B_TRANSLATE("Save"));
+	int32 choice = alert->Go();
+	switch (choice) {
+		case 0:
+			// discard
+			return true;
+		case 1:
+			// cancel
+			return false;
+		case 2:
+		default:
+			// cancel (save first) but pick up what we were doing before
+			PostMessage(MSG_SAVE);
+			if (currentMessage != NULL) {
+				delete fMessageAfterSave;
+				fMessageAfterSave = new BMessage(*currentMessage);
+			}
+			return false;
+	}
+}
+
+
+void
+MainWindow::_PickUpActionBeforeSave()
+{
+	if (fDocument->WriteLock()) {
+		fDocument->CommandStack()->Save();
+		fDocument->WriteUnlock();
+	}
+
+	if (fMessageAfterSave == NULL)
+		return;
+
+	PostMessage(fMessageAfterSave);
+	delete fMessageAfterSave;
+	fMessageAfterSave = NULL;
+}
+
+
+// #pragma mark -
+
+
+void
+MainWindow::_MakeIconEmpty()
+{
+	if (!_CheckSaveIcon(CurrentMessage()))
+		return;
+
+	AutoWriteLocker locker(fDocument);
+
+	MakeEmpty();
+	fDocument->MakeEmpty();
+
+	locker.Unlock();
+}
+
+
+DocumentSaver*
+MainWindow::_CreateSaver(const entry_ref& ref, uint32 exportMode)
+{
+	DocumentSaver* saver;
+
+	switch (exportMode) {
+		case EXPORT_MODE_FLAT_ICON:
+			saver = new SimpleFileSaver(new FlatIconExporter(), ref);
+			break;
+
+		case EXPORT_MODE_ICON_ATTR:
+		case EXPORT_MODE_ICON_MIME_ATTR: {
+			const char* attrName
+				= exportMode == EXPORT_MODE_ICON_ATTR ?
+					kVectorAttrNodeName : kVectorAttrMimeName;
+			saver = new AttributeSaver(ref, attrName);
+			break;
+		}
+
+		case EXPORT_MODE_ICON_RDEF:
+			saver = new SimpleFileSaver(new RDefExporter(), ref);
+			break;
+		case EXPORT_MODE_ICON_SOURCE:
+			saver = new SimpleFileSaver(new SourceExporter(), ref);
+			break;
+
+		case EXPORT_MODE_BITMAP_16:
+			saver = new SimpleFileSaver(new BitmapExporter(16), ref);
+			break;
+		case EXPORT_MODE_BITMAP_32:
+			saver = new SimpleFileSaver(new BitmapExporter(32), ref);
+			break;
+		case EXPORT_MODE_BITMAP_64:
+			saver = new SimpleFileSaver(new BitmapExporter(64), ref);
+			break;
+
+		case EXPORT_MODE_BITMAP_SET:
+			saver = new BitmapSetSaver(ref);
+			break;
+
+		case EXPORT_MODE_SVG:
+			saver = new SimpleFileSaver(new SVGExporter(), ref);
+			break;
+
+		case EXPORT_MODE_MESSAGE:
+		default:
+			saver = new NativeSaver(ref);
+			break;
+	}
+
+	return saver;
+}
+
+
+const char*
+MainWindow::_FileName(bool preferExporter) const
+{
+	FileSaver* saver1;
+	FileSaver* saver2;
+	if (preferExporter) {
+		saver1 = dynamic_cast<FileSaver*>(fDocument->ExportSaver());
+		saver2 = dynamic_cast<FileSaver*>(fDocument->NativeSaver());
+	} else {
+		saver1 = dynamic_cast<FileSaver*>(fDocument->NativeSaver());
+		saver2 = dynamic_cast<FileSaver*>(fDocument->ExportSaver());
+	}
+	const char* fileName = NULL;
+	if (saver1 != NULL)
+		fileName = saver1->Ref()->name;
+	if ((fileName == NULL || fileName[0] == '\0') && saver2 != NULL)
+		fileName = saver2->Ref()->name;
+	return fileName;
+}
+
+
+void
+MainWindow::_UpdateWindowTitle()
+{
+	const char* fileName = _FileName(false);
+	if (fileName != NULL)
+		SetTitle(fileName);
+	else
+		SetTitle(B_TRANSLATE_SYSTEM_NAME("Icon-O-Matic"));
+}
+

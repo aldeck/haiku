@@ -78,23 +78,34 @@ public:
 			int32				PrefixLen(int family)
 									{ return fNetmask[family].PrefixLength(); }
 
+			status_t			RenegotiateAddresses();
 
 			const char*			Name()  { return fName.String(); }
 			const char*			Domain() { return fDomain.String(); }
 			bool				IsDisabled() { return fDisabled; }
+
+			bool				IsWireless() {
+									return fNetworkDevice->IsWireless(); }
+			bool				IsEthernet() {
+									return fNetworkDevice->IsEthernet(); }
+			bool				HasLink() {
+									return fNetworkDevice->HasLink(); }
+
 			const BString&		WirelessNetwork() { return fWirelessNetwork; }
 
 			BObjectList<BString>& NameServers() { return fNameServers; }
 
+			/*	Grab and write interface settings directly from interface */
 			void				ReadConfiguration();
+			void				SetConfiguration();
+
+			/*	Grab and write interface settings from interface configuration
+				file and let NetServer sort it out */
+			void				LoadConfiguration();
 			void				WriteConfiguration();
 
 private:
 			status_t			_DetectProtocols();
-			BNetworkInterface	fNetworkInterface;
-			InterfaceAddressMap	fInterfaceAddressMap;
-
-			protocols			fProtocols[MAX_PROTOCOLS];
 
 			// Stored network addresses and paramaters
 			BoolMap				fAutoConfigure;
@@ -107,6 +118,13 @@ private:
 			bool				fDisabled;
 			BObjectList<BString> fNameServers;
 			BString				fWirelessNetwork;
+
+			protocols			fProtocols[MAX_PROTOCOLS];
+
+			BNetworkInterface*	fNetworkInterface;
+			BNetworkDevice*		fNetworkDevice;
+
+			InterfaceAddressMap	fInterfaceAddressMap;
 };
 
 

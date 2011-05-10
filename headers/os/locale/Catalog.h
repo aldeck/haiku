@@ -63,6 +63,10 @@ private:
 };
 
 
+#undef B_TRANSLATE_SYSTEM_NAME_CONTEXT
+#define B_TRANSLATE_SYSTEM_NAME_CONTEXT "System name"
+
+
 #ifndef B_COLLECTING_CATKEYS
 
 #ifndef B_AVOID_TRANSLATION_MACROS
@@ -114,6 +118,12 @@ private:
 #define B_TRANSLATE_ID(id) \
 	BLocaleRoster::Default()->GetCatalog()->GetString((id))
 
+#undef B_TRANSLATE_SYSTEM_NAME
+#define B_TRANSLATE_SYSTEM_NAME(string) \
+	BLocaleRoster::Default()->IsFilesystemTranslationPreferred() \
+	? BLocaleRoster::Default()->GetCatalog()->GetString((string), \
+		B_TRANSLATE_SYSTEM_NAME_CONTEXT) : (string)
+
 // Translation markers which can be used to mark static strings/IDs which
 // are used as key for translation requests (at other places in the code):
 /* example:
@@ -153,6 +163,10 @@ private:
 #define B_TRANSLATE_MARK_ID(id) \
 	BCatalogAddOn::MarkForTranslation((id))
 
+#undef B_TRANSLATE_MARK_SYSTEM_NAME
+#define B_TRANSLATE_MARK_SYSTEM_NAME(str) \
+	BCatalogAddOn::MarkForTranslation((str), B_TRANSLATE_SYSTEM_NAME_CONTEXT, "")
+
 // Translation macros which do not let collectcatkeys try to collect the key
 // (useful in combination with the marking macros above):
 #undef B_TRANSLATE_NOCOLLECT
@@ -170,6 +184,10 @@ private:
 #undef B_TRANSLATE_NOCOLLECT_ID
 #define B_TRANSLATE_NOCOLLECT_ID(id) \
 	B_TRANSLATE_ID(id)
+
+#undef B_TRANSLATE_NOCOLLECT_SYSTEM_NAME
+#define B_TRANSLATE_NOCOLLECT_SYSTEM_NAME(str) \
+	B_TRANSLATE_SYSTEM_NAME(str)
 
 #endif	/* B_AVOID_TRANSLATION_MACROS */
 
@@ -202,6 +220,10 @@ private:
 #define B_TRANSLATE_ID(id) \
 	B_CATKEY((id))
 
+#undef B_TRANSLATE_SYSTEM_NAME
+#define B_TRANSLATE_SYSTEM_NAME(string) \
+	B_CATKEY((string), B_TRANSLATE_SYSTEM_NAME_CONTEXT)
+
 #undef B_TRANSLATE_MARK
 #define B_TRANSLATE_MARK(str) \
 	B_CATKEY((str), B_TRANSLATE_CONTEXT)
@@ -218,6 +240,10 @@ private:
 #define B_TRANSLATE_MARK_ID(id) \
 	B_CATKEY((id))
 
+#undef B_TRANSLATE_MARK_SYSTEM_NAME
+#define B_TRANSLATE_MARK_SYSTEM_NAME(str) \
+	B_CATKEY((str), B_TRANSLATE_SYSTEM_NAME_CONTEXT, "")
+
 #undef B_TRANSLATE_NOCOLLECT
 #define B_TRANSLATE_NOCOLLECT(str) \
 	(void)
@@ -232,6 +258,10 @@ private:
 
 #undef B_TRANSLATE_NOCOLLECT_ID
 #define B_TRANSLATE_NOCOLLECT_ID(id) \
+	(void)
+
+#undef B_TRANSLATE_NOCOLLECT_SYSTEM_NAME
+#define B_TRANSLATE_NOCOLLECT_SYSTEM_NAME(str) \
 	(void)
 
 #endif	/* B_COLLECTING_CATKEYS */

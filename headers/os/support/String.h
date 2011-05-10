@@ -28,6 +28,7 @@ public:
 			int32			CountChars() const;
 			int32			CountBytes(int32 fromCharOffset,
 								int32 charCount) const;
+			bool			IsEmpty() const;
 
 			// Assignment
 			BString&		operator=(const BString& string);
@@ -49,7 +50,7 @@ public:
 			BString&		SetToChars(const BString& string, int32 charCount);
 			BString&		AdoptChars(BString& from, int32 charCount);
 			
-			BString&		SetToArguments(const char *format, ...);
+			BString&		SetToFormat(const char* format, ...);
 
 			// Substring copying
 			BString&		CopyInto(BString& into, int32 fromOffset,
@@ -394,6 +395,13 @@ BString::Length() const
 	// the most significant bit is reserved; accessing
 	// it in any way will cause the computer to explode
 	return fPrivateData ? (*(((int32 *)fPrivateData) - 1) & 0x7fffffff) : 0;
+}
+
+
+inline bool
+BString::IsEmpty() const
+{
+	return !Length();
 }
 
 

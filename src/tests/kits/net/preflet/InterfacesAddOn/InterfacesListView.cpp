@@ -29,6 +29,7 @@
 #include <NetworkInterface.h>
 #include <NetworkRoster.h>
 #include <Resources.h>
+#include <Window.h>
 
 #include <AutoDeleter.h>
 
@@ -144,9 +145,9 @@ InterfaceListItem::DrawItem(BView* owner, BRect /*bounds*/, bool complete)
 
 	iconPt += BPoint(4, 4);
 	statePt += BPoint(0, fFirstlineOffset);
-	namePt += BPoint(32 + 12, fFirstlineOffset);
-	v4addrPt += BPoint(32 + 12, fSecondlineOffset);
-	v6addrPt += BPoint(32 + 12, fThirdlineOffset);
+	namePt += BPoint(ICON_SIZE + 12, fFirstlineOffset);
+	v4addrPt += BPoint(ICON_SIZE + 12, fSecondlineOffset);
+	v6addrPt += BPoint(ICON_SIZE + 12, fThirdlineOffset);
 
 	statePt
 		-= BPoint(be_plain_font->StringWidth(interfaceState.String()), 0);
@@ -274,7 +275,8 @@ InterfaceListItem::_PopulateBitmaps(const char* mediaType) {
 
 	if (interfaceHVIF) {
 		// Now build the bitmap
-		interfaceBitmap = new BBitmap(BRect(0, 0, 31, 31), 0, B_RGBA32);
+		interfaceBitmap = new BBitmap(BRect(0, 0, ICON_SIZE, ICON_SIZE),
+			0, B_RGBA32);
 		if (BIconUtils::GetVectorIcon(interfaceHVIF,
 			iconSize, interfaceBitmap) == B_OK)
 			fIcon = interfaceBitmap;
@@ -287,7 +289,8 @@ InterfaceListItem::_PopulateBitmaps(const char* mediaType) {
 		B_VECTOR_ICON_TYPE, "offline", &iconSize);
 
 	if (offlineHVIF) {
-		fIconOffline = new BBitmap(BRect(0, 0, 31, 31), 0, B_RGBA32);
+		fIconOffline = new BBitmap(BRect(0, 0, ICON_SIZE, ICON_SIZE),
+			0, B_RGBA32);
 		BIconUtils::GetVectorIcon(offlineHVIF, iconSize, fIconOffline);
 	}
 
@@ -295,7 +298,8 @@ InterfaceListItem::_PopulateBitmaps(const char* mediaType) {
 		B_VECTOR_ICON_TYPE, "pending", &iconSize);
 
 	if (pendingHVIF) {
-		fIconPending = new BBitmap(BRect(0, 0, 31, 31), 0, B_RGBA32);
+		fIconPending = new BBitmap(BRect(0, 0, ICON_SIZE, ICON_SIZE),
+			0, B_RGBA32);
 		BIconUtils::GetVectorIcon(pendingHVIF, iconSize, fIconPending);
 	}
 
@@ -303,7 +307,8 @@ InterfaceListItem::_PopulateBitmaps(const char* mediaType) {
 		B_VECTOR_ICON_TYPE, "online", &iconSize);
 
 	if (onlineHVIF) {
-		fIconOnline = new BBitmap(BRect(0, 0, 31, 31), 0, B_RGBA32);
+		fIconOnline = new BBitmap(BRect(0, 0, ICON_SIZE, ICON_SIZE),
+			0, B_RGBA32);
 		BIconUtils::GetVectorIcon(onlineHVIF, iconSize, fIconOnline);
 	}
 
@@ -334,6 +339,13 @@ InterfacesListView::AttachedToWindow()
 
 	start_watching_network(
 		B_WATCH_NETWORK_INTERFACE_CHANGES | B_WATCH_NETWORK_LINK_CHANGES, this);
+}
+
+
+void
+InterfacesListView::FrameResized(float width, float height)
+{
+	Invalidate();
 }
 
 
@@ -383,6 +395,27 @@ InterfacesListView::FindItem(const char* name)
 
 
 status_t
+InterfacesListView::SaveItems()
+{
+	// Grab each fSettings instance and write it's settings
+	for (int32 i = CountItems(); i-- > 0;) {
+		InterfaceListItem* item = dynamic_cast<InterfaceListItem*>(ItemAt(i));
+		if (item == NULL)
+			continue;
+
+		if (strcmp(item->Name(), "loop") == 0)
+			continue;
+
+		NetworkSettings* ns = item->GetSettings();
+		// TODO : SetConfiguration doesn't use the interface settings file
+		ns->SetConfiguration();
+	}
+
+	return B_OK;
+}
+
+
+status_t
 InterfacesListView::_InitList()
 {
 	BNetworkRoster& roster = BNetworkRoster::Default();
@@ -420,6 +453,9 @@ InterfacesListView::_HandleNetworkMessage(BMessage* message)
 
 	if (message->FindString("interface", &name) != B_OK
 		&& message->FindString("device", &name) != B_OK)
+		return;
+
+	if (strcmp(name, "loop") == 0)
 		return;
 
 	InterfaceListItem* item = FindItem(name);

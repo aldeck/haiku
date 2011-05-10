@@ -22,6 +22,7 @@
 #include <Button.h>
 #include <Catalog.h>
 #include <CheckBox.h>
+#include <ControlLook.h>
 #include <File.h>
 #include <FilePanel.h>
 #include <FindDirectory.h>
@@ -34,6 +35,7 @@
 #include <MessageFilter.h>
 #include <Path.h>
 #include <Roster.h>
+#include <SpaceLayoutItem.h>
 #include <String.h>
 #include <StringView.h>
 #include <TextControl.h>
@@ -108,7 +110,7 @@ public:
 ScreenshotWindow::ScreenshotWindow(const Utility& utility, bool silent,
 	bool clipboard)
 	:
-	BWindow(BRect(0, 0, 200.0, 100.0), B_TRANSLATE("Screenshot"),
+	BWindow(BRect(0, 0, 200.0, 100.0), B_TRANSLATE_SYSTEM_NAME("Screenshot"),
 		B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AVOID_FRONT
 		| B_QUIT_ON_WINDOW_CLOSE | B_AUTO_UPDATE_SIZE_LIMITS
 		| B_CLOSE_ON_ESCAPE),
@@ -171,56 +173,62 @@ ScreenshotWindow::ScreenshotWindow(const Utility& utility, bool silent,
 	BStringView* seconds = new BStringView("", B_TRANSLATE("seconds"));
 	seconds->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
-	BMenuField* menuField2 = new BMenuField(B_TRANSLATE("Save in:"),
+	BMenuField* menuLocation = new BMenuField(B_TRANSLATE("Save in:"),
 		fOutputPathMenu);
 
 	fTranslatorMenu = new BMenu(B_TRANSLATE("Please select"));
 	_SetupTranslatorMenu();
-	BMenuField* menuField = new BMenuField(B_TRANSLATE("Save as:"),
+	BMenuField* menuFormat = new BMenuField(B_TRANSLATE("Save as:"),
 		fTranslatorMenu);
 
+	BButton* showSettings =  new BButton("", B_TRANSLATE("Settings"B_UTF8_ELLIPSIS),
+			new BMessage(kSettings));
+	showSettings->SetExplicitAlignment(BAlignment(B_ALIGN_RIGHT, B_ALIGN_BOTTOM));
+	
 	BBox* divider = new BBox(B_FANCY_BORDER, NULL);
 	divider->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 1));
 
 	BButton* saveScreenshot  = new BButton("", B_TRANSLATE("Save"),
 		new BMessage(kSaveScreenshot));
 
-	fPreview = new PreviewView();
+	const float kSpacing = be_control_look->DefaultItemSpacing();
+	const float kLabelSpacing = be_control_look->DefaultLabelSpacing();
 
-	BGridLayout* gridLayout = BGridLayoutBuilder(0.0, 5.0)
-		.Add(fNameControl->CreateLabelLayoutItem(), 0, 0)
-		.Add(fNameControl->CreateTextViewLayoutItem(), 1, 0)
-		.Add(menuField->CreateLabelLayoutItem(), 0, 1)
-		.Add(menuField->CreateMenuBarLayoutItem(), 1, 1)
-		.Add(new BButton("", B_TRANSLATE("Settings"B_UTF8_ELLIPSIS),
-			new BMessage(kSettings)), 2, 1)
-		.Add(menuField2->CreateLabelLayoutItem(), 0, 2)
-		.Add(menuField2->CreateMenuBarLayoutItem(), 1, 2);
+	fPreview = new PreviewView();
+	
+	BGridLayout* gridLayout = BGridLayoutBuilder(0.0, kSpacing / 2)
+		.Add(fDelayControl->CreateLabelLayoutItem(), 0, 0)
+		.Add(fDelayControl->CreateTextViewLayoutItem(), 1, 0)
+		.Add(BSpaceLayoutItem::CreateHorizontalStrut(kLabelSpacing), 2, 0)
+		.Add(seconds, 3, 0)	
+		.Add(fNameControl->CreateLabelLayoutItem(), 0, 1)
+		.Add(fNameControl->CreateTextViewLayoutItem(), 1, 1, 3, 1)
+		.Add(menuLocation->CreateLabelLayoutItem(), 0, 2)
+		.Add(menuLocation->CreateMenuBarLayoutItem(), 1, 2, 3, 1)
+		.Add(menuFormat->CreateLabelLayoutItem(), 0, 3)
+		.Add(menuFormat->CreateMenuBarLayoutItem(), 1, 3, 3, 1);
+	
 	gridLayout->SetMinColumnWidth(1,
-		menuField->StringWidth("SomethingLongHere"));
+		menuFormat->StringWidth("SomethingLongHere"));
 
 	SetLayout(new BGroupLayout(B_HORIZONTAL, 0));
 
 	AddChild(BGroupLayoutBuilder(B_VERTICAL, 0)
-		.Add(BGroupLayoutBuilder(B_HORIZONTAL, 10.0)
+		.Add(BGroupLayoutBuilder(B_HORIZONTAL, kSpacing)
 			.Add(fPreview)
 			.AddGroup(B_VERTICAL, 0)
 				.Add(fActiveWindow)
 				.Add(fWindowBorder)
 				.Add(fShowCursor)
-				.AddGroup(B_HORIZONTAL, 5.0)
-					.Add(fDelayControl->CreateLabelLayoutItem())
-					.Add(fDelayControl->CreateTextViewLayoutItem())
-					.Add(seconds)
-					.End()
-				.AddStrut(10.0)
+				.AddStrut(kSpacing)
 				.Add(gridLayout)
+				.Add(showSettings)
 				.AddGlue()
 				.End())
-		.AddStrut(10)
+		.AddStrut(kSpacing)
 		.Add(divider)
-		.AddStrut(10)
-		.AddGroup(B_HORIZONTAL, 10.0)
+		.AddStrut(kSpacing)
+		.AddGroup(B_HORIZONTAL, kSpacing)
 			.Add(new BButton("", B_TRANSLATE("Copy to clipboard"),
 				new BMessage(B_COPY)))
 			.Add(new BButton("", B_TRANSLATE("New screenshot"),
@@ -228,7 +236,7 @@ ScreenshotWindow::ScreenshotWindow(const Utility& utility, bool silent,
 			.AddGlue()
 			.Add(saveScreenshot)
 			.End()
-		.SetInsets(10.0, 10.0, 10.0, 10.0)
+		.SetInsets(kSpacing, kSpacing, kSpacing, kSpacing)
 	);
 
 	saveScreenshot->MakeDefault(true);
@@ -324,6 +332,23 @@ ScreenshotWindow::MessageReceived(BMessage* message)
 					B_TRANSLATE("Cancel"));
 			}
 			fOutputPathPanel->Show();
+			break;
+		}
+
+		case B_REFS_RECEIVED:
+		{
+			entry_ref ref;
+			if (message->FindRef("refs", &ref) == B_OK) {
+				BEntry entry(&ref, true);
+				if (entry.InitCheck() == B_OK) {
+					BPath path;
+					// Could return B_BUSY
+					if (entry.GetPath(&path) == B_OK) {
+						BString label(path.Path());
+						_AddItemToPathMenu(path.Path(), label, 3, true);
+					}
+				}
+			}
 			break;
 		}
 
@@ -501,6 +526,23 @@ void
 ScreenshotWindow::_AddItemToPathMenu(const char* path, BString& label,
 	int32 index, bool markItem)
 {
+	// Make sure that item won't be a duplicate of an existing one
+	for (int32 i = fOutputPathMenu->CountItems() - 1; i >= 0; --i) {
+		BMenuItem* menuItem = fOutputPathMenu->ItemAt(i);
+		BMessage* message = menuItem->Message();
+		const char* pathFromItem;
+		if (message != NULL && message->what == kLocationChanged
+			&& message->FindString("path", &pathFromItem) == B_OK
+			&& !strcmp(path, pathFromItem)) {
+
+			if (markItem) {
+				fOutputPathMenu->ItemAt(i)->SetMarked(true);
+				fLastSelectedPath = fOutputPathMenu->ItemAt(i);
+			}
+			return;
+		}
+	}
+
 	BMessage* message = new BMessage(kLocationChanged);
 	message->AddString("path", path);
 

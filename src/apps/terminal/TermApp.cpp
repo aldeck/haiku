@@ -31,7 +31,6 @@
 #include "Globals.h"
 #include "PrefHandler.h"
 #include "TermConst.h"
-#include "TermView.h"
 #include "TermWindow.h"
 
 
@@ -88,7 +87,7 @@ TermApp::ReadyToRun()
 #endif
 	action.sa_userdata = this;
 	if (sigaction(SIGCHLD, &action, NULL) < 0) {
-		fprintf(stderr, B_TRANSLATE("sigaction() failed: %s\n"),
+		fprintf(stderr, "sigaction() failed: %s\n",
 			strerror(errno));
 		// continue anyway
 	}
@@ -140,13 +139,6 @@ void
 TermApp::Quit()
 {
 	BApplication::Quit();
-}
-
-
-void
-TermApp::AboutRequested()
-{
-	TermView::AboutRequested();
 }
 
 

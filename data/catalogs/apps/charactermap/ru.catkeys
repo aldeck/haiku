@@ -1,14 +1,15 @@
-1	russian	x-vnd.Haiku-CharacterMap	3862115730
+1	russian	x-vnd.Haiku-CharacterMap	2052089202
 Arabic	UnicodeBlocks		Арабский
 Armenian	UnicodeBlocks		Армянский
-Basic Latin	UnicodeBlocks		Основная Латынь
 CJK compatibility ideographs Supplement	UnicodeBlocks		Дополнение CJK совместимых иероглифов
 CJK strokes	UnicodeBlocks		Черты Иероглифов Восточной Азии 
-CharacterMap\n\twritten by Axel Dörfler\n\tCopyright 2009, Haiku, Inc.\n	CharacterMap		Карта символов\n\tразработал Axel Dörfler\n\tАвторские права 2009, Haiku, Inc.\n
-
+CharacterMap	System name		Карта символов
+Clear	CharacterWindow		Очистить
+Code	CharacterWindow		Код
 Coptic	UnicodeBlocks		Коптский
-Cyrillic extended A	UnicodeBlocks		Расширенный кириллический A
+File	CharacterWindow		Файл
 Filter:	CharacterWindow		Фильтр:
+Font	CharacterWindow		Шрифт
 Font size:	CharacterWindow		Размер шрифта:
 General punctuation	UnicodeBlocks		Знаки пунктуации
 Georgian supplement	UnicodeBlocks		Грузинские дополнения
@@ -20,5 +21,7 @@ Miscellaneous technical	UnicodeBlocks		Прочие технические
 Number forms	UnicodeBlocks		Формы чисел
 Old italic	UnicodeBlocks		Этрусский алфавит
 Quit	CharacterWindow		Выход
+Show private blocks	CharacterWindow		Отображать частные блоки
 Tai Le	UnicodeBlocks		Тай Лы
 Vertical forms	UnicodeBlocks		Вертикальные формы
+View	CharacterWindow		Вид

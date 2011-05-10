@@ -34,8 +34,9 @@ static const uint32 kMsgShowSettings = 'shst';
 
 
 ActivityWindow::ActivityWindow()
-	: BWindow(BRect(100, 100, 500, 350), kAppName, B_TITLED_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
+	:
+	BWindow(BRect(100, 100, 500, 350), B_TRANSLATE_SYSTEM_NAME("ActivityMonitor"),
+	B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
 {
 	BMessage settings;
 	_LoadSettings(settings);
@@ -117,21 +118,13 @@ ActivityWindow::ActivityWindow()
 
 	// "File" menu
 	BMenu* menu = new BMenu(B_TRANSLATE("File"));
-	BMenuItem* item;
-
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Add graph"),
 		new BMessage(kMsgAddView)));
-	menu->AddSeparatorItem();
-
-	menu->AddItem(item = new BMenuItem(
-		B_TRANSLATE("About ActivityMonitor" B_UTF8_ELLIPSIS),
-		new BMessage(B_ABOUT_REQUESTED)));
 	menu->AddSeparatorItem();
 
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menu->SetTargetForItems(this);
-	item->SetTarget(be_app);
 	menuBar->AddItem(menu);
 
 	// "Settings" menu

@@ -43,7 +43,7 @@ typedef struct acpi_device_cookie {
 typedef struct acpi_root_info {
 	driver_module_info info;
 
-	status_t	(*get_handle)(acpi_handle parent, char *pathname,
+	status_t	(*get_handle)(acpi_handle parent, const char *pathname,
 					acpi_handle *retHandle);
 
 	/* Global Lock */
@@ -123,6 +123,10 @@ typedef struct acpi_root_info {
 					acpi_data *retBuffer);
 	status_t	(*get_current_resources)(acpi_handle busDeviceHandle,
 					acpi_data *retBuffer);
+	status_t	(*get_possible_resources)(acpi_handle busDeviceHandle,
+					acpi_data *retBuffer);
+	status_t	(*set_current_resources)(acpi_handle busDeviceHandle,
+					acpi_data *buffer);
 
 	/* Power state setting */
 
@@ -143,7 +147,8 @@ extern struct device_module_info embedded_controller_device_module;
 extern acpi_device_module_info gACPIDeviceModule;
 
 
-status_t get_handle(acpi_handle parent, char* pathname, acpi_handle* retHandle);
+status_t get_handle(acpi_handle parent, const char* pathname,
+	acpi_handle* retHandle);
 
 status_t acquire_global_lock(uint16 timeout, uint32* handle);
 status_t release_global_lock(uint32 handle);
@@ -196,11 +201,16 @@ status_t get_irq_routing_table(acpi_handle busDeviceHandle,
 	acpi_data* returnValue);
 status_t get_current_resources(acpi_handle busDeviceHandle,
 	acpi_data* returnValue);
+status_t get_possible_resources(acpi_handle busDeviceHandle,
+	acpi_data* returnValue);
+status_t set_current_resources(acpi_handle busDeviceHandle,
+	acpi_data* buffer);
 
 status_t prepare_sleep_state(uint8 state, void (*wakeFunc)(void), size_t size);
 status_t enter_sleep_state(uint8 state);
 
 status_t reboot(void);
+
 __END_DECLS
 
 

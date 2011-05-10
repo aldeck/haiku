@@ -66,6 +66,7 @@ const char *kWebsite = "http://www.haiku-os.org";
 const rgb_color kLinkColor = { 40, 40, 180, 255 };
 
 
+const uint32 kMsgAccountsRightClicked = 'arcl';
 const uint32 kMsgAccountSelected = 'acsl';
 const uint32 kMsgAddAccount = 'adac';
 const uint32 kMsgRemoveAccount = 'rmac';
@@ -133,18 +134,53 @@ AccountItem::ConfigPanel()
 
 
 class AccountsListView : public BListView {
-	public:
-		AccountsListView(BRect rect) : BListView(rect,NULL,B_SINGLE_SELECTION_LIST,B_FOLLOW_ALL) {}
-		virtual	void KeyDown(const char *bytes, int32 numBytes) {
-			if (numBytes != 1)
-				return;
+public:
+	AccountsListView(BRect rect, BHandler* target)
+		:
+		BListView(rect, NULL, B_SINGLE_SELECTION_LIST, B_FOLLOW_ALL),
+		fTarget(target)
+	{
+	}
 
-			if ((*bytes == B_DELETE) || (*bytes == B_BACKSPACE))
-				Window()->PostMessage(kMsgRemoveAccount);
+	void
+	KeyDown(const char *bytes, int32 numBytes)
+	{
+		if (numBytes != 1)
+			return;
 
-			BListView::KeyDown(bytes,numBytes);
-		}
+		if ((*bytes == B_DELETE) || (*bytes == B_BACKSPACE))
+			Window()->PostMessage(kMsgRemoveAccount);
+
+		BListView::KeyDown(bytes,numBytes);
+	}
+
+	void
+	MouseDown(BPoint point)
+	{
+		BListView::MouseDown(point);
+
+		BPoint dummy;
+		uint32 buttons;
+		GetMouse(&dummy, &buttons);
+		if (buttons != B_SECONDARY_MOUSE_BUTTON)
+			return;
+
+		int32 index = IndexOf(point);
+		if (index < 0)
+			return;
+
+		BMessage message(kMsgAccountsRightClicked);
+		ConvertToScreen(&point);
+		message.AddPoint("point", point);
+		message.AddInt32("index", index);
+		BMessenger messenger(fTarget);
+		messenger.SendMessage(&message);
+	}
+
+private:
+			BHandler*			fTarget;
 };
+
 
 class BitmapView : public BView
 {
@@ -245,7 +281,8 @@ class AboutTextView : public BTextView
 			SetFontAndColor(0,23,&font,B_FONT_SIZE);
 
 			// center the view vertically
-			rect = TextRect();  rect.OffsetTo(0,(Bounds().Height() - TextHeight(0,42)) / 2);
+			rect = TextRect();
+			rect.OffsetTo(0,(Bounds().Height() - TextHeight(0,42)) / 2);
 			SetTextRect(rect);
 
 			// set the link regions
@@ -270,11 +307,14 @@ class AboutTextView : public BTextView
 			BTextView::Draw(updateRect);
 
 			BRect rect(fMail.Frame());
-			StrokeLine(BPoint(rect.left,rect.bottom-2),BPoint(rect.right,rect.bottom-2));
+			StrokeLine(BPoint(rect.left,rect.bottom-2),
+				BPoint(rect.right,rect.bottom-2));
 			rect = fBugsite.Frame();
-			StrokeLine(BPoint(rect.left,rect.bottom-2),BPoint(rect.right,rect.bottom-2));
+			StrokeLine(BPoint(rect.left,rect.bottom-2),
+				BPoint(rect.right,rect.bottom-2));
 			rect = fWebsite.Frame();
-			StrokeLine(BPoint(rect.left,rect.bottom-2),BPoint(rect.right,rect.bottom-2));
+			StrokeLine(BPoint(rect.left,rect.bottom-2),
+				BPoint(rect.right,rect.bottom-2));
 		}
 
 		virtual void MouseDown(BPoint point)
@@ -301,14 +341,13 @@ class AboutTextView : public BTextView
 
 ConfigWindow::ConfigWindow()
 	:
-	BWindow(BRect(100.0, 100.0, 580.0, 540.0), B_TRANSLATE("E-mail"),
+	BWindow(BRect(100.0, 100.0, 580.0, 540.0), B_TRANSLATE_SYSTEM_NAME("E-mail"),
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE
 		| B_NOT_RESIZABLE),
 	fLastSelectedAccount(NULL),
 	fSaveSettings(false)
 {
 	// create controls
-
 	BRect rect(Bounds());
 	BView *top = new BView(rect, NULL, B_FOLLOW_ALL, 0);
 	top->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -335,7 +374,7 @@ ConfigWindow::ConfigWindow()
 	rect = view->Bounds().InsetByCopy(8, 8);
 	rect.right = 140 - B_V_SCROLL_BAR_WIDTH;
 	rect.bottom -= height + 12;
-	fAccountsListView = new AccountsListView(rect);
+	fAccountsListView = new AccountsListView(rect, this);
 	view->AddChild(new BScrollView(NULL, fAccountsListView, B_FOLLOW_ALL, 0,
 		false, true));
 	rect.right += B_V_SCROLL_BAR_WIDTH;
@@ -388,18 +427,17 @@ ConfigWindow::ConfigWindow()
 	fIntervalControl->SetDivider(labelWidth);
 	box->AddChild(fIntervalControl);
 
-	BPopUpMenu *frequencyPopUp = new BPopUpMenu(B_EMPTY_STRING);
-	const char *frequencyStrings[] = {
+	BPopUpMenu* frequencyPopUp = new BPopUpMenu(B_EMPTY_STRING);
+	const char* frequencyStrings[] = {
 		B_TRANSLATE("never"),
 		B_TRANSLATE("minutes"),
 		B_TRANSLATE("hours"),
 		B_TRANSLATE("days")};
-	BMenuItem *item;
+
 	for (int32 i = 0; i < 4; i++) {
-		frequencyPopUp->AddItem(item = new BMenuItem(frequencyStrings[i],
-			new BMessage(kMsgIntervalUnitChanged)));
-		if (i == 1)
-			item->SetMarked(true);
+		BMenuItem* item = new BMenuItem(frequencyStrings[i],
+			new BMessage(kMsgIntervalUnitChanged));
+		frequencyPopUp->AddItem(item);
 	}
 	tile.left = tile.right + 5;
 	tile.right = rect.right;
@@ -435,20 +473,17 @@ ConfigWindow::ConfigWindow()
 		B_TRANSLATE("While sending"),
 		B_TRANSLATE("While sending and receiving"),
 		B_TRANSLATE("Always")};
-	BMessage *msg;
 	for (int32 i = 0; i < 4; i++) {
-		statusPopUp->AddItem(item = new BMenuItem(statusModes[i],
-			msg = new BMessage(kMsgShowStatusWindowChanged)));
+		BMessage* msg = new BMessage(kMsgShowStatusWindowChanged);
+		BMenuItem* item = new BMenuItem(statusModes[i], msg);
+		statusPopUp->AddItem(item);
 		msg->AddInt32("ShowStatusWindow", i);
-		if (i == 0)
-			item->SetMarked(true);
 	}
 	rect = box->Bounds().InsetByCopy(8,8);
 	rect.top += 7;
 	rect.bottom = rect.top + height + 5;
-	labelWidth
-		= (int32)view->StringWidth(
-			B_TRANSLATE("Show connection status window:"))	+ 8;
+	labelWidth = (int32)view->StringWidth(
+		B_TRANSLATE("Show connection status window:"))	+ 8;
 	fStatusModeField = new BMenuField(rect, "show status",
 		B_TRANSLATE("Show connection status window:"), statusPopUp);
 	fStatusModeField->SetDivider(labelWidth);
@@ -456,9 +491,9 @@ ConfigWindow::ConfigWindow()
 
 	rect = fStatusModeField->Frame();;
 	rect.OffsetBy(0, rect.Height() + 10);
+	BMessage* msg = new BMessage(B_REFS_RECEIVED);
 	BButton *button = new BButton(rect, B_EMPTY_STRING,
-		B_TRANSLATE("Edit mailbox menu…"),
-		msg = new BMessage(B_REFS_RECEIVED));
+		B_TRANSLATE("Edit mailbox menu…"), msg);
 	button->ResizeToPreferred();
 	box->AddChild(button);
 	button->SetTarget(BMessenger("application/x-vnd.Be-TRAK"));
@@ -722,6 +757,59 @@ ConfigWindow::MessageReceived(BMessage *msg)
 
 	AutoConfigWindow *autoConfigWindow = NULL;
 	switch (msg->what) {
+		case kMsgAccountsRightClicked:
+		{
+			BPoint point;
+			msg->FindPoint("point", &point);
+			int32 index = msg->FindInt32("index");
+			AccountItem* clickedItem = dynamic_cast<AccountItem*>(
+				fAccountsListView->ItemAt(index));
+			if (clickedItem == NULL || clickedItem->GetType() != ACCOUNT_ITEM)
+				break;
+
+			BPopUpMenu rightClickMenu("accounts", false, false);
+
+			BMenuItem* inMenuItem = new BMenuItem("Incoming", NULL);
+			BMenuItem* outMenuItem = new BMenuItem("Outgoing", NULL);
+			rightClickMenu.AddItem(inMenuItem);
+			rightClickMenu.AddItem(outMenuItem);
+
+			BMailAccountSettings* settings = clickedItem->GetAccount();
+			if (settings->IsInboundEnabled())
+				inMenuItem->SetMarked(true);
+			if (settings->IsOutboundEnabled())
+				outMenuItem->SetMarked(true);
+
+			BMenuItem* selectedItem = rightClickMenu.Go(point);
+			if (selectedItem == NULL)
+				break;
+			if (selectedItem == inMenuItem) {
+				AccountItem* item = dynamic_cast<AccountItem*>(
+					fAccountsListView->ItemAt(index + 1));
+				if (item == NULL)
+					break;
+				if (settings->IsInboundEnabled()) {
+					settings->SetInboundEnabled(false);
+					item->SetEnabled(false);
+				} else {
+					settings->SetInboundEnabled(true);
+					item->SetEnabled(true);
+				}
+			} else {
+				AccountItem* item = dynamic_cast<AccountItem*>(
+					fAccountsListView->ItemAt(index + 2));
+				if (item == NULL)
+					break;
+				if (settings->IsOutboundEnabled()) {
+					settings->SetOutboundEnabled(false);
+					item->SetEnabled(false);
+				} else {
+					settings->SetOutboundEnabled(true);
+					item->SetEnabled(true);
+				}
+			}
+		}
+
 		case kMsgAccountSelected:
 		{
 			int32 index;
@@ -788,6 +876,7 @@ ConfigWindow::MessageReceived(BMessage *msg)
 			_SaveSettings();
 			AccountUpdated(fLastSelectedAccount);
 			_MakeHowToView();
+			fAccountsListView->DeselectAll();
 			break;
 
 		default:
@@ -930,10 +1019,14 @@ ConfigWindow::_AddAccountToView(BMailAccountSettings* account)
 
 	item = new AccountItem(B_TRANSLATE("   · Incoming"), account, INBOUND_ITEM);
 	fAccountsListView->AddItem(item);
+	if (!account->IsInboundEnabled())
+		item->SetEnabled(false);
 
 	item = new AccountItem(B_TRANSLATE("   · Outgoing"), account,
 		OUTBOUND_ITEM);
 	fAccountsListView->AddItem(item);
+	if (!account->IsOutboundEnabled())
+		item->SetEnabled(false);
 
 	item = new AccountItem(B_TRANSLATE("   · E-mail filters"), account,
 		FILTER_ITEM);

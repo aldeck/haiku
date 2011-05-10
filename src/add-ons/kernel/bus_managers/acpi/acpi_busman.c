@@ -77,14 +77,14 @@ get_device_by_hid_callback(ACPI_HANDLE object, UINT32 depth, void* context,
 static void dump_madt() {
 	ACPI_STATUS status;
 	ACPI_TABLE_HEADER *madt = NULL;
-	ACPI_SUBTABLE_HEADER *entry;
-	void *end;
+/*	ACPI_SUBTABLE_HEADER *entry;
+	void *end; */
 	int madtCount = -1;
 
 	while (true) {
 		status = AcpiGetTable (ACPI_SIG_MADT, ++madtCount, &madt);
 		if (status != AE_OK) break;
-/*		
+/*
 		dprintf("acpi: MADT TABLE:\n");
 		AcpiDmDumpDataTable( madt );
 		entry = madt + 44;
@@ -212,7 +212,7 @@ acpi_std_ops(int32 op,...)
 
 			parameter.Count = 1;
 			parameter.Pointer = &arg;
-	
+
 			AcpiEvaluateObject(NULL, "\\_PIC", &parameter, NULL);
 
 			flags = acpiAvoidFullInit ?
@@ -262,9 +262,9 @@ acpi_std_ops(int32 op,...)
 
 
 status_t
-get_handle(acpi_handle parent, char *pathname, acpi_handle *retHandle)
+get_handle(acpi_handle parent, const char *pathname, acpi_handle *retHandle)
 {
-	return AcpiGetHandle(parent, pathname, retHandle) == AE_OK
+	return AcpiGetHandle(parent, (ACPI_STRING)pathname, retHandle) == AE_OK
 		? B_OK : B_ERROR;
 }
 
@@ -481,14 +481,14 @@ get_device_hid(const char *path, char *hid, size_t bufferLength)
 	if (info.Type == ACPI_TYPE_INTEGER) {
 		uint32 eisaId = AcpiUtDwordByteSwap(info.Integer.Value);
 
-	    hid[0] = (char) ('@' + ((eisaId >> 26) & 0x1f));
-	    hid[1] = (char) ('@' + ((eisaId >> 21) & 0x1f));
-	    hid[2] = (char) ('@' + ((eisaId >> 16) & 0x1f));
-	    hid[3] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 12);
-	    hid[4] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 8);
-	    hid[5] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 4);
-	    hid[6] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 0);
-	    hid[7] = 0;
+		hid[0] = (char) ('@' + ((eisaId >> 26) & 0x1f));
+		hid[1] = (char) ('@' + ((eisaId >> 21) & 0x1f));
+		hid[2] = (char) ('@' + ((eisaId >> 16) & 0x1f));
+		hid[3] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 12);
+		hid[4] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 8);
+		hid[5] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 4);
+		hid[6] = AcpiUtHexToAsciiChar((ACPI_INTEGER)eisaId, 0);
+		hid[7] = 0;
 	}
 
 	hid[ACPI_DEVICE_ID_LENGTH] = '\0';
@@ -618,6 +618,22 @@ get_current_resources(acpi_handle busDeviceHandle, acpi_data *retBuffer)
 
 
 status_t
+get_possible_resources(acpi_handle busDeviceHandle, acpi_data *retBuffer)
+{
+	return AcpiGetPossibleResources(busDeviceHandle, (ACPI_BUFFER*)retBuffer)
+		== AE_OK ? B_OK : B_ERROR;
+}
+
+
+status_t
+set_current_resources(acpi_handle busDeviceHandle, acpi_data *buffer)
+{
+	return AcpiSetCurrentResources(busDeviceHandle, (ACPI_BUFFER*)buffer)
+		== AE_OK ? B_OK : B_ERROR;
+}
+
+
+status_t
 prepare_sleep_state(uint8 state, void (*wakeFunc)(void), size_t size)
 {
 	ACPI_STATUS acpiStatus;
@@ -732,6 +748,8 @@ struct acpi_module_info gACPIModule = {
 	evaluate_method,
 	get_irq_routing_table,
 	get_current_resources,
+	get_possible_resources,
+	set_current_resources,
 	prepare_sleep_state,
 	enter_sleep_state,
 	reboot

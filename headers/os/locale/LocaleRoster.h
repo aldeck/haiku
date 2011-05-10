@@ -6,6 +6,7 @@
 #define _LOCALE_ROSTER_H_
 
 
+#include <Entry.h>
 #include <String.h>
 
 
@@ -65,6 +66,12 @@ public:
 									// Get the catalog for the calling image
 									// (that needs to link with liblocalestub.a)
 
+			bool				IsFilesystemTranslationPreferred() const;
+
+			status_t			GetLocalizedFileName(BString& localizedFileName,
+									const entry_ref& ref,
+									bool traverse = false);
+
 	static	const char*			kCatLangAttr;
 	static	const char*			kCatSigAttr;
 	static	const char*			kCatFingerprintAttr;
@@ -75,6 +82,10 @@ public:
 private:
 	static	BCatalog*			_GetCatalog(BCatalog* catalog,
 									vint32* catalogInitStatus);
+
+			status_t			_PrepareCatalogEntry(const entry_ref& ref,
+									BString& signature, BString& context,
+									BString& string, bool traverse);
 };
 
 

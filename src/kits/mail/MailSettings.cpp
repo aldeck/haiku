@@ -151,7 +151,13 @@ BMailSettings::SetWindowFollowsCorner(int32 which_corner)
 uint32
 BMailSettings::ShowStatusWindow()
 {
-	return fData.FindInt32("ShowStatusWindow");
+	int32 showStatusWindow;
+	if (fData.FindInt32("ShowStatusWindow", &showStatusWindow) != B_OK) {
+		// show during send and receive
+		return 2;
+	}
+
+	return showStatusWindow;
 }
 
 
@@ -257,8 +263,11 @@ BMailSettings::SetStatusWindowLook(int32 look)
 bigtime_t
 BMailSettings::AutoCheckInterval()
 {
-	bigtime_t value = B_INFINITE_TIMEOUT;
-	fData.FindInt64("AutoCheckInterval",&value);
+	bigtime_t value;
+	if (fData.FindInt64("AutoCheckInterval", &value) != B_OK) {
+		// every 5 min
+		return 5 * 60 * 1000 * 1000;
+	}
 	return value;
 }
 
@@ -326,12 +335,38 @@ BMailAccounts::BMailAccounts()
 	BDirectory dir(path.Path());
 	if (dir.InitCheck() != B_OK)
 		return;
+
+	std::vector<time_t> creationTimeList;
 	BEntry entry;
 	while (dir.GetNextEntry(&entry) != B_ENTRY_NOT_FOUND) {
-		BMailAccountSettings* account = new BMailAccountSettings(entry);
-		if (account->InitCheck() != B_OK)
+		BNode node(&entry);
+		time_t creationTime;
+		if (node.GetCreationTime(&creationTime) != B_OK)
 			continue;
-		fAccounts.AddItem(account);
+
+		BMailAccountSettings* account = new BMailAccountSettings(entry);
+		if (account->InitCheck() != B_OK) {
+			delete account;
+			continue;
+		}
+
+		// sort by creation time
+		int insertIndex = -1;
+		for (unsigned int i = 0; i < creationTimeList.size(); i++) {
+			if (creationTimeList[i] > creationTime) {
+				insertIndex = i;
+				break;
+			}
+		}
+		if (insertIndex < 0) {
+			fAccounts.AddItem(account);
+			creationTimeList.push_back(creationTime);
+		} else {
+			fAccounts.AddItem(account, insertIndex);
+			creationTimeList.insert(creationTimeList.begin() + insertIndex,
+				creationTime);
+		}
+		
 	}
 }
 
@@ -405,7 +440,10 @@ AddonSettings::AddonSettings()
 bool
 AddonSettings::Load(const BMessage& message)
 {
-	if (message.FindRef("ref", &fAddonRef) != B_OK)
+	const char* addonPath = NULL;
+	if (message.FindString("add-on path", &addonPath) != B_OK)
+		return false;
+	if (get_ref_for_path(addonPath, &fAddonRef) != B_OK)
 		return false;
 	if (message.FindMessage("settings", &fSettings) != B_OK)
 		return false;
@@ -417,7 +455,8 @@ AddonSettings::Load(const BMessage& message)
 bool
 AddonSettings::Save(BMessage& message)
 {
-	message.AddRef("ref", &fAddonRef);
+	BPath path(&fAddonRef);
+	message.AddString("add-on path", path.Path());
 	message.AddMessage("settings", &fSettings);
 	fModified = false;
 	return true;
@@ -572,6 +611,8 @@ MailAddonSettings::HasBeenModified()
 BMailAccountSettings::BMailAccountSettings()
 	:
 	fStatus(B_OK),
+	fInboundEnabled(true),
+	fOutboundEnabled(true),
 	fModified(true)
 {
 	fAccountID = real_time_clock();
@@ -733,6 +774,36 @@ BMailAccountSettings::HasOutbound()
 }
 
 
+void
+BMailAccountSettings::SetInboundEnabled(bool enabled)
+{
+	fInboundEnabled = enabled;
+	fModified = true;
+}
+
+
+bool
+BMailAccountSettings::IsInboundEnabled() const
+{
+	return fInboundEnabled;
+}
+
+
+void
+BMailAccountSettings::SetOutboundEnabled(bool enabled)
+{
+	fOutboundEnabled = enabled;
+	fModified = true;
+}
+
+
+bool
+BMailAccountSettings::IsOutboundEnabled() const
+{
+	return fOutboundEnabled;
+}
+
+
 status_t
 BMailAccountSettings::Reload()
 {
@@ -757,6 +828,11 @@ BMailAccountSettings::Reload()
 	settings.FindMessage("outbound", &outboundSettings);
 	fOutboundSettings.Load(outboundSettings);
 
+	if (settings.FindBool("inbound_enabled", &fInboundEnabled) != B_OK)
+		fInboundEnabled = true;
+	if (settings.FindBool("outbound_enabled", &fOutboundEnabled) != B_OK)
+		fOutboundEnabled = true;
+
 	fModified = false;
 	return B_OK;
 }
@@ -780,14 +856,12 @@ BMailAccountSettings::Save()
 	fOutboundSettings.Save(outboundSettings);
 	settings.AddMessage("outbound", &outboundSettings);
 
-	BEntry oldEntry = fAccountFile;
-	status_t status = _CreateAccountFile();
+	settings.AddBool("inbound_enabled", fInboundEnabled);
+	settings.AddBool("outbound_enabled", fOutboundEnabled);
+
+	status_t status = _CreateAccountFilePath();
 	if (status != B_OK)
 		return status;
-	oldEntry.Remove();
-
-	BPath path;
-	fAccountFile.GetPath(&path);
 
 	BFile file(&fAccountFile, B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
 	status = file.InitCheck();
@@ -823,7 +897,7 @@ BMailAccountSettings::AccountFile()
 
 
 status_t
-BMailAccountSettings::_CreateAccountFile()
+BMailAccountSettings::_CreateAccountFilePath()
 {
 	BPath path;
 	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
@@ -831,6 +905,9 @@ BMailAccountSettings::_CreateAccountFile()
 		return status;
 	path.Append("Mail/accounts");
 	create_directory(path.Path(), 777);
+
+	if (fAccountFile.InitCheck() == B_OK)
+		return B_OK;
 
 	BString fileName = fAccountName;
 	if (fileName == "")

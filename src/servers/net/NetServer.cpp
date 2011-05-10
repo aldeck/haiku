@@ -81,7 +81,7 @@ private:
 									BMessage* _missingDevice = NULL);
 			void				_BringUpInterfaces();
 			void				_StartServices();
-			void				_HandleDeviceMonitor(BMessage* message);
+			status_t			_HandleDeviceMonitor(BMessage* message);
 
 			status_t			_AutoJoinNetwork(const char* name);
 			status_t			_JoinNetwork(const BMessage& message,
@@ -101,6 +101,13 @@ struct address_family {
 	const char*	identifiers[4];
 };
 
+
+// AF_INET6 family
+#if INET6
+static bool inet6_parse_address(const char* string, sockaddr* address);
+static void inet6_set_any_address(sockaddr* address);
+static void inet6_set_port(sockaddr* address, int32 port);
+#endif
 
 static const address_family kFamilies[] = {
 	{
@@ -213,6 +220,44 @@ parse_address(int32& family, const char* argument, BNetworkAddress& address)
 
 	return true;
 }
+
+
+#if INET6
+static bool
+inet6_parse_address(const char* string, sockaddr* _address)
+{
+	sockaddr_in6& address = *(sockaddr_in6*)_address;
+
+	if (inet_pton(AF_INET6, string, &address.sin6_addr) != 1)
+		return false;
+
+	address.sin6_family = AF_INET6;
+	address.sin6_len = sizeof(sockaddr_in6);
+	address.sin6_port = 0;
+	address.sin6_flowinfo = 0;
+	address.sin6_scope_id = 0;
+
+	return true;
+}
+
+
+void
+inet6_set_any_address(sockaddr* _address)
+{
+	sockaddr_in6& address = *(sockaddr_in6*)_address;
+	memset(&address, 0, sizeof(sockaddr_in6));
+	address.sin6_family = AF_INET6;
+	address.sin6_len = sizeof(struct sockaddr_in6);
+}
+
+
+void
+inet6_set_port(sockaddr* _address, int32 port)
+{
+	sockaddr_in6& address = *(sockaddr_in6*)_address;
+	address.sin6_port = port;
+}
+#endif
 
 
 //	#pragma mark -
@@ -443,7 +488,7 @@ NetServer::_ConfigureInterface(BMessage& message)
 		flags = IFF_UP;
 
 	bool autoConfigured;
-	if (message.FindBool("auto", &autoConfigured) == B_OK && autoConfigured)
+	if (message.FindBool("auto_configured", &autoConfigured) == B_OK && autoConfigured)
 		flags |= IFF_AUTO_CONFIGURED;
 
 	int32 mtu;
@@ -532,7 +577,7 @@ NetServer::_ConfigureInterface(BMessage& message)
 			if (addressMessage.FindString("broadcast", &string) == B_OK)
 				parse_address(family, string, broadcast);
 		}
-
+		
 		if (autoConfig) {
 			_QuitLooperForDevice(name);
 			startAutoConfig = true;
@@ -609,7 +654,8 @@ NetServer::_ConfigureInterface(BMessage& message)
 		looper->Run();
 
 		fDeviceMap[name] = looper;
-	}
+	} else if (!autoConfigured)
+		_QuitLooperForDevice(name);
 
 	return B_OK;
 }
@@ -808,24 +854,27 @@ NetServer::_StartServices()
 }
 
 
-void
+status_t
 NetServer::_HandleDeviceMonitor(BMessage* message)
 {
 	int32 opcode;
-	if (message->FindInt32("opcode", &opcode) != B_OK
-		|| (opcode != B_ENTRY_CREATED && opcode != B_ENTRY_REMOVED))
-		return;
-
 	const char* path;
-	const char* watchedPath;
-	if (message->FindString("watched_path", &watchedPath) != B_OK
+	if (message->FindInt32("opcode", &opcode) != B_OK
+		|| (opcode != B_ENTRY_CREATED && opcode != B_ENTRY_REMOVED)
 		|| message->FindString("path", &path) != B_OK)
-		return;
+		return B_BAD_VALUE;
 
+	if (strncmp(path, "/dev/net", 9)) {
+		// not a device entry, ignore
+		return B_NAME_NOT_FOUND;
+	}
+			
 	if (opcode == B_ENTRY_CREATED)
 		_ConfigureDevice(path);
 	else
 		_RemoveInterface(path);
+		
+	return B_OK;
 }
 
 

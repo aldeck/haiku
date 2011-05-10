@@ -131,11 +131,7 @@ static void
 BuildInfoMenu(BMenu *menu)
 {
 	BMenuItem* menuItem;
-
-	menuItem = new BMenuItem(B_TRANSLATE("About Magnify" B_UTF8_ELLIPSIS),
-		new BMessage(B_ABOUT_REQUESTED));
-	menu->AddItem(menuItem);
-	menuItem = new BMenuItem(B_TRANSLATE("Help" B_UTF8_ELLIPSIS),
+	menuItem = new BMenuItem(B_TRANSLATE("Help"),
 		new BMessage(msg_help));
 	menu->AddItem(menuItem);
 	menu->AddSeparatorItem();
@@ -203,43 +199,12 @@ TApp::TApp(int32 pixelCount)
 }
 
 
-void
-TApp::MessageReceived(BMessage* msg)
-{
-	switch (msg->what) {
-		case B_ABOUT_REQUESTED:
-			AboutRequested();
-			break;
-		default:
-			BApplication::MessageReceived(msg);
-			break;
-	}
-}
-
-
-void
-TApp::ReadyToRun()
-{
-	BApplication::ReadyToRun();
-}
-
-
-void
-TApp::AboutRequested()
-{
-	(new BAlert("", B_TRANSLATE("Magnify!\n\n" B_UTF8_COPYRIGHT 
-		"2002-2006 Haiku\n(C)1999 Be Inc.\n\n"
-		"Now with even more features and recompiled for Haiku."), 
-		B_TRANSLATE("OK")))->Go();
-}
-
-
 //	#pragma mark -
 
 
 TWindow::TWindow(int32 pixelCount)
 	:
-	BWindow(BRect(0, 0, 0, 0), B_TRANSLATE("Magnify"),
+	BWindow(BRect(0, 0, 0, 0), B_TRANSLATE_SYSTEM_NAME("Magnify"),
 		B_TITLED_WINDOW, B_OUTLINE_RESIZE)
 {
 	GetPrefs(pixelCount);
@@ -264,7 +229,6 @@ TWindow::TWindow(int32 pixelCount)
 
 	ResizeWindow(fHPixelCount, fVPixelCount);
 
-	AddShortcut('I', B_COMMAND_KEY, new BMessage(B_ABOUT_REQUESTED));
 	AddShortcut('S', B_COMMAND_KEY, new BMessage(msg_save));
 	AddShortcut('C', B_COMMAND_KEY, new BMessage(msg_copy_image));
 	AddShortcut('T', B_COMMAND_KEY, new BMessage(msg_show_info));
@@ -292,10 +256,6 @@ TWindow::MessageReceived(BMessage* m)
 	bool active = fFatBits->Active();
 
 	switch (m->what) {
-		case B_ABOUT_REQUESTED:
-			be_app->MessageReceived(m);
-			break;
-
 		case msg_help:
 			ShowHelp();
 			break;

@@ -95,7 +95,7 @@ CreateKeysPopUp()
 ShortcutsWindow::ShortcutsWindow()
 	:
 	BWindow(BRect(WINDOW_START_X, WINDOW_START_Y, WINDOW_START_X + MIN_WIDTH, 
-		WINDOW_START_Y + MIN_HEIGHT * 2), B_TRANSLATE("Shortcuts"),
+		WINDOW_START_Y + MIN_HEIGHT * 2), B_TRANSLATE_SYSTEM_NAME("Shortcuts"),
 		B_DOCUMENT_WINDOW, 0L), 
 	fSavePanel(NULL), 
 	fOpenPanel(NULL), 
@@ -120,9 +120,6 @@ ShortcutsWindow::ShortcutsWindow()
 	fileMenu->AddItem(new BMenuItem(
 		B_TRANSLATE("Save KeySet as" B_UTF8_ELLIPSIS), 
 		new BMessage(SAVE_KEYSET_AS), 'S'));
-	fileMenu->AddItem(new BSeparatorItem);
-	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("About Shortcuts"),
-		new BMessage(B_ABOUT_REQUESTED)));
 	fileMenu->AddItem(new BSeparatorItem);
 	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
@@ -536,10 +533,6 @@ ShortcutsWindow::MessageReceived(BMessage* msg)
 			}
 			break;
 		}
-
-		case B_ABOUT_REQUESTED:
-			be_app_messenger.SendMessage(B_ABOUT_REQUESTED);
-			break;
 
 		case ADD_HOTKEY_ITEM:
 			_AddNewSpec(NULL);

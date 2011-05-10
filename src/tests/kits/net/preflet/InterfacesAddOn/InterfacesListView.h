@@ -19,11 +19,16 @@
 #include <Bitmap.h>
 #include <ListView.h>
 #include <ListItem.h>
+#include <MenuItem.h>
 #include <NetworkDevice.h>
 #include <NetworkInterface.h>
+#include <PopUpMenu.h>
 #include <String.h>
 
 #include "NetworkSettings.h"
+
+
+#define ICON_SIZE 37
 
 
 class InterfaceListItem : public BListItem {
@@ -72,11 +77,13 @@ public:
 
 	virtual						~InterfacesListView();
 
-								InterfaceListItem* FindItem(const char* name);
+			InterfaceListItem*	FindItem(const char* name);
+			status_t			SaveItems();
 
 protected:
 	virtual	void				AttachedToWindow();
 	virtual	void				DetachedFromWindow();
+	virtual	void				FrameResized(float width, float height);
 
 	virtual	void				MessageReceived(BMessage* message);
 

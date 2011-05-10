@@ -1,8 +1,5 @@
-1	russian	x-vnd.Haiku-InstalledPackages	3041446229
-BeOS legacy .pkg package removing application for Haiku.\n\nCopyright 2007,\nŁukasz 'Sil2100' Zemczak\n\nCopyright (c) 2007 Haiku, Inc.\n	UninstallApplication		Приложение для Haiku для удаления BeOS .pkg пакет удаления пакетов для Haiku.\n\nВсе права защищены 2007,\nŁukasz 'Sil2100' Zemczak\n\nВсе права защищены (c) 2007 Haiku, Inc.\n
-Close	UninstallApplication		Закрыть
-Installed packages	UninstallWindow		Установленные пакеты
-InstalledPackages	UninstallApplication		Установленные пакеты
+1	russian	x-vnd.Haiku-InstalledPackages	4131220089
+InstalledPackages	System name		Установленные пакеты
 No package selected.	UninstallView		Нет выбранных пакетов.
 OK	UninstallView		ОК
 Package description	UninstallView		Описание пакета

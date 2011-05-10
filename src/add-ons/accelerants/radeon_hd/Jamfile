@@ -1,7 +1,9 @@
 SubDir HAIKU_TOP src add-ons accelerants radeon_hd ;
+SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src add-ons accelerants common ] ;
 
 SetSubDirSupportedPlatformsBeOSCompatible ;
 
+UseHeaders [ FDirName $(SUBDIR) atombios includes ] ;
 UsePrivateHeaders graphics ;
 UsePrivateHeaders [ FDirName graphics radeon_hd ] ;
 UsePrivateHeaders [ FDirName graphics common ] ;
@@ -11,10 +13,9 @@ Addon radeon_hd.accelerant :
 	engine.cpp
 	hooks.cpp
 	mode.cpp
-	: be libaccelerantscommon.a
+	bios.cpp
+	create_display_modes.cpp
+	: be libaccelerantscommon.a atombios.a
 ;
 
-Package haiku-radeon_hd-cvs :
-	radeon_hd.accelerant :
-	boot home config add-ons accelerants ;
-
+SubInclude HAIKU_TOP src add-ons accelerants radeon_hd atombios ;

@@ -5,13 +5,17 @@
  *	Version: 0.1
  */
 
+
+#include "PoorManApplication.h"
+
 #include <Application.h>
 #include <Alert.h>
+#include <Catalog.h>
 #include <Directory.h>
 
 #include "constants.h"
-#include "PoorManApplication.h"
 #include "PoorManWindow.h"
+
 
 PoorManApplication::PoorManApplication()
 	: BApplication(STR_APP_SIG),
@@ -34,15 +38,6 @@ PoorManApplication::PoorManApplication()
 		else
 			PostMessage(kStartServer);
 	}
-}
-
-
-void 
-PoorManApplication::AboutRequested()
-{
-	BAlert* aboutBox = new BAlert(STR_ABOUT_TITLE,
-		STR_ABOUT_DESC, STR_ABOUT_BUTTON);
-	aboutBox->Go(); 
 }
 
 

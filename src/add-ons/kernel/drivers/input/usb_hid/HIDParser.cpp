@@ -103,11 +103,36 @@ HIDParser::ParseReportDescriptor(const uint8 *reportDescriptor,
 		switch (item->type) {
 			case ITEM_TYPE_MAIN:
 			{
-				main_item_data *mainData = (main_item_data *)&data;
+				// preprocess the local state if relevant (usages for
+				// collections and report items)
+				if (item->tag != ITEM_TAG_MAIN_END_COLLECTION) {
+					// make all usages extended for easier later processing
+					for (uint32 i = 0; i < usageStackUsed; i++) {
+						if (usageStack[i].is_extended)
+							continue;
+						usageStack[i].u.s.usage_page = globalState.usage_page;
+						usageStack[i].is_extended = true;
+					}
+
+					if (!localState.usage_minimum.is_extended) {
+						// the specs say if one of them is extended they must
+						// both be extended, so if the minimum isn't, the
+						// maximum mustn't either.
+						localState.usage_minimum.u.s.usage_page
+							= localState.usage_maximum.u.s.usage_page
+								= globalState.usage_page;
+						localState.usage_minimum.is_extended
+							= localState.usage_maximum.is_extended = true;
+					}
+
+					localState.usage_stack = usageStack;
+					localState.usage_stack_used = usageStackUsed;
+				}
+
 				if (item->tag == ITEM_TAG_MAIN_COLLECTION) {
 					HIDCollection *newCollection
 						= new(std::nothrow) HIDCollection(collection,
-							(uint8)data, globalState, localState);
+							(uint8)data, localState);
 					if (newCollection == NULL) {
 						TRACE_ALWAYS("no memory to allocate new collection\n");
 						break;
@@ -155,28 +180,6 @@ HIDParser::ParseReportDescriptor(const uint8 *reportDescriptor,
 					if (target == NULL)
 						break;
 
-					// make all usages extended for easier later processing
-					for (uint32 i = 0; i < usageStackUsed; i++) {
-						if (usageStack[i].is_extended)
-							continue;
-						usageStack[i].u.s.usage_page = globalState.usage_page;
-						usageStack[i].is_extended = true;
-					}
-
-					if (!localState.usage_minimum.is_extended) {
-						// the specs say if one of them is extended they must
-						// both be extended, so if the minimum isn't, the
-						// maximum mustn't either.
-						localState.usage_minimum.u.s.usage_page
-							= localState.usage_maximum.u.s.usage_page
-								= globalState.usage_page;
-						localState.usage_minimum.is_extended
-							= localState.usage_maximum.is_extended = true;
-					}
- 
-					localState.usage_stack = usageStack;
-					localState.usage_stack_used = usageStackUsed;
-
 					// fill in a sensible default if the index isn't set
 					if (!localState.designator_index_set) {
 						localState.designator_index
@@ -186,6 +189,7 @@ HIDParser::ParseReportDescriptor(const uint8 *reportDescriptor,
 					if (!localState.string_index_set)
 						localState.string_index = localState.string_minimum;
 
+					main_item_data *mainData = (main_item_data *)&data;
 					target->AddMainItem(globalState, localState, *mainData,
 						collection);
 				}
@@ -351,7 +355,7 @@ HIDParser::ParseReportDescriptor(const uint8 *reportDescriptor,
 				break;
 			}
 
-			case ITEM_TAG_LONG:
+			case ITEM_TYPE_LONG:
 			{
 				long_item *longItem = (long_item *)item;
 

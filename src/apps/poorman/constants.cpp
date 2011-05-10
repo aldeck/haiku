@@ -12,9 +12,9 @@
 // ------------------------------------------------------
 // PoorMan Window
 const char* STR_APP_SIG
-	= "application/x-vnd.Haiku.PoorMan";
-char* STR_APP_NAME
-	= (char*)"PoorMan";
+	= "application/x-vnd.Haiku-PoorMan";
+const char* STR_APP_NAME
+	= B_TRANSLATE_SYSTEM_NAME("PoorMan");
 const char* STR_ERR_WEB_DIR
 	= B_TRANSLATE(
 	  "Please choose the folder to publish on the web.\n\n"
@@ -36,8 +36,6 @@ const char* STR_MNU_FILE_SAVE_AS
 	= B_TRANSLATE("Save console as" B_UTF8_ELLIPSIS);
 const char* STR_MNU_FILE_SAVE_SELECTION
 	= B_TRANSLATE("Save console selections as" B_UTF8_ELLIPSIS);
-const char* STR_MNU_FILE_ABOUT
-	= B_TRANSLATE("About PoorMan" B_UTF8_ELLIPSIS);
 const char* STR_MNU_FILE_QUIT
 	= B_TRANSLATE("Quit");
 const char* STR_MNU_EDIT
@@ -128,17 +126,6 @@ const char CMD_EDIT_COPY
 	= 'C';
 const char CMD_EDIT_SELECT_ALL
 	= 'A';
-
-const char* STR_ABOUT_TITLE
-	= B_TRANSLATE("About PoorMan");
-const char* STR_ABOUT_BUTTON
-	= B_TRANSLATE("OK");
-const char* STR_ABOUT_DESC
-	= B_TRANSLATE(
-	"Poor Man's web server\n"
-	"Copyright " B_UTF8_COPYRIGHT " 2004-2009 Haiku\n"
-	"All rights reserved.\n\n"
-	"Written by: Philip Harrison, Ma Jie");
 
 // --------------------------------
 const rgb_color WHITE				= { 255, 255, 255, 255 };

@@ -15,7 +15,6 @@
 
 
 #include "InterfacesAddOn.h"
-#include "InterfacesListView.h"
 #include "InterfaceWindow.h"
 
 #include <stdio.h>
@@ -58,14 +57,6 @@ InterfacesAddOn::Name()
 }
 
 
-status_t
-InterfacesAddOn::Save()
-{
-	printf("I am saved!\n");
-	return B_OK;
-}
-
-
 BView*
 InterfacesAddOn::CreateView(BRect *bounds)
 {
@@ -74,22 +65,24 @@ InterfacesAddOn::CreateView(BRect *bounds)
 	// Construct the ListView
 	fListview = new InterfacesListView(intViewRect,
 		"interfaces", B_FOLLOW_ALL_SIDES);
-	fListview->SetSelectionMessage(new BMessage(INTERFACE_SELECTED_MSG));
-	fListview->SetInvocationMessage(new BMessage(CONFIGURE_INTERFACE_MSG));
+	fListview->SetSelectionMessage(new BMessage(kMsgInterfaceSelected));
+	fListview->SetInvocationMessage(new BMessage(kMsgInterfaceConfigure));
 
 	BScrollView* scrollView = new BScrollView(NULL, fListview,
 		B_FOLLOW_ALL_SIDES, B_WILL_DRAW | B_FRAME_EVENTS, false, true);
 
 	// Construct the BButtons
 	fConfigure = new BButton(intViewRect, "configure",
-		"Configure" B_UTF8_ELLIPSIS, new BMessage(CONFIGURE_INTERFACE_MSG));
-
+		"Configure" B_UTF8_ELLIPSIS, new BMessage(kMsgInterfaceConfigure));
 	fConfigure->SetEnabled(false);
 
 	fOnOff = new BButton(intViewRect, "onoff", "Disable",
-		new BMessage(ONOFF_INTERFACE_MSG));
-
+		new BMessage(kMsgInterfaceToggle));
 	fOnOff->SetEnabled(false);
+
+	fRenegotiate = new BButton(intViewRect, "heal",
+		"Renegotiate", new BMessage(kMsgInterfaceRenegotiate));
+	fRenegotiate->SetEnabled(false);
 
 	// Build the layout
 	SetLayout(new BGroupLayout(B_VERTICAL));
@@ -100,6 +93,7 @@ InterfacesAddOn::CreateView(BRect *bounds)
 			.Add(fConfigure)
 			.Add(fOnOff)
 			.AddGlue()
+			.Add(fRenegotiate)
 		.End()
 		.SetInsets(10, 10, 10, 10)
 	);
@@ -115,6 +109,15 @@ InterfacesAddOn::AttachedToWindow()
 	fListview->SetTarget(this);
 	fConfigure->SetTarget(this);
 	fOnOff->SetTarget(this);
+	fRenegotiate->SetTarget(this);
+}
+
+
+status_t
+InterfacesAddOn::Save()
+{
+	// TODO : Profile?
+	return fListview->SaveItems();
 }
 
 
@@ -128,36 +131,53 @@ InterfacesAddOn::MessageReceived(BMessage* msg)
 	}
 
 	switch (msg->what) {
-	case INTERFACE_SELECTED_MSG: {
-		fOnOff->SetEnabled(item != NULL);
-		fConfigure->SetEnabled(item != NULL);
-		if (!item)
+		case kMsgInterfaceSelected:
+		{
+			fConfigure->SetEnabled(item != NULL);
+			fOnOff->SetEnabled(item != NULL);
+			fRenegotiate->SetEnabled(item != NULL);
+			if (!item)
+				break;
+			fConfigure->SetEnabled(!item->IsDisabled());
+			fRenegotiate->SetEnabled(!item->IsDisabled());
+			fOnOff->SetLabel(item->IsDisabled() ? "Enable" : "Disable");
 			break;
-		fConfigure->SetEnabled(!item->IsDisabled());
-		fOnOff->SetLabel(item->IsDisabled() ? "Enable" : "Disable");
-		break;
-	}
+		}
 
-	case CONFIGURE_INTERFACE_MSG: {
-		if (!item)
+		case kMsgInterfaceConfigure:
+		{
+			if (!item)
+				break;
+
+			InterfaceWindow* sw = new InterfaceWindow(item->GetSettings());
+			sw->Show();
 			break;
+		}
 
-		InterfaceWindow* sw = new InterfaceWindow(item->GetSettings());
-		sw->Show();
-		break;
-	}
+		case kMsgInterfaceToggle:
+		{
+			if (!item)
+				break;
 
-	case ONOFF_INTERFACE_MSG:
-		if (!item)
+			item->SetDisabled(!item->IsDisabled());
+			fConfigure->SetEnabled(!item->IsDisabled());
+			fOnOff->SetLabel(item->IsDisabled() ? "Enable" : "Disable");
+			fRenegotiate->SetEnabled(!item->IsDisabled());
+			fListview->Invalidate();
 			break;
+		}
 
-		item->SetDisabled(!item->IsDisabled());
-		fOnOff->SetLabel(item->IsDisabled() ? "Enable" : "Disable");
-		fConfigure->SetEnabled(!item->IsDisabled());
-		fListview->Invalidate();
-		break;
+		case kMsgInterfaceRenegotiate:
+		{
+			if (!item)
+				break;
 
-	default:
-		BBox::MessageReceived(msg);
+			NetworkSettings* ns = item->GetSettings();
+			ns->RenegotiateAddresses();
+			break;
+		}
+
+		default:
+			BBox::MessageReceived(msg);
 	}
 }

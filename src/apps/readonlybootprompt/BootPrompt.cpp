@@ -7,7 +7,7 @@
 
 #include <stdlib.h>
 
-#include <AboutWindow.h>
+#include <Catalog.h>
 #include <Locale.h>
 
 #include "BootPromptWindow.h"
@@ -54,22 +54,6 @@ BootPromptApp::MessageReceived(BMessage* message)
 		default:
 			BApplication::MessageReceived(message);
 	}
-}
-
-
-void
-BootPromptApp::AboutRequested()
-{
-	const char* kAuthors[] = {
-		"Stephan Aßmus",
-		NULL
-	};
-
-	BAboutWindow* aboutWindow = new BAboutWindow("ReadOnlyBootPrompt", 2010,
-		kAuthors);
-
-	aboutWindow->Show();
-	delete aboutWindow;
 }
 
 

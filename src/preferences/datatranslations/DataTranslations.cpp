@@ -15,12 +15,12 @@
 #include <Alert.h>
 #include <Catalog.h>
 #include <Directory.h>
+#include <Entry.h>
 #include <FindDirectory.h>
 #include <String.h>
-#include <TranslatorRoster.h>
 #include <TextView.h>
+#include <TranslatorRoster.h>
 
-#include "DataTranslationsSettings.h"
 #include "DataTranslationsWindow.h"
 
 
@@ -32,7 +32,8 @@ const char* kApplicationSignature = "application/x-vnd.Haiku-DataTranslations";
 
 
 DataTranslationsApplication::DataTranslationsApplication()
-	: BApplication(kApplicationSignature)
+	:
+	BApplication(kApplicationSignature)
 {
 	new DataTranslationsWindow();
 }
@@ -40,34 +41,6 @@ DataTranslationsApplication::DataTranslationsApplication()
 
 DataTranslationsApplication::~DataTranslationsApplication()
 {
-}
-
-
-void
-DataTranslationsApplication::SetWindowCorner(const BPoint& leftTop)
-{
-	fSettings.SetWindowCorner(leftTop);
-}
-
-
-void
-DataTranslationsApplication::AboutRequested()
-{
-	BAlert* alert = new BAlert(B_TRANSLATE("About"),
-		B_TRANSLATE("DataTranslations\n\twritten by Oliver Siebenmarck and"
-		" others\n\tCopyright 2002-2010, Haiku Inc. All rights reserved.\n"),
-		B_TRANSLATE("OK"));
-
-	BTextView* view = alert->TextView();
-	view->SetStylable(true);
-
-	BFont font;
-	view->GetFont(&font);
-	font.SetSize(18);
-	font.SetFace(B_BOLD_FACE);
-	view->SetFontAndColor(0, 16, &font);
-
-	alert->Go();
 }
 
 

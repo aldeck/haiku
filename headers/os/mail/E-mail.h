@@ -19,6 +19,7 @@ struct entry_ref;
 #define B_MAIL_ATTR_PRIORITY	"MAIL:priority"			// indexed string
 #define B_MAIL_ATTR_TO			"MAIL:to"				// indexed string
 #define B_MAIL_ATTR_CC			"MAIL:cc"				// indexed string
+#define B_MAIL_ATTR_BCC			"MAIL:bcc"				// string
 #define B_MAIL_ATTR_FROM		"MAIL:from"				// indexed string
 #define B_MAIL_ATTR_SUBJECT		"MAIL:subject"			// indexed string
 #define B_MAIL_ATTR_REPLY		"MAIL:reply"			// indexed string
@@ -29,6 +30,9 @@ struct entry_ref;
 #define B_MAIL_ATTR_HEADER		"MAIL:header_length"	// int32
 #define B_MAIL_ATTR_CONTENT		"MAIL:content_length"	// int32
 #define B_MAIL_ATTR_READ		"MAIL:read"				// int32
+#define B_MAIL_ATTR_THREAD		"MAIL:thread"			// string
+#define B_MAIL_ATTR_ACCOUNT		"MAIL:account"			// string
+#define B_MAIL_ATTR_ACCOUNT_ID	"MAIL:account_id"		// int32
 
 
 // read flags
@@ -101,6 +105,14 @@ typedef struct {
 	bool		alert;
 	bool		beep;
 } mail_notification;
+
+
+// #pragma mark - global functions
+
+int32 count_pop_accounts(void);
+status_t get_pop_account(mail_pop_account*, int32 index = 0);
+status_t set_pop_account(mail_pop_account*, int32 index = 0,
+	bool save = true);
 
 
 // #pragma mark - BMailMessage

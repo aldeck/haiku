@@ -1,11 +1,10 @@
-1	belarusian	x-vnd.Haiku-FileTypes	1575473845
+1	belarusian	x-vnd.Haiku-FileTypes	473999706
 %1 application type	Application Type Window		%1 тып праграмы
 %ld Application type%s could be removed.	Application Types Window		%ld тыпаў праграм%s можна выдаліць.
 %s file type	FileType Window		файл тыпу %s
 (from application)	FileTypes Window		(з праграмы)
 (from super type)	FileTypes Window		(з галоўнага тыпу)
 Abort	Application Types Window		Адмяніць
-About FileTypes…	FileTypes Window		Пра FileTypes…
 Add	Attribute Window		Дадаць
 Add	Extension Window		Дадаць
 Add group	New File Type Window		Дадаць групу
@@ -71,7 +70,7 @@ File could not be opened	Preferred App Menu		Файля ня можа быць �
 File recognition	FileTypes Window		Распазанне файла
 File type	FileType Window		Тып файла
 FileTypes	FileTypes		FileTypes
-FileTypes	FileTypes Window		FileTypes
+FileTypes	System name		Тыпы файлаў
 FileTypes request	FileTypes		запыт FileTypes
 FileTypes request	FileTypes Window		Запыт тыпу.
 FileTypes request	Preferred App Menu		Запыт FileTypes
@@ -120,8 +119,9 @@ Removing a super type cannot be reverted.\nAll file types that belong to this su
 Removing uninstalled application types	Application Types Window		Выдаленне тыпаў знішчаных праграм
 Right	Attribute Window	Attribute column alignment in Tracker	Справа
 Rule:	FileTypes Window		Правіла:
-Same as…	FileType Window		Такая ж, як…
-Same as…	FileTypes Window		Такі ж, як...
+Same as…	FileType Window	The same APPLICATION as ...	Такая ж, як…
+Same as…	FileType Window	The same TYPE as ...	Такі ж, як…
+Same as…	FileTypes Window		Такая ж, як...
 Save	Application Type Window		Захаваць
 Save into resource file…	Application Type Window		Захаваць у файл рэсурсаў…
 Save request	Application Type Window		Захаваць запыт
@@ -154,5 +154,4 @@ Version:	Application Types Window		Версія:
 Visible	Attribute Window		Бачнае
 Width:	Attribute Window	Default column width in Tracker for this attribute.	Шырыня:
 [Multiple files] file types	FileType Window		[Множныя файлы] тыпы файлаў
-\twritten by Axel Dörfler\n\tCopyright 2006-2007, Haiku.\n	FileTypes		\tстварыў Axel Dörfler\n\tCopyright 2006-2007, Haiku.\n
 no icon	FileTypes Window		няма іконкі

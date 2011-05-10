@@ -49,8 +49,7 @@
 #define B_TRANSLATE_CONTEXT "MediaPlayer-Main"
 
 
-static const char* kCurrentPlaylistFilename = 
-	B_TRANSLATE("MediaPlayer Current Playlist");
+static const char* kCurrentPlaylistFilename = "MediaPlayer Current Playlist";
 
 const char* kAppSig = "application/x-vnd.Haiku-MediaPlayer";
 
@@ -405,21 +404,6 @@ MainApp::MessageReceived(BMessage* message)
 			BApplication::MessageReceived(message);
 			break;
 	}
-}
-
-
-void
-MainApp::AboutRequested()
-{
-	BAlert* alert = new BAlert("about", B_TRANSLATE(
-		NAME"\n\nWritten by Marcus Overhagen, "
-		"Stephan Aßmus and Frederik Modéen"), 
-		B_TRANSLATE("Thanks"));
-	alert->SetFeel(B_FLOATING_ALL_WINDOW_FEEL);
-		// Make sure it is on top of any player windows that may have the
-		// floating all window feel.
-	alert->Go(NULL);
-		// asynchronous mode
 }
 
 

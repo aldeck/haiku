@@ -10,11 +10,12 @@
 
 
 #include <Node.h>
+#include <String.h>
 #include <View.h>
 
 
 class BBitmap;
-
+class BFilePanel;
 
 const uint32	kMsgLoadImage	= 'mLIM';
 
@@ -27,9 +28,12 @@ public:
 
 			bool				HasChanged();
 			void				Revert();
+			void				Update();
 			void				Update(const entry_ref* ref);
 
 			BBitmap*			Bitmap();
+			uint32				SuggestedType();
+			const char*			SuggestedMIMEType();
 
 	virtual	void				MessageReceived(BMessage* message);
 	virtual	void				Draw(BRect updateRect);
@@ -44,6 +48,7 @@ private:
 			void				_ShowPopUpMenu(BPoint screen);
 			BBitmap*			_CopyPicture(uint8 alpha);
 
+			status_t			_LoadPicture(const entry_ref* ref);
 			void				_SetPicture(BBitmap* bitmap);
 
 			BBitmap*			fPicture;
@@ -51,6 +56,10 @@ private:
 			BBitmap*			fDefaultPicture;
 			bool				fShowingPopUpMenu;
 			BRect				fPictureRect;
+			uint32				fPictureType;
+			BString				fPictureMIMEType;
+			bool 				fFocusChanging;
+			BFilePanel*			fOpenPanel;
 };
 
 #endif

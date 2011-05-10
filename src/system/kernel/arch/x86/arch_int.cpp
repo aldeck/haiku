@@ -1,4 +1,5 @@
 /*
+ * Copyright 2008-2011, Michael Lotz, mmlr@mlotz.ch.
  * Copyright 2010, Clemens Zeidler, haiku@clemens-zeidler.de.
  * Copyright 2009-2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Copyright 2002-2010, Axel Dörfler, axeld@pinc-software.de.
@@ -83,6 +84,12 @@
 #define PIC_NUM_INTS			0x0f
 
 
+// ACPI interrupt models
+#define ACPI_INTERRUPT_MODEL_PIC	0
+#define ACPI_INTERRUPT_MODEL_APIC	1
+#define ACPI_INTERRUPT_MODEL_SAPIC	2
+
+
 // Definitions for a 82093AA IO APIC controller
 #define IO_APIC_IDENTIFICATION				0x00
 #define IO_APIC_VERSION						0x01
@@ -133,8 +140,6 @@ typedef struct ioapic_s {
 
 static ioapic *sIOAPIC = NULL;
 static uint32 sIOAPICMaxRedirectionEntry = 23;
-
-static uint32 sIRQToIOAPICPin[256];
 
 typedef struct interrupt_controller_s {
 	const char *name;
@@ -415,6 +420,15 @@ pic_init(void)
 }
 
 
+static void
+pic_disable()
+{
+	// Mask off all interrupts on master and slave
+	out8(0xff, PIC_MASTER_MASK);
+	out8(0xff, PIC_SLAVE_MASK);
+}
+
+
 // #pragma mark - I/O APIC
 
 
@@ -473,9 +487,8 @@ ioapic_end_of_interrupt(int32 num)
 
 
 static void
-ioapic_enable_io_interrupt(int32 num)
+ioapic_enable_io_interrupt(int32 pin)
 {
-	int32 pin = sIRQToIOAPICPin[num];
 	if (pin < 0 || pin > (int32)sIOAPICMaxRedirectionEntry)
 		return;
 
@@ -489,9 +502,8 @@ ioapic_enable_io_interrupt(int32 num)
 
 
 static void
-ioapic_disable_io_interrupt(int32 num)
+ioapic_disable_io_interrupt(int32 pin)
 {
-	int32 pin = sIRQToIOAPICPin[num];
 	if (pin < 0 || pin > (int32)sIOAPICMaxRedirectionEntry)
 		return;
 
@@ -505,9 +517,8 @@ ioapic_disable_io_interrupt(int32 num)
 
 
 static void
-ioapic_configure_io_interrupt(int32 num, uint32 config)
+ioapic_configure_io_interrupt(int32 pin, uint32 config)
 {
-	int32 pin = sIRQToIOAPICPin[num];
 	if (pin < 0 || pin > (int32)sIOAPICMaxRedirectionEntry)
 		return;
 
@@ -521,10 +532,10 @@ ioapic_configure_io_interrupt(int32 num, uint32 config)
 
 	if (config & B_LEVEL_TRIGGERED) {
 		entry |= (IO_APIC_TRIGGER_MODE_LEVEL << IO_APIC_TRIGGER_MODE_SHIFT);
-		sLevelTriggeredInterrupts |= (1 << num);
+		sLevelTriggeredInterrupts |= (1 << pin);
 	} else {
 		entry |= (IO_APIC_TRIGGER_MODE_EDGE << IO_APIC_TRIGGER_MODE_SHIFT);
-		sLevelTriggeredInterrupts &= ~(1 << num);
+		sLevelTriggeredInterrupts &= ~(1 << pin);
 	}
 
 	if (config & B_LOW_ACTIVE_POLARITY)
@@ -532,7 +543,7 @@ ioapic_configure_io_interrupt(int32 num, uint32 config)
 	else
 		entry |= (IO_APIC_PIN_POLARITY_HIGH_ACTIVE << IO_APIC_PIN_POLARITY_SHIFT);
 
-	entry |= (num + ARCH_INTERRUPT_BASE) << IO_APIC_INTERRUPT_VECTOR_SHIFT;
+	entry |= (pin + ARCH_INTERRUPT_BASE) << IO_APIC_INTERRUPT_VECTOR_SHIFT;
 	ioapic_write_64(IO_APIC_REDIRECTION_TABLE + pin * 2, entry);
 }
 
@@ -562,6 +573,27 @@ ioapic_map(kernel_args* args)
 }
 
 
+static status_t
+acpi_set_interrupt_model(acpi_module_info* acpiModule, uint32 interruptModel)
+{
+	acpi_object_type model;
+	model.object_type = ACPI_TYPE_INTEGER;
+	model.data.integer = interruptModel;
+
+	acpi_objects parameter;
+	parameter.count = 1;
+	parameter.pointer = &model;
+
+	dprintf("setting ACPI interrupt model to %s\n",
+		interruptModel == 0 ? "PIC"
+		: (interruptModel == 1 ? "APIC"
+		: (interruptModel == 2 ? "SAPIC"
+		: "unknown")));
+
+	return acpiModule->evaluate_method(NULL, "\\_PIC", &parameter, NULL);
+}
+
+
 static void
 ioapic_init(kernel_args* args)
 {
@@ -577,11 +609,20 @@ ioapic_init(kernel_args* args)
 	if (sIOAPIC == NULL)
 		return;
 
-	if (get_safemode_boolean(B_SAFEMODE_DISABLE_IOAPIC, true)) {
+#if 0
+	if (get_safemode_boolean(B_SAFEMODE_DISABLE_IOAPIC, false)) {
 		dprintf("ioapic explicitly disabled, not using ioapics for interrupt "
 			"routing\n");
 		return;
 	}
+#else
+	// TODO: This can be removed once IO-APIC code is broadly tested
+	if (!get_safemode_boolean(B_SAFEMODE_ENABLE_IOAPIC, false)) {
+		dprintf("ioapic not enabled, not using ioapics for interrupt "
+			"routing\n");
+		return;
+	}
+#endif
 
 	uint32 version = ioapic_read_32(IO_APIC_VERSION);
 	if (version == 0xffffffff) {
@@ -600,30 +641,41 @@ ioapic_init(kernel_args* args)
 	BPrivate::CObjectDeleter<const char, status_t>
 		acpiModulePutter(B_ACPI_MODULE_NAME, put_module);
 
-	// load pci module
-	pci_module_info* pciModule;
-	status = get_module(B_PCI_MODULE_NAME, (module_info**)&pciModule);
+	// switch to the APIC interrupt model before retrieving the irq routing
+	// table as it will return different settings depending on the model
+	status = acpi_set_interrupt_model(acpiModule, ACPI_INTERRUPT_MODEL_APIC);
 	if (status != B_OK) {
-		dprintf("could not load pci module, not configuring ioapic\n");
-		return;
-	}
-	CObjectDeleter<const char, status_t> pciModulePutter(B_PCI_MODULE_NAME,
-		put_module);
-
-	// TODO: here ACPI needs to be used to properly set up the PCI IRQ
-	// routing.
-
-	IRQRoutingTable table;
-	status = read_irq_routing_table(pciModule, acpiModule, &table);
-	if (status != B_OK) {
-		dprintf("reading IRQ routing table failed, no ioapic.\n");
-		return;
+		dprintf("failed to put ACPI into APIC interrupt model, ignoring\n");
+		// don't abort, as the _PIC method is optional and as long as there
+		// aren't different routings based on it this is non-fatal
 	}
 
 	sLevelTriggeredInterrupts = 0;
 	sIOAPICMaxRedirectionEntry
 		= ((version >> IO_APIC_MAX_REDIRECTION_ENTRY_SHIFT)
 			& IO_APIC_MAX_REDIRECTION_ENTRY_MASK);
+
+	TRACE(("ioapic has %lu entries\n", sIOAPICMaxRedirectionEntry + 1));
+
+	IRQRoutingTable table;
+	status = prepare_irq_routing(acpiModule, table,
+		sIOAPICMaxRedirectionEntry + 1);
+	if (status != B_OK) {
+		dprintf("IRQ routing preparation failed, not configuring ioapic.\n");
+		acpi_set_interrupt_model(acpiModule, ACPI_INTERRUPT_MODEL_PIC);
+			// revert to PIC interrupt model just in case
+		return;
+	}
+
+	print_irq_routing_table(table);
+
+	status = enable_irq_routing(acpiModule, table);
+	if (status != B_OK) {
+		panic("failed to enable IRQ routing");
+		// if it failed early on it might still work in PIC mode
+		acpi_set_interrupt_model(acpiModule, ACPI_INTERRUPT_MODEL_PIC);
+		return;
+	}
 
 	// use the boot CPU as the target for all interrupts
 	uint64 targetAPIC = args->arch_args.cpu_apic_id[0];
@@ -658,28 +710,15 @@ ioapic_init(kernel_args* args)
 		ioapic_write_64(IO_APIC_REDIRECTION_TABLE + 2 * i, entry);
 	}
 
-	// setup default 1:1 mapping
-	for (uint32 i = 0; i < 256; i++)
-		sIRQToIOAPICPin[i] = i;
-
-	// configure apic interrupts assume 1:1 mapping
+	// configure io apic interrupts from PCI routing table
 	for (int i = 0; i < table.Count(); i++) {
 		irq_routing_entry& entry = table.ElementAt(i);
-		irq_descriptor irqDescriptor;
-		read_current_irq(acpiModule, entry.source, &irqDescriptor);
-		uint32 config = 0;
-		config |= irqDescriptor.polarity;
-		config |= irqDescriptor.interrupt_mode;
-
-		int32 num = entry.source_index;
-		for (int a = 0; a < 16 && num == 0; a++) {
-			if (irqDescriptor.irq >> i & 0x01) {
-				num = a;
-				break;
-			}
-		}
-		ioapic_configure_io_interrupt(num, config);
+		ioapic_configure_io_interrupt(entry.irq,
+			entry.polarity | entry.trigger_mode);
 	}
+
+	// disable the legacy PIC
+	pic_disable();
 
 	// prefer the ioapic over the normal pic
 	dprintf("using ioapic for interrupt routing\n");

@@ -1,4 +1,4 @@
-1	french	x-vnd.Haiku-libtracker	2699415616
+1	french	x-vnd.Haiku-libtracker	228844460
 %BytesPerSecond/s	StatusWindow		%BytesPerSecond/s
 %Ld B	WidgetAttributeText		%Ld o
 %Ld bytes	WidgetAttributeText		%Ld octets
@@ -71,7 +71,6 @@ Copying: 	StatusWindow		Copie :
 Could not find an application to open \"%name\" (%error). 	FSUtils		Impossible de trouver une application pour ouvrir « %name » (%error).
 Could not find application \"%appname\"	OpenWithWindow		Impossible de trouver l'application « %appname »
 Could not open \"%document\" (Missing libraries: %library). \n	FSUtils		Impossible d'ouvrir « %document » (Il manque la bibliothèque : %library).\n
-
 Could not open \"%document\" (Missing symbol: %symbol). \n	FSUtils		Impossible d'ouvrir « %document » (Il manque le symbole : %symbol).\n
 Could not open \"%document\" because application \"%app\" is in the Trash. 	FSUtils		Impossible d'ouvrir « %document », car l'application « %app » est dans la Corbeille.
 Could not open \"%document\" with application \"%app\" (%error). 	FSUtils		Impossible d'ouvrir « %document » avec l'application « %app » (%error).\n
@@ -103,6 +102,7 @@ Delete	FilePanelPriv		Supprimer
 Delete	PoseView		Supprimer
 Deleting: 	StatusWindow		Suppression :
 Description:	InfoWindow		Description :
+Desktop	B_DESKTOP_DIRECTORY		Bureau
 Desktop	Model		Bureau
 Desktop	TrackerSettingsWindow		Bureau
 Disk mount settings	AutoMounterSettings		Réglages des montages de disques
@@ -110,6 +110,7 @@ Disk mounting during boot	AutoMounterSettings		Montage des disques au démarrage
 Disks	DirMenu		Disques
 Disks	Model		Disques
 Do it	FSUtils		Le faire
+Does not handle file	OpenWithWindow		Ne gère pas le fichier
 Don't automount	AutoMounterSettings		Ne pas monter automatiquement
 Don't move files to Trash	SettingsView		Ne pas envoyer les fichiers vers la corbeille
 Done	AutoMounterSettings		Fait
@@ -130,9 +131,12 @@ Empty folder	SlowContextPopup		Dossier vide
 Emptying Trash… 	StatusWindow		Vidage de la Corbeille…
 Enable type-ahead filtering	SettingsView		Activer le filtrage au court de la saisie
 Error %error loading Add-On %name.	ContainerWindow		Erreur %error au chargement de l'extension %name.
+Error calculating folder size.	InfoWindow		Erreur de calcul de la taille du dossier.
 Error copying file \"%name\":\n\t%error\n\nWould you like to continue?	FSUtils		Erreur à la copie du fichier « %name » :\n\t%error\n\nVoulez-vous continuer ?
 Error copying folder \"%name\":\n\t%error\n\nWould you like to continue?	FSUtils		Erreur à la copie du dossier « %name »:\n\t%error\n\nVoulez-vous continuer ?
 Error creating link to \"%name\".	FSUtils		Erreur à la création du lien vers « %name ».
+Error deleting items	FSUtils		Erreur en supprimant les éléments
+Error emptying Trash!	FSUtils		Erreur en vidant la corbeille !
 Error in regular expression:\n\n'%errstring'	PoseView		Erreur dans l'expression régulière :\n\n'%errstring'
 Error moving \"%name\"	FSUtils		Erreur lors du déplacement de « %name »
 Error moving \"%name\" to Trash. (%error)	FSUtils		Erreur en envoyant « %name » à la Corbeille. (%error)
@@ -150,29 +154,38 @@ Find…	VolumeWindow		Rechercher…
 Force identify	ContainerWindow		Forcer l'identification
 Formula %formula	FindPanel	FindResultTitle	Formule %formula
 Free space color	SettingsView		Couleur de l'espace libre
+Get info	ContainerWindow		Informations
+Get info	FilePanelPriv		Informations
+Get info	VolumeWindow		Informations
 GiB	WidgetAttributeText		Gio
 Go to parent	FilePanelPriv		Aller vers le parent
 Group	FilePermissionsView		Groupe
-Handles any %type	OpenWithWindow		Traite n'importe quel %type
-Handles any file	OpenWithWindow		Gérer n'importe quel fichier
+Handles %type	OpenWithWindow		Support de  « %type »
+Handles any %type	OpenWithWindow		Manipule n'importe quel « %type »
+Handles any file	OpenWithWindow		Manipule n'importe quel fichier
 Icon view	ContainerWindow		Vue en icônes
 Icon view	DeskWindow		Vue en icônes
 Icon view	VolumeWindow		Vue en icônes
 Identify	ContainerWindow		Identifier
 Identify	InfoWindow		Identifier
-If you %action the config folder, Haiku may not behave properly! Are you sure you want to do this? To %action the config folder anyway, click \"Do it\".	FSUtils		Êtes vous sûr de vouloir %action le dossier de configuration, Haiku pourrait ne plus fonctionner correctement. Pour %action le dossier de configuration malgré tout, cliquez sur « Le faire ».
-If you %action the home folder, Haiku may not behave properly! Are you sure you want to do this? To %action the home anyway, click \"Do it\".	FSUtils		Êtes vous sûr de vouloir %action votre dossier personnel ? Haiku pourrait ne plus fonctionner correctement. Pour %action votre dossier personnel malgré tout, cliquez sur « Le faire ».
-If you %action the mime settings, Haiku may not behave properly! Are you sure you want to do this? To %action the mime settings anyway, click \"Do it\".	FSUtils		Êtes vous sûr de vouloir %action les réglages MIME, Haiku pourrait ne plus fonctionner correctement. Pour %action les réglages MIME malgré tout, cliquez sur « Le faire ».
-If you %action the settings folder, Haiku may not behave properly! Are you sure you want to do this? To %action the settings folder anyway, click \"Do it\".	FSUtils		Êtes vous sûr de vouloir %action le dossier des réglages, Haiku pourrait ne plus fonctionner correctement. Pour %action le dossier des réglages malgré tout, cliquez sur « Le faire ».
-If you %action the system folder or its contents, you won't be able to boot Haiku! Are you sure you want to do this? To %action the system folder or its contents anyway, hold down the Shift key and click \"Do it\".	FSUtils		Êtes vous sûr de vouloir %action le dossier système ou son contenu ? Haiku pourrait ne plus démarrer. Pour %action le dossier système ou son contenu malgré tout, maintenez la touche <MAJ> enfoncée et cliquez sur « Le faire ».
+If you %ifYouDoAction the common folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the common folder anyway, hold down the Shift key and click \"Do it\".	FSUtils		Si vous %ifYouDoAction le dossier commun, Haiku pourrait ne plus fonctionner correctement ! Veuillez cliquer sur « Le faire » en pressant la touche majuscule , si vous êtes sûr de vouloir %toDoAction% le dossier commun.
+If you %ifYouDoAction the config folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the config folder anyway, click \"Do it\".	FSUtils		Si vous %ifYouDoAction le dossier des préférences, Haiku pourrait ne plus fonctionner correctement ! Veuillez cliquer sur « Le faire », si vous êtes sûr de vouloir %toDoAction% le dossier des préférences.
+If you %ifYouDoAction the home folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the home folder anyway, hold down the Shift key and click \"Do it\".	FSUtils		Si vous %ifYouDoAction votre dossier personnel, Haiku pourrait ne plus fonctionner correctement ! Veuillez cliquer sur « Le faire » en pressant la touche majuscule , si vous êtes sûr de vouloir %toDoAction% votre dossier personnel.
+If you %ifYouDoAction the mime settings, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the mime settings anyway, click \"Do it\".	FSUtils		Si vous %ifYouDoAction les réglages MIME, Haiku pourrait ne plus fonctionner correctement ! Veuillez cliquer sur « Le faire », si vous êtes sûr de vouloir %toDoAction% les réglages MIME.
+If you %ifYouDoAction the settings folder, Haiku may not behave properly! Are you sure you want to do this? To %toDoAction the settings folder anyway, click \"Do it\".	FSUtils		Si vous %ifYouDoAction le dossier des réglages, Haiku pourrait ne plus fonctionner correctement ! Veuillez cliquer sur « Le faire », si vous êtes sûr de vouloir %toDoAction% le dossier des réglages.
+If you %ifYouDoAction the system folder or its contents, you won't be able to boot Haiku! Are you sure you want to do this? To %toDoAction the system folder or its contents anyway, hold down the Shift key and click \"Do it\".	FSUtils		Si vous %ifYouDoAction le dossier du système, Haiku ne démarrera plus ! Veuillez cliquer sur « Le faire », si vous êtes sûr de vouloir %toDoAction% le dossier du système.
 Ignore case	SelectionWindow		Ignorer la casse
 Include trash	FindPanel		Inclure la corbeille
 Increase size	ContainerWindow		Augmenter la taille
 Increase size	DeskWindow		Augmenter la taille
+Invert	SelectionWindow		Inverser
 Invert selection	ContainerWindow		Inverser la sélection
+Invert selection	FilePanelPriv		Inverser la sélection
 Invert selection	QueryContainerWindow		Inverser la sélection
 Invert selection	VolumeWindow		Inverser la sélection
 KiB	WidgetAttributeText		Kio
+Kind	ContainerWindow		Nature
+Kind:	InfoWindow		Nature :
 Link \"%name\" to:	InfoWindow	File dialog title for new sym link	Lier « %name » à :
 Link to:	InfoWindow		Lier à :
 List folders first	SettingsView		Lister les dossiers en premier
@@ -257,23 +270,31 @@ Paused: click to resume or stop	StatusWindow		En pause : cliquez pour reprendre 
 Permissions	ContainerWindow		Permissions
 Permissions	InfoWindow		Permissions
 Preferences…	ContainerWindow		Préférences…
+Preferred for %type	OpenWithWindow		Préférence pour %type
+Preferred for file	OpenWithWindow		Préférence pour le fichier
+Preparing to copy items…	StatusWindow		Copie des éléments en préparation…
+Preparing to create links…	StatusWindow		Création des liens en préparation…
 Preparing to delete items…	StatusWindow		Préparation de la suppression des éléments…
 Preparing to empty Trash…	StatusWindow		Préparation au vidage de la Corbeille…
 Preparing to move items…	StatusWindow		Préparation au déplacement des éléments…
+Preparing to restore items…	StatusWindow		Restauration des éléments en préparation...
 Previously mounted disks	AutoMounterSettings		Les disques montés précédemment
 Proceed	FSUtils		Procéder
 Prompt	FSUtils		Invite
 Query name:	FindPanel		Nom de la requête :
 Query template	FindPanel		Modèle de requête
 Read	FilePermissionsView		Lire
+Real name	ContainerWindow		Nom réel
 Recalculate folder size	InfoWindow		Recalculer la taille du dossier
 Recent documents	FavoritesMenu		Documents récents
 Recent folders	ContainerWindow		Dossiers récents
 Recent folders	FavoritesMenu		Dossiers récents
+Relation	OpenWithWindow		Relation
 Remove	FindPanel		Supprimer
 Replace	FSUtils		Remplacer
 Replace	FilePanelPriv		Remplacer
 Replace all	FSUtils		Remplacer tout
+Replace other file	WidgetAttributeText		Remplacer un autre fichier
 Resize to fit	ContainerWindow		Ajuster
 Resize to fit	QueryContainerWindow		Ajuster
 Resize to fit	VolumeWindow		Ajuster
@@ -332,6 +353,7 @@ The Tracker must be running to see Info windows.	PoseView		Le Tracker doit être
 The Tracker must be running to see set the default printer.	PoseView		Le Tracker doit être lancé pour voir changer l'imprimante par défaut.
 The application \"%appname\" does not support the type of document you are about to open. Are you sure you want to proceed? If you know that the application supports the document type, you should contact the publisher of the application and ask them to update their application to list the type of your document as supported.	OpenWithWindow		L'application « %appname » ne supporte pas le type de document que vous êtes sur le point d'ouvrir. Êtes vous sûr de vouloir continuer ? Si vous savez que l'application prend en charge ce type de document, vous devriez contacter son éditeur pour lui demander de mettre à jour l'application afin d'ajouter le type de votre document à la liste de ceux pris en charge.
 The file \"%name\" already exists in the specified folder. Do you want to replace it?	FilePanelPriv		Le fichier « %name » existe déjà dans le dossier indiqué. Voulez-vous le remplacer ?
+The mount server could not be contacted.	AutoMounterSettings		Impossible de contacter le serveur de montage.
 The selected item cannot be moved to the Trash. Would you like to delete it instead? (This operation cannot be reverted.)	PoseView		L'élément sélectionné ne peut pas être envoyé à la Corbeille. Voulez vous le supprimer ? (Cette opération ne peut pas être rétablie.)
 The specified name is already used as the name of a folder. Please choose another name.	FilePanelPriv		Le nom indiqué est déjà utilisé comme nom de dossier. Veuillez en choisir un autre.
 The specified name is illegal. Please choose another name.	FilePanelPriv		Le nom indiqué n'est pas valide. Veuillez choisir un autre nom.
@@ -343,6 +365,7 @@ There was an error resolving the link.	Tracker		Une erreur est survenue lors de 
 There was an error writing the attribute.	WidgetAttributeText		Il y a eu une erreur à l'écriture de l'attribut.
 TiB	WidgetAttributeText		Tio
 To: %dir	StatusWindow		Vers : %dir
+Tracker New Templates	B_USER_SETTINGS_DIRECTORY/Tracker/Tracker New Templates		Nouveaux modèles
 Tracker preferences	TrackerSettingsWindow		Préférences du Tracker
 Tracker status	StatusWindow		État du Tracker
 Trash	Model		Corbeille
@@ -352,6 +375,7 @@ Unknown	WidgetAttributeText		Inconnu
 Unmount	ContainerWindow		Démonter
 Unmount	InfoWindow		Démonter
 Unmount	VolumeWindow		Démonter
+Untitled bitmap	PoseView		Image sans nom
 Untitled clipping	PoseView		Extrait sans titre
 Used space color	SettingsView		Couleur de l'espace utilisé
 Version	OpenWithWindow		Version
@@ -365,13 +389,13 @@ Would you like to find a suitable application to open the file?	FSUtils		Souhait
 Would you like to find some other suitable application?	FSUtils		Souhaitez-vous rechercher une autre application appropriée ?
 Write	FilePermissionsView		Écrire
 You are trying to replace the item:\n\t%name%dest\nwith:\n\t%name%src\n\nWould you like to replace it with the one you are %movemode?	FSUtils		Vous essayez de remplacer l’élément :\n\t%name%dest\npar :\n\t%name%src\n\nVoulez vous le remplacer par %movemode ?	
-
 You can't move a folder into itself or any of its own sub-folders.	FSUtils		Vous ne pouvez pas déplacer un dossier dans lui-même ou dans un de ses sous-dossier.
 You can't move or copy items to read-only volumes.	FSUtils		Vous ne pouvez pas déplacer ou copiez des éléments dans un volume en lecture-seule.
 You can't move or copy the trash.	FSUtils		Vous ne pouvez ni déplacer, ni copier la Corbeille.
 You can't replace a folder with one of its sub-folders.	FSUtils		Vous ne pouvez pas remplacer un dossier par l'un de ses sous-dossiers.
 You cannot copy or move the root directory.	FSUtils		Vous ne pouvez ni copier, ni déplacer le répertoire racine.
 You cannot create a link to the root directory.	FSUtils		Vous ne pouvez pas créer un lien vers le répertoire racine.
+You cannot put the Trash, home or Desktop directory into the trash.	FSUtils		Vous ne pouvez pas mettre la Corbeille, le Bureau ou votre répertoires personnel à la corbeille.
 You cannot replace a file with a folder or a symbolic link.	FSUtils		Vous ne pouvez pas remplacer un fichier par un dossier ou un lien symbolique.
 You cannot replace a folder or a symbolic link with a file.	FSUtils		Vous ne pouvez pas remplacer un dossier ou un lien symbolique par un fichier.
 You must drop items on one of the disk icons in the \"Disks\" window.	FSClipBoard		Vous devez déplacer des éléments sur une des icônes de disques de la fenêtre « Disques ».
@@ -380,19 +404,24 @@ You must have at least one attribute showing.	PoseView		Vous devez avoir au moin
 \nShould this be fixed?	FSUtils		\nFaut-il le corriger ?
 \n\t(%Ld bytes, 	FSUtils		\n\t(%Ld octets,
 after	FindPanel		après
+apps	B_APPS_DIRECTORY		applications
 before	FindPanel		avant
 by attribute	FindPanel		par attribut
 by formula	FindPanel		par formule
 by name	FindPanel		par nom
 calculating…	InfoWindow		calcul…
+common	B_COMMON_DIRECTORY		commun
+config	B_USER_CONFIG_DIRECTORY		configuration
 contains	FindPanel		contient
 contains	SelectionWindow		contient
 copy	FSUtils	filename copy	copier
 copying	FSUtils		copier
+develop	B_COMMON_DEVELOP_DIRECTORY		développement
 ends with	FindPanel		fini par
 ends with	SelectionWindow		fini par
 for %num files	InfoWindow		pour %num fichiers
 greater than	FindPanel		supérieur à
+home	B_USER_DIRECTORY		personnel
 is	FindPanel		est
 is not	FindPanel		n'est pas
 label too long	PoseView		label trop long
@@ -400,14 +429,22 @@ less than	FindPanel		inférieur à
 link	FSUtils	filename link	lien
 matches regular expression	SelectionWindow		correspond à l'expression régulière
 matches wildcard expression	SelectionWindow		correspond à l'expression générique
-move	FSUtils		déplacer
+move	FSUtils	As in 'If you move ...'	déplacez
+move	FSUtils	As in 'To move ...'	déplacer
 moving	FSUtils		déplacement
 multiple disks	FindPanel		disques multiples
 no items	CountView		aucun élément
+no supporting apps	OpenWithWindow		Aucune application apte
 of %items	StatusWindow		de %items
+optional	/boot/optional		optionnel
 parent folder	NavMenu		dossier parent
-rename	InfoWindow		renomer
-rename	TextWidget		renomer
+preferences	B_PREFERENCES_DIRECTORY		préférences
+rename	InfoWindow	As in 'If you rename ...'	renommez
+rename	InfoWindow	As in 'To rename ...'	renommer
+rename	TextWidget	As in 'If you rename ...'	renommez
+rename	TextWidget	As in 'To rename ...'	renommer
 save text	FilePanelPriv		Sauvegarder le texte
 starts with	FindPanel		commence par
 starts with	SelectionWindow		commence par
+system	B_SYSTEM_DIRECTORY		système
+trash	B_TRASH_DIRECTORY		corbeille

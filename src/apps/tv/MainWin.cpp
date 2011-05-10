@@ -53,7 +53,6 @@ static const char* fLocalizedInfo1 = B_TRANSLATE_MARK("DVB - Digital Video Broad
 enum
 {
 	M_DUMMY = 0x100,
-	M_FILE_ABOUT,
 	M_FILE_QUIT,
 	M_SCALE_TO_NATIVE_SIZE,
 	M_TOGGLE_FULLSCREEN,
@@ -85,7 +84,8 @@ enum
 
 
 MainWin::MainWin(BRect frame_rect)
- :	BWindow(frame_rect, B_TRANSLATE(NAME), B_TITLED_WINDOW, 
+	:
+	BWindow(frame_rect, B_TRANSLATE_SYSTEM_NAME(NAME), B_TITLED_WINDOW, 
  	B_ASYNCHRONOUS_CONTROLS /* | B_WILL_ACCEPT_FIRST_CLICK */)
  ,	fController(new Controller)
  ,	fIsFullscreen(false)
@@ -174,12 +174,6 @@ MainWin::CreateMenu()
 	fMenuBar->AddItem(fSettingsMenu);
 	fMenuBar->AddItem(fDebugMenu);
 
-	BString aboutStr = B_TRANSLATE_COMMENT("About %1"B_UTF8_ELLIPSIS, 
-		"Parameter %1 is the name of the application.");
-	aboutStr.ReplaceFirst("%1", fLocalizedName);
-	fFileMenu->AddItem(new BMenuItem(aboutStr.String(), 
-		new BMessage(M_FILE_ABOUT)));
-	fFileMenu->AddSeparatorItem();
 	fFileMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"), 
 		new BMessage(M_FILE_QUIT), 'Q', B_COMMAND_KEY));
 
@@ -299,10 +293,12 @@ MainWin::SetupChannelMenu()
 		fChannelMenu->AddSeparatorItem();
 	}
 
-	char s[100];
 	for (int i = 0; i < channels; i++) {
-		sprintf(s, "%s%d %s", (i < 9) ? "  " : "", i + 1, fController->ChannelName(i));
-		fChannelMenu->AddItem(new BMenuItem(s, new BMessage(M_SELECT_CHANNEL + i)));
+		BString string;
+		string.SetToFormat("%s%d %s", (i < 9) ? "  " : "", i + 1,
+			fController->ChannelName(i));
+		fChannelMenu->AddItem(new BMenuItem(string,
+			new BMessage(M_SELECT_CHANNEL + i)));
 	}
 }
 
@@ -565,12 +561,6 @@ MainWin::ShowContextMenu(const BPoint &screen_point)
 		new BMessage(M_TOGGLE_KEEP_ASPECT_RATIO), 'K', B_COMMAND_KEY));
 	item->SetMarked(fKeepAspectRatio);
 	menu->AddSeparatorItem();
-	BString aboutStr = B_TRANSLATE_COMMENT("About %1"B_UTF8_ELLIPSIS, 
-		"Parameter %1 is the name of the application.");
-	aboutStr.ReplaceFirst("%1", fLocalizedName);
-	menu->AddItem(new BMenuItem(aboutStr.String(), 
-		new BMessage(M_FILE_ABOUT)));
-	menu->AddSeparatorItem();
 	menu->AddItem(new BMenuItem(B_TRANSLATE("Quit"), 
 		new BMessage(M_FILE_QUIT), 'Q', B_COMMAND_KEY));
 
@@ -703,11 +693,12 @@ MainWin::FrameResized(float new_width, float new_height)
 void
 MainWin::UpdateWindowTitle()
 {
-	char buf[100];
-	sprintf(buf, "%s - %d x %d, %.3f:%.3f => %.0f x %.0f", B_TRANSLATE(NAME),
-		fSourceWidth, fSourceHeight, fWidthScale, fHeightScale, 
+	BString title;
+	title.SetToFormat("%s - %d x %d, %.3f:%.3f => %.0f x %.0f",
+		B_TRANSLATE_SYSTEM_NAME(NAME),
+		fSourceWidth, fSourceHeight, fWidthScale, fHeightScale,
 		fVideoView->Bounds().Width() + 1, fVideoView->Bounds().Height() + 1);
-	SetTitle(buf);
+	SetTitle(title);
 }
 
 
@@ -1225,38 +1216,6 @@ MainWin::MessageReceived(BMessage *msg)
 			printf("MainWin::MessageReceived: B_SIMPLE_DATA\n");
 //			if (msg->HasRef("refs"))
 //				RefsReceived(msg);
-			break;
-
-		case M_FILE_ABOUT:
-			{
-				BString alertStr = fLocalizedName;
-				alertStr << "\n\n";
-				alertStr << fLocalizedInfo1;
-				#if TIME_BOMB_ACTIVE
-					alertStr << "\n\n";
-					alertStr << INFO2;
-				#endif
-				alertStr << "\n\nCopyright ";
-				alertStr << COPYRIGHT;
-				alertStr << B_TRANSLATE("\nVersion ");
-				alertStr << VERSION;
-				alertStr << B_TRANSLATE("\nRevision ");
-				if (strcmp(REVISION, "unknown") == 0)
-					alertStr << fLocalizedRevision;
-				else
-					alertStr << REVISION;
-				alertStr << B_TRANSLATE("\nBuild ");
-				alertStr << BUILD;
-			
-				BAlert *alert;
-				alert = new BAlert("about", alertStr.String(), B_TRANSLATE("OK"));
-				if (fAlwaysOnTop) {
-					ToggleAlwaysOnTop();
-					alert->Go();
-					ToggleAlwaysOnTop();
-				} else
-					alert->Go();
-			}
 			break;
 
 		case M_FILE_QUIT:

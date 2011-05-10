@@ -1,10 +1,10 @@
-1	russian	x-vnd.Haiku-StyledEdit	3614078026
+1	russian	x-vnd.Haiku-StyledEdit	1508367857
 ???	LoadAlert		???
 Align	Menus		Выровнять
 Black	Menus		Черный
 Blue	Menus		Синий
 Bold	Menus		Жирный
-Can't Undo	Menus		Невозможно отменить
+Can't undo	Menus		Невозможно отменить
 Cancel	FindandReplaceWindow		Отмена
 Cancel	QuitAlert		Отмена
 Cancel	RevertToSavedAlert		Отмена
@@ -13,7 +13,6 @@ Cannot revert, file not found: \"%s\".	RevertToSavedAlert		Невозможно 
 Case-sensitive	FindandReplaceWindow		Учитывать регистр
 Center	Menus		По центру
 Characters:	Statistics		Символов:
-Clear	Menus		Очистить
 Close	Menus		Закрыть
 Color	Menus		Цвет
 Copy	Menus		Копировать
@@ -56,11 +55,11 @@ Redo typing	QuitAlert		Повторить ввод
 Replace	FindandReplaceWindow		Заменить
 Replace all	FindandReplaceWindow		Заменить все
 Replace in all windows	FindandReplaceWindow		Заменить во всех окнах
-Replace same	Menus		Заменить совпадение
+Replace next	Menus		Заменить далее
 Replace with:	FindandReplaceWindow		Заменить на:
 Replace…	Menus		Заменить…
 Revert to saved…	Menus		Вернуться к сохраненному…
-Revert to the last version of \"%s\"? 	RevertToSavedAlert		Вернуться к последней версии \"%s\"? 
+Revert to the last version of \"%s\"? 	RevertToSavedAlert		Вернуться к последней сохраненной версии \"%s\"? 
 Right	Menus		По правому краю
 Save	Menus		Сохранить
 Save	QuitAlert		Сохранить
@@ -71,6 +70,7 @@ Search backwards	FindandReplaceWindow		Искать снизу вверх
 Select all	Menus		Выделить всё
 Size	Menus		Размер
 Statistics…	Menus		Статистика…
+StyledEdit	System name		Стильный редактор
 This file is marked Read-Only. Save changes to the document \"%s\"? 	SaveAlert		Этот файл отмечен только для чтения. Сохранить изменения в документе \"%s\"? 
 Undo typing	QuitAlert		Отменить ввод
 Untitled 	StyledEditWindow		Новый документ 
