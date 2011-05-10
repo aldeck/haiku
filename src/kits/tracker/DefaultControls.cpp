@@ -616,7 +616,7 @@ DefaultAttributeMenu::DefaultAttributeMenu(PoseViewController* controller)
 		kAttrStatName, B_STRING_TYPE, 145, B_ALIGN_LEFT, true, true));
 
 	if (gLocalizedNamePreferred) {
-		menu->AddItem(_NewItem(B_TRANSLATE("Real name"),
+		AddItem(_NewItem(B_TRANSLATE("Real name"),
 			kAttrRealName, B_STRING_TYPE, 145, B_ALIGN_LEFT, true, true));
 	}
 
