@@ -29,6 +29,7 @@
 #include "SpecificImageDebugInfo.h"
 #include "StringUtils.h"
 #include "Type.h"
+#include "TypeLookupConstraints.h"
 
 
 // #pragma mark - FunctionHashDefinition
@@ -261,6 +262,7 @@ TeamDebugInfo::TeamDebugInfo(DebuggerInterface* debuggerInterface,
 	fSourceFiles(NULL),
 	fTypeCache(NULL)
 {
+	fDebuggerInterface->AcquireReference();
 }
 
 
@@ -290,6 +292,8 @@ TeamDebugInfo::~TeamDebugInfo()
 
 		delete fFunctions;
 	}
+
+	fDebuggerInterface->ReleaseReference();
 }
 
 
@@ -361,12 +365,19 @@ TeamDebugInfo::Init()
 
 
 status_t
+TeamDebugInfo::LookupTypeByName(const BString& name,
+	const TypeLookupConstraints& constraints, Type*& _type)
+{
+	return GetType(fTypeCache, name, constraints, _type);
+}
+
+status_t
 TeamDebugInfo::GetType(GlobalTypeCache* cache, const BString& name,
-	Type*& _type)
+	const TypeLookupConstraints& constraints, Type*& _type)
 {
 	// maybe the type is already cached
 	AutoLocker<GlobalTypeCache> cacheLocker(cache);
-	Type* type = cache->GetType(name);
+	Type* type = cache->GetType(name, constraints);
 	if (type != NULL) {
 		type->AcquireReference();
 		_type = type;
@@ -390,7 +401,7 @@ TeamDebugInfo::GetType(GlobalTypeCache* cache, const BString& name,
 	// get the type
 	status_t error = B_ENTRY_NOT_FOUND;
 	for (int32 i = 0; ImageDebugInfo* imageDebugInfo = images.ItemAt(i); i++) {
-		error = imageDebugInfo->GetType(cache, name, type);
+		error = imageDebugInfo->GetType(cache, name, constraints, type);
 		if (error == B_OK) {
 			_type = type;
 			break;

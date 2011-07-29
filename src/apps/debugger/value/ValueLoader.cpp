@@ -11,19 +11,38 @@
 #include "CpuState.h"
 #include "Register.h"
 #include "TeamMemory.h"
+#include "TeamTypeInformation.h"
 #include "Tracing.h"
+#include "TypeLookupConstraints.h"
 #include "ValueLocation.h"
 
 
 ValueLoader::ValueLoader(Architecture* architecture, TeamMemory* teamMemory,
-	CpuState* cpuState)
+	TeamTypeInformation* typeInformation, CpuState* cpuState)
 	:
 	fArchitecture(architecture),
 	fTeamMemory(teamMemory),
+	fTypeInformation(typeInformation),
 	fCpuState(cpuState)
 {
-// TODO: TeamMemory is not BReferenceable!
 	fArchitecture->AcquireReference();
+	fTeamMemory->AcquireReference();
+	fTypeInformation->AcquireReference();
+	if (fCpuState != NULL)
+		fCpuState->AcquireReference();
+}
+
+
+ValueLoader::ValueLoader(const ValueLoader& other)
+	:
+	fArchitecture(other.fArchitecture),
+	fTeamMemory(other.fTeamMemory),
+	fTypeInformation(other.fTypeInformation),
+	fCpuState(other.fCpuState)
+{
+	fArchitecture->AcquireReference();
+	fTeamMemory->AcquireReference();
+	fTypeInformation->AcquireReference();
 	if (fCpuState != NULL)
 		fCpuState->AcquireReference();
 }
@@ -32,6 +51,8 @@ ValueLoader::ValueLoader(Architecture* architecture, TeamMemory* teamMemory,
 ValueLoader::~ValueLoader()
 {
 	fArchitecture->ReleaseReference();
+	fTeamMemory->ReleaseReference();
+	fTypeInformation->ReleaseReference();
 	if (fCpuState != NULL)
 		fCpuState->ReleaseReference();
 }
@@ -188,10 +209,31 @@ ValueLoader::LoadValue(ValueLocation* location, type_code valueType,
 
 
 status_t
+ValueLoader::LoadRawValue(BVariant& location, size_t bytesToRead, void* _value)
+{
+	ssize_t bytesRead = fTeamMemory->ReadMemory(location.ToUInt64(),
+		_value, bytesToRead);
+	if (bytesRead < 0)
+		return bytesRead;
+	if ((uint32)bytesRead != bytesToRead)
+		return B_BAD_ADDRESS;
+	return B_OK;
+}
+
+
+status_t
 ValueLoader::LoadStringValue(BVariant& location, size_t maxSize, BString& _value)
 {
 	static const size_t kMaxStringSize = 255;
 
 	return fTeamMemory->ReadMemoryString(location.ToUInt64(),
 		std::min(maxSize, kMaxStringSize), _value);
+}
+
+
+status_t
+ValueLoader::LookupTypeByName(const BString& name,
+	const TypeLookupConstraints& constraints, Type*& _type)
+{
+	return fTypeInformation->LookupTypeByName(name, constraints, _type);
 }

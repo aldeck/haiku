@@ -123,6 +123,9 @@ get_synaptics_movment(synaptics_cookie *cookie, mouse_movement *movement)
 
 	 	event.wValue = wValue;
 	 	event.gesture = false;
+
+		if (sTouchpadInfo.capMiddleButton || sTouchpadInfo.capFourButtons)
+			event.buttons |= ((event_buffer[0] ^ event_buffer[3]) & 0x01) << 2;
  	} else {
  		bool finger = event_buffer[0] >> 5 & 1;
  		if (finger) {
@@ -160,6 +163,8 @@ query_capability(ps2_dev *dev)
 
 	sTouchpadInfo.capExtended = val[0] >> 7 & 1;
 	TRACE("SYNAPTICS: extended mode %2x\n", val[0] >> 7 & 1);
+	TRACE("SYNAPTICS: middle button %2x\n", val[0] >> 2 & 1);
+	sTouchpadInfo.capMiddleButton = val[0] >> 2 & 1;
 	TRACE("SYNAPTICS: sleep mode %2x\n", val[2] >> 4 & 1);
 	sTouchpadInfo.capSleep = val[2] >> 4 & 1;
 	TRACE("SYNAPTICS: four buttons %2x\n", val[2] >> 3 & 1);
@@ -232,24 +237,24 @@ passthrough_command(ps2_dev *dev, uint8 cmd, const uint8 *out, int outCount,
 			val = out[i];
 		status = send_touchpad_arg_timeout(dev->parent_dev, val, timeout);
 		if (status != B_OK)
-			return status;
+			goto finalize;
 		if (i != outCount -1) {
 			status = ps2_dev_command_timeout(dev->parent_dev,
 				PS2_CMD_SET_SAMPLE_RATE, &passThroughCmd, 1, NULL, 0, timeout);
 			if (status != B_OK)
-				return status;
+				goto finalize;
 		}
 	}
 	status = ps2_dev_command_timeout(dev->parent_dev, PS2_CMD_SET_SAMPLE_RATE,
 		&passThroughCmd, 1, passThroughIn, passThroughInCount, timeout);
 	if (status != B_OK)
-		return status;
+		goto finalize;
 
 	for (i = 0; i < inCount + 1; i++) {
 		uint8 *inPointer = &passThroughIn[i * 6];
 		if (!IS_SYN_PT_PACKAGE(inPointer)) {
 			TRACE("SYNAPTICS: not a pass throught package\n");
-			return B_OK;
+			goto finalize;
 		}
 		if (i == 0)
 			continue;
@@ -257,11 +262,13 @@ passthrough_command(ps2_dev *dev, uint8 cmd, const uint8 *out, int outCount,
 		in[i - 1] = passThroughIn[i * 6 + 1];
 	}
 
-	status = ps2_dev_command(dev->parent_dev, PS2_CMD_ENABLE, NULL, 0, NULL, 0);
-	if (status != B_OK)
-		return status;
+finalize:	
+	status_t statusOfEnable = ps2_dev_command(dev->parent_dev, PS2_CMD_ENABLE,
+			NULL, 0, NULL, 0);
+	if (statusOfEnable != B_OK)
+		TRACE("SYNAPTICS: enabling of parent failed: 0x%lx.\n", statusOfEnable);
 
-	return B_OK;
+	return status != B_OK ? status : statusOfEnable;
 }
 
 

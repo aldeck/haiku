@@ -5,10 +5,21 @@ UsePublicHeaders [ FDirName add-ons mail_daemon ] ;
 
 SubDirHdrs [ FDirName $(HAIKU_TOP) headers os add-ons mail_daemon ] ;
 
-Addon MatchHeader : 
+AddResources MatchHeader : MatchHeader.rdef ;
+
+Addon MatchHeader
+	:
 	ConfigView.cpp
 	RuleFilter.cpp
-	StringMatcher.cpp ;
+	StringMatcher.cpp
+	:
+	be libmail.so $(TARGET_LIBSUPC++) $(HAIKU_LOCALE_LIBS)
+	;
 
-LinkAgainst MatchHeader :
-	 be libmail.so $(TARGET_LIBSUPC++) ;
+DoCatalogs MatchHeader
+	:
+	x-vnd.Haiku-MatchHeader
+	:
+	ConfigView.cpp
+	RuleFilter.cpp
+;

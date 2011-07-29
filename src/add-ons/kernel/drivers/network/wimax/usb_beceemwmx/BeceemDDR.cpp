@@ -70,7 +70,7 @@ BeceemDDR::DDRInit(WIMAX_DEVICE* swmxdevice)
 					break;
 
 				default:
-					return -EINVAL;
+					return B_BAD_VALUE;
 			}
 			break;
 
@@ -169,8 +169,9 @@ BeceemDDR::DDRInit(WIMAX_DEVICE* swmxdevice)
 					break;
 
 				default:
-					return -EINVAL;
+					return B_BAD_VALUE;
 			}
+			break;
 		case 0xbece0310:
 		{
 			switch (vendorDDRSetting) {
@@ -208,13 +209,13 @@ BeceemDDR::DDRInit(WIMAX_DEVICE* swmxdevice)
 					break;
 
 				default:
-					return -EINVAL;
+					return B_BAD_VALUE;
 			}
 			break;
 		}
 
 		default:
-			return -EINVAL;
+			return B_BAD_VALUE;
 	}
 
 	value = 0;

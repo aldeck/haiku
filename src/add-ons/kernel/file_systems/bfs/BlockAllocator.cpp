@@ -1226,6 +1226,7 @@ BlockAllocator::StartChecking(const check_control* control)
 	}
 
 	memcpy(&fCheckCookie->control, control, sizeof(check_control));
+	memset(&fCheckCookie->control.stats, 0, sizeof(control->stats));
 
 	// initialize bitmap
 	memset(fCheckBitmap, 0, size);
@@ -1237,6 +1238,7 @@ BlockAllocator::StartChecking(const check_control* control)
 	fCheckCookie->stack.Push(fVolume->Root());
 	fCheckCookie->stack.Push(fVolume->Indices());
 	fCheckCookie->iterator = NULL;
+	fCheckCookie->control.stats.block_size = fVolume->BlockSize();
 
 	// Put removed vnodes to the stack -- they are not reachable by traversing
 	// the file system anymore.
@@ -1575,10 +1577,10 @@ status_t
 BlockAllocator::_RemoveInvalidNode(Inode* parent, BPlusTree* tree, Inode* inode,
 	const char* name)
 {
-	// it's safe to start a transaction, because Inode::Remove()
+	// It's safe to start a transaction, because Inode::Remove()
 	// won't touch the block bitmap (which we hold the lock for)
 	// if we set the INODE_DONT_FREE_SPACE flag - since we fix
-	// the bitmap anyway
+	// the bitmap anyway.
 	Transaction transaction(fVolume, parent->BlockNumber());
 	status_t status;
 
@@ -1596,8 +1598,10 @@ BlockAllocator::_RemoveInvalidNode(Inode* parent, BPlusTree* tree, Inode* inode,
 			status = tree->Remove(transaction, name, id);
 	}
 
-	if (status == B_OK)
+	if (status == B_OK) {
+		entry_cache_remove(fVolume->ID(), parent->ID(), name);
 		transaction.Done();
+	}
 
 	return status;
 }
@@ -1810,6 +1814,10 @@ BlockAllocator::CheckInode(Inode* inode)
 			status = CheckBlockRun(data->direct[i], "direct");
 			if (status < B_OK)
 				return status;
+
+			fCheckCookie->control.stats.direct_block_runs++;
+			fCheckCookie->control.stats.blocks_in_direct
+				+= data->direct[i].Length();
 		}
 	}
 
@@ -1838,7 +1846,13 @@ BlockAllocator::CheckInode(Inode* inode)
 				status = CheckBlockRun(runs[index], "indirect->run");
 				if (status < B_OK)
 					return status;
+
+				fCheckCookie->control.stats.indirect_block_runs++;
+				fCheckCookie->control.stats.blocks_in_indirect
+					+= runs[index].Length();
 			}
+			fCheckCookie->control.stats.indirect_array_blocks++;
+
 			if (index < runsPerBlock)
 				break;
 		}
@@ -1892,8 +1906,14 @@ BlockAllocator::CheckInode(Inode* inode)
 						"double indirect->runs->run");
 					if (status != B_OK)
 						return status;
+
+					fCheckCookie->control.stats.double_indirect_block_runs++;
+					fCheckCookie->control.stats.blocks_in_double_indirect
+						+= runs[index % runsPerBlock].Length();
 				} while ((++index % runsPerArray) != 0);
 			}
+
+			fCheckCookie->control.stats.double_indirect_array_blocks++;
 		}
 	}
 

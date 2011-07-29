@@ -8,16 +8,21 @@
 
 
 #include <Button.h>
+#include <Catalog.h>
 #include <TextControl.h>
 
-#include <FileConfigView.h>
-#include <FindDirectory.h>
-#include <Path.h>
-#include <ProtocolConfigView.h>
 #include <MailAddon.h>
+#include <Path.h>
 
-#include <MDRLanguage.h>
+#include <FileConfigView.h>
+#include <ProtocolConfigView.h>
+#include <MailPrivate.h>
+
 #include "IMAPFolderConfig.h"
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "imap_config"
 
 
 const uint32 kMsgOpenIMAPFolder = '&OIF';
@@ -52,12 +57,11 @@ IMAPConfig::IMAPConfig(MailAddonSettings& settings,
 	 	| B_MAIL_PROTOCOL_HAS_FLAVORS
 #endif
 	 ),
-
 	 fAddonSettings(settings)
 {
 #ifdef USE_SSL
-		AddFlavor("No encryption");
-		AddFlavor("SSL");
+	AddFlavor(B_TRANSLATE("No encryption"));
+	AddFlavor(B_TRANSLATE("SSL"));
 #endif
 
 	SetTo(settings);
@@ -70,22 +74,17 @@ IMAPConfig::IMAPConfig(MailAddonSettings& settings,
 	((BControl *)(FindView("delete_remote_when_local")))->SetEnabled(true);
 	((BControl *)(FindView("delete_remote_when_local")))->MoveBy(0, -25);
 
-
-	fIMAPFolderButton = new BButton(frame, "IMAP Folders", "IMAP Folders",
-		new BMessage(kMsgOpenIMAPFolder));
+	fIMAPFolderButton = new BButton(frame, "IMAP Folders", B_TRANSLATE(
+		"IMAP Folders"), new BMessage(kMsgOpenIMAPFolder));
 	AddChild(fIMAPFolderButton);
 
 	frame.right -= 10;
 
-	BPath defaultFolder;
-	if (find_directory(B_USER_DIRECTORY, &defaultFolder) == B_OK)
-		defaultFolder.Append("mail");
-	else
-		defaultFolder.SetTo("/boot/home/mail/");
+	BPath defaultFolder = BPrivate::default_mail_directory();
 	defaultFolder.Append(accountSettings.Name());
 
-	fFileView =  new BMailFileConfigView("Destination:", "destination",
-		false, defaultFolder.Path());
+	fFileView =  new BMailFileConfigView(B_TRANSLATE("Destination:"),
+		"destination", false, defaultFolder.Path());
 	fFileView->SetTo(&settings.Settings(), NULL);
 	AddChild(fFileView);
 	fFileView->MoveBy(0, frame.bottom + 5);
@@ -131,7 +130,7 @@ IMAPConfig::MessageReceived(BMessage* message)
 	}
 
 	default:
-		BMailProtocolConfigView::MessageReceived(message);		
+		BMailProtocolConfigView::MessageReceived(message);
 	}
 }
 

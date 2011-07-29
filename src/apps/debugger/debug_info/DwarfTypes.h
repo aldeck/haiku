@@ -41,6 +41,11 @@ class RegisterMap;
 class ValueLocation;
 
 
+// conversion functions between model types and dwarf types
+type_kind dwarf_tag_to_type_kind(int32 tag);
+int32 dwarf_tag_to_subtype_kind(int32 tag);
+
+
 class DwarfTypeContext : public BReferenceable {
 public:
 								DwarfTypeContext(Architecture* architecture,
@@ -120,6 +125,7 @@ public:
 			status_t			ResolveLocation(DwarfTypeContext* typeContext,
 									const LocationDescription* description,
 									target_addr_t objectAddress,
+									bool hasObjectAddress,
 									ValueLocation& _location);
 
 private:

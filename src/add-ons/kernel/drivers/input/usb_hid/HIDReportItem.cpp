@@ -1,5 +1,5 @@
 /*
- * Copyright 2009, Michael Lotz, mmlr@mlotz.ch.
+ * Copyright 2009-2011, Michael Lotz, mmlr@mlotz.ch.
  * Distributed under the terms of the MIT License.
  */
 
@@ -21,6 +21,7 @@ HIDReportItem::HIDReportItem(HIDReport *report, uint32 bitOffset,
 		fByteOffset(bitOffset / 8),
 		fShift(bitOffset % 8),
 		fMask(~(0xffffffff << bitLength)),
+		fBitCount(bitLength),
 		fHasData(hasData),
 		fArray(isArray),
 		fRelative(isRelative),
@@ -111,6 +112,63 @@ HIDReportItem::SetData(uint32 data)
 		fValid = fData >= fMinimum && fData <= fMaximum;
 
 	return fValid ? B_OK : B_BAD_VALUE;
+}
+
+
+uint32
+HIDReportItem::ScaledData(uint8 scaleToBits, bool toBeSigned)
+{
+	uint32 source;
+	if (Signed() != toBeSigned) {
+		if (toBeSigned)
+			source = (uint32)((int32)fData - (fMaximum + 1) / 2) & fMask;
+		else
+			source = (uint32)((int32)fData - (int32)fMinimum);
+	} else
+		source = fData & fMask;
+
+	if (fBitCount == scaleToBits)
+		return source;
+
+	int8 shift;
+	uint32 result = 0;
+	do {
+		shift = scaleToBits - fBitCount;
+		if (shift > 0) {
+			result |= source << shift;
+			scaleToBits = shift;
+		} else
+			result |= source >> -shift;
+
+	} while (shift > 0);
+
+	return result;
+}
+
+
+uint32
+HIDReportItem::ScaledRangeData(uint32 minimum, uint32 maximum)
+{
+	uint64 zeroBasedData;
+	if (Signed())
+		zeroBasedData = (int32)fData - (int32)fMinimum;
+	else
+		zeroBasedData = fData - fMinimum;
+
+	return zeroBasedData * (maximum - minimum + 1) / (fMaximum - fMinimum + 1)
+		+ minimum;
+}
+
+
+float
+HIDReportItem::ScaledFloatData()
+{
+	if (Signed()) {
+		return (double)((int32)fData - (int32)fMinimum)
+			/ (fMaximum - (int32)fMinimum);
+	}
+
+	return (double)(fData - fMinimum) / (fMaximum - fMinimum);
 }
 
 

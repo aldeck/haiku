@@ -69,6 +69,20 @@ static spinlock sSerialOutputSpinlock = B_SPINLOCK_INITIALIZER;
 
 
 static void
+init_serial_port(uint16 basePort, uint32 baudRate)
+{
+	sSerialBasePort = basePort;
+
+	uint16 divisor = (uint16)(115200 / baudRate);
+
+	out8(0x80, sSerialBasePort + SERIAL_LINE_CONTROL);	/* set divisor latch access bit */
+	out8(divisor & 0xf, sSerialBasePort + SERIAL_DIVISOR_LATCH_LOW);
+	out8(divisor >> 8, sSerialBasePort + SERIAL_DIVISOR_LATCH_HIGH);
+	out8(3, sSerialBasePort + SERIAL_LINE_CONTROL);		/* 8N1 */
+}
+
+
+static void
 put_char(const char c)
 {
 	// wait until the transmitter empty bit is set
@@ -166,8 +180,8 @@ arch_debug_install_interrupt_handlers(void)
 }
 
 
-char
-arch_debug_blue_screen_getchar(void)
+int
+arch_debug_blue_screen_try_getchar(void)
 {
 	/* polling the keyboard, similar to code in keyboard
 	 * driver, but without using an interrupt
@@ -194,113 +208,152 @@ arch_debug_blue_screen_getchar(void)
 		return key;
 	}
 
-	while (true) {
-		uint8 status = in8(PS2_PORT_CTRL);
+	uint8 status = in8(PS2_PORT_CTRL);
 
-		if ((status & PS2_STATUS_OUTPUT_BUFFER_FULL) == 0) {
-			// no data in keyboard buffer
-			spin(200);
-			continue;
+	if ((status & PS2_STATUS_OUTPUT_BUFFER_FULL) == 0) {
+		// no data in keyboard buffer
+		return -1;
+	}
+
+	key = in8(PS2_PORT_DATA);
+
+	if (status & PS2_STATUS_AUX_DATA) {
+		// we read mouse data, ignore it
+		return -1;
+	}
+
+	if (key & 0x80) {
+		// key up
+		switch (key & ~0x80) {
+			case LEFT_SHIFT:
+			case RIGHT_SHIFT:
+				shiftPressed = false;
+				return -1;
+			case LEFT_CONTROL:
+				controlPressed = false;
+				return -1;
+			case LEFT_ALT:
+				altPressed = false;
+				return -1;
 		}
+	} else {
+		// key down
+		switch (key) {
+			case LEFT_SHIFT:
+			case RIGHT_SHIFT:
+				shiftPressed = true;
+				return -1;
 
-		spin(200);
-		key = in8(PS2_PORT_DATA);
+			case LEFT_CONTROL:
+				controlPressed = true;
+				return -1;
 
-		if (status & PS2_STATUS_AUX_DATA) {
-			// we read mouse data, ignore it
-			continue;
-		}
+			case LEFT_ALT:
+				altPressed = true;
+				return -1;
 
-		if (key & 0x80) {
-			// key up
-			switch (key & ~0x80) {
-				case LEFT_SHIFT:
-				case RIGHT_SHIFT:
-					shiftPressed = false;
-					break;
-				case LEFT_CONTROL:
-					controlPressed = false;
-					break;
-				case LEFT_ALT:
-					altPressed = false;
-					break;
-			}
-		} else {
-			// key down
-			switch (key) {
-				case LEFT_SHIFT:
-				case RIGHT_SHIFT:
-					shiftPressed = true;
-					break;
-
-				case LEFT_CONTROL:
-					controlPressed = true;
-					break;
-
-				case LEFT_ALT:
-					altPressed = true;
-					break;
-
-				// start escape sequence for cursor movement
-				case CURSOR_UP:
-					special = 0x80 | 'A';
-					return '\x1b';
-				case CURSOR_DOWN:
-					special = 0x80 | 'B';
-					return '\x1b';
-				case CURSOR_RIGHT:
-					special = 0x80 | 'C';
-					return '\x1b';
-				case CURSOR_LEFT:
-					special = 0x80 | 'D';
-					return '\x1b';
-				case CURSOR_HOME:
-					special = 0x80 | 'H';
-					return '\x1b';
-				case CURSOR_END:
-					special = 0x80 | 'F';
-					return '\x1b';
-				case PAGE_UP:
-					special = 0x80 | '5';
-					special2 = '~';
-					return '\x1b';
-				case PAGE_DOWN:
-					special = 0x80 | '6';
-					special2 = '~';
-					return '\x1b';
+			// start escape sequence for cursor movement
+			case CURSOR_UP:
+				special = 0x80 | 'A';
+				return '\x1b';
+			case CURSOR_DOWN:
+				special = 0x80 | 'B';
+				return '\x1b';
+			case CURSOR_RIGHT:
+				special = 0x80 | 'C';
+				return '\x1b';
+			case CURSOR_LEFT:
+				special = 0x80 | 'D';
+				return '\x1b';
+			case CURSOR_HOME:
+				special = 0x80 | 'H';
+				return '\x1b';
+			case CURSOR_END:
+				special = 0x80 | 'F';
+				return '\x1b';
+			case PAGE_UP:
+				special = 0x80 | '5';
+				special2 = '~';
+				return '\x1b';
+			case PAGE_DOWN:
+				special = 0x80 | '6';
+				special2 = '~';
+				return '\x1b';
 
 
-				case DELETE:
-					if (controlPressed && altPressed)
-						arch_cpu_shutdown(true);
+			case DELETE:
+				if (controlPressed && altPressed)
+					arch_cpu_shutdown(true);
 
-					special = 0x80 | '3';
-					special2 = '~';
-					return '\x1b';
+				special = 0x80 | '3';
+				special2 = '~';
+				return '\x1b';
 
-				default:
-					if (controlPressed) {
-						char c = kShiftedKeymap[key];
-						if (c >= 'A' && c <= 'Z')
-							return 0x1f & c;
-					}
+			default:
+				if (controlPressed) {
+					char c = kShiftedKeymap[key];
+					if (c >= 'A' && c <= 'Z')
+						return 0x1f & c;
+				}
 
-					if (altPressed)
-						return kAltedKeymap[key];
+				if (altPressed)
+					return kAltedKeymap[key];
 
-					return shiftPressed
-						? kShiftedKeymap[key] : kUnshiftedKeymap[key];
-			}
+				return shiftPressed
+					? kShiftedKeymap[key] : kUnshiftedKeymap[key];
 		}
 	}
+
+	return -1;
+}
+
+
+char
+arch_debug_blue_screen_getchar(void)
+{
+	while (true) {
+		int c = arch_debug_blue_screen_try_getchar();
+		if (c >= 0)
+			return (char)c;
+
+		PAUSE();
+	}
+}
+
+
+int
+arch_debug_serial_try_getchar(void)
+{
+	uint8 lineStatus = in8(sSerialBasePort + SERIAL_LINE_STATUS);
+	if (lineStatus == 0xff) {
+		// The "data available" bit is set, but also all error bits. Likely we
+		// don't have a valid I/O port.
+		return -1;
+	}
+
+	if ((lineStatus & 0x1) == 0)
+		return -1;
+
+	return in8(sSerialBasePort + SERIAL_RECEIVE_BUFFER);
 }
 
 
 char
 arch_debug_serial_getchar(void)
 {
-	while ((in8(sSerialBasePort + SERIAL_LINE_STATUS) & 0x1) == 0)
-		asm volatile ("pause;");
+	while (true) {
+		uint8 lineStatus = in8(sSerialBasePort + SERIAL_LINE_STATUS);
+		if (lineStatus == 0xff) {
+			// The "data available" bit is set, but also all error bits. Likely
+			// we don't have a valid I/O port.
+			return 0;
+		}
+
+		if ((lineStatus & 0x1) != 0)
+			break;
+
+		PAUSE();
+	}
 
 	return in8(sSerialBasePort + SERIAL_RECEIVE_BUFFER);
 }
@@ -368,16 +421,11 @@ arch_debug_serial_early_boot_message(const char *string)
 status_t
 arch_debug_console_init(kernel_args *args)
 {
-	uint16 divisor = (uint16)(115200 / kSerialBaudRate);
-
 	// only use the port if we could find one, else use the standard port
 	if (args != NULL && args->platform_args.serial_base_ports[0] != 0)
 		sSerialBasePort = args->platform_args.serial_base_ports[0];
 
-	out8(0x80, sSerialBasePort + SERIAL_LINE_CONTROL);	/* set divisor latch access bit */
-	out8(divisor & 0xf, sSerialBasePort + SERIAL_DIVISOR_LATCH_LOW);
-	out8(divisor >> 8, sSerialBasePort + SERIAL_DIVISOR_LATCH_HIGH);
-	out8(3, sSerialBasePort + SERIAL_LINE_CONTROL);		/* 8N1 */
+	init_serial_port(sSerialBasePort, kSerialBaudRate);
 
 	return B_OK;
 }
@@ -388,7 +436,6 @@ arch_debug_console_init_settings(kernel_args *args)
 {
 	uint32 baudRate = kSerialBaudRate;
 	uint16 basePort = sSerialBasePort;
-	uint16 divisor;
 	void *handle;
 
 	// get debug settings
@@ -430,13 +477,7 @@ arch_debug_console_init_settings(kernel_args *args)
 	if (sSerialBasePort == basePort && baudRate == kSerialBaudRate)
 		return B_OK;
 
-	sSerialBasePort = basePort;
-	divisor = (uint16)(115200 / baudRate);
-
-	out8(0x80, sSerialBasePort + SERIAL_LINE_CONTROL);	/* set divisor latch access bit */
-	out8(divisor & 0xf, sSerialBasePort + SERIAL_DIVISOR_LATCH_LOW);
-	out8(divisor >> 8, sSerialBasePort + SERIAL_DIVISOR_LATCH_HIGH);
-	out8(3, sSerialBasePort + SERIAL_LINE_CONTROL);		/* 8N1 */
+	init_serial_port(sSerialBasePort, kSerialBaudRate);
 
 	return B_OK;
 }

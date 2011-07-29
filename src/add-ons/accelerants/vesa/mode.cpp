@@ -1,11 +1,13 @@
 /*
- * Copyright 2005-2009, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2005-2011, Axel Dörfler, axeld@pinc-software.de.
  * Distributed under the terms of the MIT License.
  */
 
 
+#include <stdlib.h>
 #include <string.h>
 
+#include <compute_display_timing.h>
 #include <create_display_modes.h>
 
 #include "accelerant_protos.h"
@@ -74,11 +76,35 @@ create_mode_list(void)
 	const color_space kVesaSpaces[] = {B_RGB32_LITTLE, B_RGB24_LITTLE,
 		B_RGB16_LITTLE, B_RGB15_LITTLE, B_CMAP8};
 
+	// Create the initial list from the support mode list - but only if we don't
+	// have EDID info available, as that should be good enough.
+	display_mode* initialModes = NULL;
+	uint32 initialModesCount = 0;
+	if (!gInfo->shared_info->has_edid) {
+		initialModes = (display_mode*)malloc(
+			sizeof(display_mode) * gInfo->shared_info->vesa_mode_count);
+		if (initialModes != NULL) {
+			initialModesCount = gInfo->shared_info->vesa_mode_count;
+			vesa_mode* vesaModes = gInfo->vesa_modes;
+
+			for (uint32 i = gInfo->shared_info->vesa_mode_count; i-- > 0;) {
+				compute_display_timing(vesaModes[i].width, vesaModes[i].height,
+					60, false, &initialModes[i].timing);
+				fill_display_mode(vesaModes[i].width, vesaModes[i].height,
+					&initialModes[i]);
+			}
+		}
+	}
+
 	gInfo->mode_list_area = create_display_modes("vesa modes",
 		gInfo->shared_info->has_edid ? &gInfo->shared_info->edid_info : NULL,
-		NULL, 0, kVesaSpaces, sizeof(kVesaSpaces) / sizeof(kVesaSpaces[0]),
+		initialModes, initialModesCount,
+		kVesaSpaces, sizeof(kVesaSpaces) / sizeof(kVesaSpaces[0]),
 		is_mode_supported, &gInfo->mode_list, &gInfo->shared_info->mode_count);
-	if (gInfo->mode_list_area < B_OK)
+
+	free(initialModes);
+
+	if (gInfo->mode_list_area < 0)
 		return gInfo->mode_list_area;
 
 	gInfo->shared_info->mode_list_area = gInfo->mode_list_area;

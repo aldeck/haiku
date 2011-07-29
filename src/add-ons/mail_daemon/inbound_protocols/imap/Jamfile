@@ -27,16 +27,12 @@ local sources =
 	IMAPParser.cpp
 	IMAPProtocol.cpp
 	IMAPStorage.cpp
-	ServerConnection.cpp
 ;
 
-# use OpenSSL, if enabled
+AddResources IMAP : IMAP.rdef ;
+
 if $(HAIKU_OPENSSL_ENABLED) {
 	SubDirC++Flags -DUSE_SSL ;
-	SubDirSysHdrs $(HAIKU_OPENSSL_HEADERS) ;
-	Includes [ FGristFiles $(sources) ] : $(HAIKU_OPENSSL_HEADERS_DEPENDENCY) ;
-		# Dependency needed to trigger downloading/unzipping the package before
-		# compiling the files.
 	SetupFeatureObjectsDir ssl ;
 } else {
 	SetupFeatureObjectsDir no-ssl ;
@@ -46,7 +42,7 @@ Addon IMAP
 	:
 	$(sources)
 	:
-	be libmail.so $(TARGET_NETWORK_LIBS) $(HAIKU_OPENSSL_LIBS) libalm.so
+	be libmail.so $(HAIKU_LOCALE_LIBS) $(TARGET_NETWORK_LIBS) libalm.so
 		libshared.a $(TARGET_LIBSUPC++) $(TARGET_LIBSTDC++)
 ;
 
@@ -58,4 +54,11 @@ SEARCH on [ FGristFiles IMAPFolders.cpp IMAPHandler.cpp IMAPMailbox.cpp
 Package haiku-maildaemon-cvs :
 	IMAP :
 	boot home config add-ons mail_daemon inbound_protocols
+;
+
+DoCatalogs IMAP :
+	x-vnd.Haiku-IMAP
+	:
+	imap_config.cpp
+	IMAPFolderConfig.cpp
 ;

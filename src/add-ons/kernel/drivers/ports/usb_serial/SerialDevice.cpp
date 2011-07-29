@@ -15,6 +15,9 @@
 #include "KLSI.h"
 #include "Prolific.h"
 
+#include <sys/ioctl.h>
+
+
 SerialDevice::SerialDevice(usb_device device, uint16 vendorID,
 	uint16 productID, const char *description)
 	:	fDevice(device),
@@ -29,6 +32,8 @@ SerialDevice::SerialDevice(usb_device device, uint16 vendorID,
 		fBufferArea(-1),
 		fReadBuffer(NULL),
 		fReadBufferSize(ROUNDUP(DEF_BUFFER_SIZE, 16)),
+		fOutputBuffer(NULL),
+		fOutputBufferSize(ROUNDUP(DEF_BUFFER_SIZE, 16)),
 		fWriteBuffer(NULL),
 		fWriteBufferSize(ROUNDUP(DEF_BUFFER_SIZE, 16)),
 		fInterruptBuffer(NULL),
@@ -39,12 +44,13 @@ SerialDevice::SerialDevice(usb_device device, uint16 vendorID,
 		fInputStopped(false),
 		fMasterTTY(NULL),
 		fSlaveTTY(NULL),
-		fTTYCookie(NULL),
-		fDeviceThread(-1),
-		fStopDeviceThread(false)
+		fSystemTTYCookie(NULL),
+		fDeviceTTYCookie(NULL),
+		fInputThread(-1),
+		fStopThreads(false)
 {
-	mutex_init(&fReadLock, "usb_serial read lock");
-	mutex_init(&fWriteLock, "usb_serial write lock");
+	memset(&fTTYConfig, 0, sizeof(termios));
+	fTTYConfig.c_cflag = B9600 | CS8 | CREAD;
 }
 
 
@@ -52,16 +58,13 @@ SerialDevice::~SerialDevice()
 {
 	Removed();
 
-	if (fDoneRead >= B_OK)
+	if (fDoneRead >= 0)
 		delete_sem(fDoneRead);
-	if (fDoneWrite >= B_OK)
+	if (fDoneWrite >= 0)
 		delete_sem(fDoneWrite);
 
-	if (fBufferArea >= B_OK)
+	if (fBufferArea >= 0)
 		delete_area(fBufferArea);
-
-	mutex_destroy(&fReadLock);
-	mutex_destroy(&fWriteLock);
 }
 
 
@@ -69,16 +72,23 @@ status_t
 SerialDevice::Init()
 {
 	fDoneRead = create_sem(0, "usb_serial:done_read");
-	fDoneWrite = create_sem(0, "usb_serial:done_write");
-	mutex_init(&fReadLock, "usb_serial:read_lock");
-	mutex_init(&fWriteLock, "usb_serial:write_lock");
+	if (fDoneRead < 0)
+		return fDoneRead;
 
-	size_t totalBuffers = fReadBufferSize + fWriteBufferSize + fInterruptBufferSize;
+	fDoneWrite = create_sem(0, "usb_serial:done_write");
+	if (fDoneWrite < 0)
+		return fDoneWrite;
+
+	size_t totalBuffers = fReadBufferSize + fOutputBufferSize + fWriteBufferSize
+		+ fInterruptBufferSize;
 	fBufferArea = create_area("usb_serial:buffers_area", (void **)&fReadBuffer,
 		B_ANY_KERNEL_ADDRESS, ROUNDUP(totalBuffers, B_PAGE_SIZE), B_CONTIGUOUS,
 		B_READ_AREA | B_WRITE_AREA);
+	if (fBufferArea < 0)
+		return fBufferArea;
 
-	fWriteBuffer = fReadBuffer + fReadBufferSize;
+	fOutputBuffer = fReadBuffer + fReadBufferSize;
+	fWriteBuffer = fOutputBuffer + fOutputBufferSize;
 	fInterruptBuffer = fWriteBuffer + fWriteBufferSize;
 	return B_OK;
 }
@@ -105,47 +115,66 @@ SerialDevice::SetWritePipe(usb_pipe handle)
 }
 
 
+inline int32
+baud_index_to_speed(int index)
+{
+	switch (index) {
+		case B0: return 0;
+		case B50: return 50;
+		case B75: return 75;
+		case B110: return 110;
+		case B134: return 134;
+		case B150: return 150;
+		case B200: return 200;
+		case B300: return 300;
+		case B600: return 600;
+		case B1200: return 1200;
+		case B1800: return 1800;
+		case B2400: return 2400;
+		case B4800: return 4800;
+		case B9600: return 9600;
+		case B19200: return 19200;
+		case B31250: return 31250;
+		case B38400: return 38400;
+		case B57600: return 57600;
+		case B115200: return 115200;
+		case B230400: return 230400;
+	}
+
+	TRACE_ALWAYS("invalid baud index %d\n", index);
+	return -1;
+}
+
+
 void
 SerialDevice::SetModes(struct termios *tios)
 {
-	uint16 newControl = fControlOut;
 	TRACE_FUNCRES(trace_termios, tios);
 
-	static uint32 baudRates[] = {
-		0x00000000, //B0
-		0x00000032, //B50
-		0x0000004B, //B75
-		0x0000006E, //B110
-		0x00000086, //B134
-		0x00000096, //B150
-		0x000000C8, //B200
-		0x0000012C, //B300
-		0x00000258, //B600
-		0x000004B0, //B1200
-		0x00000708, //B1800
-		0x00000960, //B2400
-		0x000012C0, //B4800
-		0x00002580, //B9600
-		0x00004B00, //B19200
-		0x00009600, //B38400
-		0x0000E100, //B57600
-		0x0001C200, //B115200
-		0x00038400, //B230400
-		0x00070800, //460800
-		0x000E1000, //921600
-	};
+	uint8 baud = tios->c_cflag & CBAUD;
+	int32 speed = baud_index_to_speed(baud);
+	if (speed < 0) {
+		baud = B19200;
+		speed = 19200;
+	}
 
-	uint32 baudCount = sizeof(baudRates) / sizeof(baudRates[0]);
-	uint32 baudIndex = tios->c_cflag & CBAUD;
-	if (baudIndex == 0)
-		baudIndex = tios->c_ispeed;
-	if (baudIndex == 0)
-		baudIndex = tios->c_ospeed;
-	if (baudIndex > baudCount)
-		baudIndex = baudCount - 1;
+	// update our master config in full
+	memcpy(&fTTYConfig, tios, sizeof(termios));
+	fTTYConfig.c_cflag &= ~CBAUD;
+	fTTYConfig.c_cflag |= baud;
+
+	// only apply the relevant parts to the device side
+	termios config;
+	memset(&config, 0, sizeof(termios));
+	config.c_cflag = tios->c_cflag;
+	config.c_cflag &= ~CBAUD;
+	config.c_cflag |= baud;
+
+	// update the termios of the device side
+	gTTYModule->tty_control(fDeviceTTYCookie, TCSETA, &config, sizeof(termios));
 
 	usb_cdc_line_coding lineCoding;
-	lineCoding.speed = baudRates[baudIndex];
+	lineCoding.speed = speed;
 	lineCoding.stopbits = (tios->c_cflag & CSTOPB)
 		? USB_CDC_LINE_CODING_2_STOPBITS : USB_CDC_LINE_CODING_1_STOPBIT;
 
@@ -157,12 +186,6 @@ SerialDevice::SetModes(struct termios *tios)
 		lineCoding.parity = USB_CDC_LINE_CODING_NO_PARITY;
 
 	lineCoding.databits = (tios->c_cflag & CS8) ? 8 : 7;
-
-	if (fControlOut != newControl) {
-		fControlOut = newControl;
-		TRACE("newctrl send to modem: 0x%08x\n", newControl);
-		SetControlLineState(newControl);
-	}
 
 	if (memcmp(&lineCoding, &fLineCoding, sizeof(usb_cdc_line_coding)) != 0) {
 		fLineCoding.speed = lineCoding.speed;
@@ -189,8 +212,8 @@ SerialDevice::Service(struct tty *tty, uint32 op, void *buffer, size_t length)
 			bool enable = *(bool *)buffer;
 			TRACE("TTYENABLE: %sable\n", enable ? "en" : "dis");
 
-			gTTYModule->tty_hardware_signal(fTTYCookie, TTYHWDCD, enable);
-			gTTYModule->tty_hardware_signal(fTTYCookie, TTYHWCTS, enable);
+			gTTYModule->tty_hardware_signal(fSystemTTYCookie, TTYHWDCD, enable);
+			gTTYModule->tty_hardware_signal(fSystemTTYCookie, TTYHWCTS, enable);
 
 			fControlOut = enable ? USB_CDC_CONTROL_SIGNAL_STATE_DTR
 				| USB_CDC_CONTROL_SIGNAL_STATE_RTS : 0;
@@ -201,17 +224,19 @@ SerialDevice::Service(struct tty *tty, uint32 op, void *buffer, size_t length)
 		case TTYISTOP:
 			fInputStopped = *(bool *)buffer;
 			TRACE("TTYISTOP: %sstopped\n", fInputStopped ? "" : "not ");
-			gTTYModule->tty_hardware_signal(fTTYCookie, TTYHWCTS, !fInputStopped);
+			gTTYModule->tty_hardware_signal(fSystemTTYCookie, TTYHWCTS,
+				!fInputStopped);
 			return true;
 
 		case TTYGETSIGNALS:
 			TRACE("TTYGETSIGNALS\n");
-			gTTYModule->tty_hardware_signal(fTTYCookie, TTYHWDCD,
+			gTTYModule->tty_hardware_signal(fSystemTTYCookie, TTYHWDCD,
 				(fControlOut & (USB_CDC_CONTROL_SIGNAL_STATE_DTR
 					| USB_CDC_CONTROL_SIGNAL_STATE_RTS)) != 0);
-			gTTYModule->tty_hardware_signal(fTTYCookie, TTYHWCTS, !fInputStopped);
-			gTTYModule->tty_hardware_signal(fTTYCookie, TTYHWDSR, false);
-			gTTYModule->tty_hardware_signal(fTTYCookie, TTYHWRI, false);
+			gTTYModule->tty_hardware_signal(fSystemTTYCookie, TTYHWCTS,
+				!fInputStopped);
+			gTTYModule->tty_hardware_signal(fSystemTTYCookie, TTYHWDSR, false);
+			gTTYModule->tty_hardware_signal(fSystemTTYCookie, TTYHWRI, false);
 			return true;
 
 		case TTYSETMODES:
@@ -223,7 +248,7 @@ SerialDevice::Service(struct tty *tty, uint32 op, void *buffer, size_t length)
 		case TTYSETRTS:
 		{
 			bool set = *(bool *)buffer;
-			uint8 bit = TTYSETDTR ? USB_CDC_CONTROL_SIGNAL_STATE_DTR
+			uint8 bit = op == TTYSETDTR ? USB_CDC_CONTROL_SIGNAL_STATE_DTR
 				: USB_CDC_CONTROL_SIGNAL_STATE_RTS;
 			if (set)
 				fControlOut |= bit;
@@ -260,16 +285,27 @@ SerialDevice::Open(uint32 flags)
 		return B_NO_MEMORY;
 	}
 
-	fSlaveTTY = gTTYModule->tty_create(NULL, false);
+	fSlaveTTY = gTTYModule->tty_create(usb_serial_service, false);
 	if (fSlaveTTY == NULL) {
 		TRACE_ALWAYS("open: failed to init slave tty\n");
 		gTTYModule->tty_destroy(fMasterTTY);
 		return B_NO_MEMORY;
 	}
 
-	fTTYCookie = gTTYModule->tty_create_cookie(fMasterTTY, fSlaveTTY, flags);
-	if (fTTYCookie == NULL) {
-		TRACE_ALWAYS("open: failed to init tty cookie\n");
+	fSystemTTYCookie = gTTYModule->tty_create_cookie(fMasterTTY, fSlaveTTY,
+		O_RDWR);
+	if (fSystemTTYCookie == NULL) {
+		TRACE_ALWAYS("open: failed to init system tty cookie\n");
+		gTTYModule->tty_destroy(fMasterTTY);
+		gTTYModule->tty_destroy(fSlaveTTY);
+		return B_NO_MEMORY;
+	}
+
+	fDeviceTTYCookie = gTTYModule->tty_create_cookie(fSlaveTTY, fMasterTTY,
+		O_RDWR);
+	if (fDeviceTTYCookie == NULL) {
+		TRACE_ALWAYS("open: failed to init device tty cookie\n");
+		gTTYModule->tty_destroy_cookie(fSystemTTYCookie);
 		gTTYModule->tty_destroy(fMasterTTY);
 		gTTYModule->tty_destroy(fSlaveTTY);
 		return B_NO_MEMORY;
@@ -277,25 +313,30 @@ SerialDevice::Open(uint32 flags)
 
 	ResetDevice();
 
-	fDeviceThread = spawn_kernel_thread(DeviceThread, "usb_serial device thread",
-		B_NORMAL_PRIORITY, this);
+	fStopThreads = false;
 
-	if (fDeviceThread < B_OK) {
-		TRACE_ALWAYS("open: failed to spawn kernel thread\n");
-		return fDeviceThread;
+	fInputThread = spawn_kernel_thread(_InputThread,
+		"usb_serial input thread", B_NORMAL_PRIORITY, this);
+	if (fInputThread < 0) {
+		TRACE_ALWAYS("open: failed to spawn input thread\n");
+		return fInputThread;
 	}
 
-	resume_thread(fDeviceThread);
+	resume_thread(fInputThread);
 
 	fControlOut = USB_CDC_CONTROL_SIGNAL_STATE_DTR
 		| USB_CDC_CONTROL_SIGNAL_STATE_RTS;
 	SetControlLineState(fControlOut);
 
 	status_t status = gUSBModule->queue_interrupt(fControlPipe,
-		fInterruptBuffer, fInterruptBufferSize, InterruptCallbackFunction,
+		fInterruptBuffer, fInterruptBufferSize, _InterruptCallbackFunction,
 		this);
 	if (status < B_OK)
 		TRACE_ALWAYS("failed to queue initial interrupt\n");
+
+	// set our config (will propagate to the slave config as well in SetModes()
+	gTTYModule->tty_control(fSystemTTYCookie, TCSETA, &fTTYConfig,
+		sizeof(termios));
 
 	fDeviceOpen = true;
 	return B_OK;
@@ -310,74 +351,59 @@ SerialDevice::Read(char *buffer, size_t *numBytes)
 		return B_DEV_NOT_READY;
 	}
 
-	status_t status = mutex_lock(&fReadLock);
-	if (status != B_OK) {
-		TRACE_ALWAYS("read: failed to get read lock\n");
-		*numBytes = 0;
-		return status;
-	}
-
-	status = gTTYModule->tty_read(fTTYCookie, buffer, numBytes);
-
-	mutex_unlock(&fReadLock);
-	return status;
+	return gTTYModule->tty_read(fSystemTTYCookie, buffer, numBytes);
 }
 
 
 status_t
 SerialDevice::Write(const char *buffer, size_t *numBytes)
 {
-	size_t bytesLeft = *numBytes;
-	*numBytes = 0;
-
-	status_t status = mutex_lock(&fWriteLock);
-	if (status != B_OK) {
-		TRACE_ALWAYS("write: failed to get write lock\n");
-		return status;
-	}
-
 	if (fDeviceRemoved) {
-		mutex_unlock(&fWriteLock);
+		*numBytes = 0;
 		return B_DEV_NOT_READY;
 	}
 
+	size_t bytesLeft = *numBytes;
+	*numBytes = 0;
+
 	while (bytesLeft > 0) {
-		size_t length = MIN(bytesLeft, fWriteBufferSize);
-		size_t packetLength = length;
-		OnWrite(buffer, &length, &packetLength);
+		size_t length = MIN(bytesLeft, 256);
+			// TODO: This is an ugly hack; We use a small buffer size so that
+			// we don't overrun the tty line buffer and cause it to block. While
+			// that isn't a problem, we shouldn't just hardcode the value here.
 
-		status = gUSBModule->queue_bulk(fWritePipe, fWriteBuffer,
-			packetLength, WriteCallbackFunction, this);
-		if (status < B_OK) {
-			TRACE_ALWAYS("write: queueing failed with status 0x%08x\n", status);
-			break;
-		}
-
-		status = acquire_sem_etc(fDoneWrite, 1, B_CAN_INTERRUPT, 0);
-		if (status < B_OK) {
-			TRACE_ALWAYS("write: failed to get write done sem 0x%08x\n", status);
-			break;
-		}
-
-		if (fStatusWrite != B_OK) {
-			TRACE("write: device status error 0x%08x\n", fStatusWrite);
-			status = gUSBModule->clear_feature(fWritePipe,
-				USB_FEATURE_ENDPOINT_HALT);
-			if (status < B_OK) {
-				TRACE_ALWAYS("write: failed to clear device halt\n");
-				status = B_ERROR;
-				break;
-			}
-			continue;
+		status_t result = gTTYModule->tty_write(fSystemTTYCookie, buffer,
+			&length);
+		if (result != B_OK) {
+			TRACE_ALWAYS("failed to write to tty: %s\n", strerror(result));
+			return result;
 		}
 
 		buffer += length;
 		*numBytes += length;
 		bytesLeft -= length;
+
+		while (true) {
+			// Write to the device as long as there's anything in the tty buffer
+			int readable = 0;
+			gTTYModule->tty_control(fDeviceTTYCookie, FIONREAD, &readable,
+				sizeof(readable));
+			if (readable == 0)
+				break;
+
+			result = _WriteToDevice();
+			if (result != B_OK) {
+				TRACE_ALWAYS("failed to write to device: %s\n",
+					strerror(result));
+				return result;
+			}
+		}
 	}
 
-	mutex_unlock(&fWriteLock);
-	return status;
+	if (*numBytes > 0)
+		return B_OK;
+
+	return B_ERROR;
 }
 
 
@@ -387,7 +413,7 @@ SerialDevice::Control(uint32 op, void *arg, size_t length)
 	if (fDeviceRemoved)
 		return B_DEV_NOT_READY;
 
-	return gTTYModule->tty_control(fTTYCookie, op, arg, length);
+	return gTTYModule->tty_control(fSystemTTYCookie, op, arg, length);
 }
 
 
@@ -397,7 +423,7 @@ SerialDevice::Select(uint8 event, uint32 ref, selectsync *sync)
 	if (fDeviceRemoved)
 		return B_DEV_NOT_READY;
 
-	return gTTYModule->tty_select(fTTYCookie, event, ref, sync);
+	return gTTYModule->tty_select(fSystemTTYCookie, event, ref, sync);
 }
 
 
@@ -407,7 +433,7 @@ SerialDevice::DeSelect(uint8 event, selectsync *sync)
 	if (fDeviceRemoved)
 		return B_DEV_NOT_READY;
 
-	return gTTYModule->tty_deselect(fTTYCookie, event, sync);
+	return gTTYModule->tty_deselect(fSystemTTYCookie, event, sync);
 }
 
 
@@ -416,13 +442,27 @@ SerialDevice::Close()
 {
 	OnClose();
 
+	fStopThreads = true;
+	fInputStopped = false;
+
 	if (!fDeviceRemoved) {
 		gUSBModule->cancel_queued_transfers(fReadPipe);
 		gUSBModule->cancel_queued_transfers(fWritePipe);
 		gUSBModule->cancel_queued_transfers(fControlPipe);
 	}
 
-	gTTYModule->tty_destroy_cookie(fTTYCookie);
+	gTTYModule->tty_close_cookie(fSystemTTYCookie);
+	gTTYModule->tty_close_cookie(fDeviceTTYCookie);
+
+	int32 result = B_OK;
+	wait_for_thread(fInputThread, &result);
+	fInputThread = -1;
+
+	gTTYModule->tty_destroy_cookie(fSystemTTYCookie);
+	gTTYModule->tty_destroy_cookie(fDeviceTTYCookie);
+
+	gTTYModule->tty_destroy(fMasterTTY);
+	gTTYModule->tty_destroy(fSlaveTTY);
 
 	fDeviceOpen = false;
 	return B_OK;
@@ -432,8 +472,6 @@ SerialDevice::Close()
 status_t
 SerialDevice::Free()
 {
-	gTTYModule->tty_destroy(fMasterTTY);
-	gTTYModule->tty_destroy(fSlaveTTY);
 	return B_OK;
 }
 
@@ -448,18 +486,11 @@ SerialDevice::Removed()
 	fDeviceRemoved = true;
 
 	// we need to ensure that we do not use the device anymore
-	fStopDeviceThread = true;
+	fStopThreads = true;
 	fInputStopped = false;
 	gUSBModule->cancel_queued_transfers(fReadPipe);
 	gUSBModule->cancel_queued_transfers(fWritePipe);
 	gUSBModule->cancel_queued_transfers(fControlPipe);
-
-	int32 result = B_OK;
-	wait_for_thread(fDeviceThread, &result);
-	fDeviceThread = -1;
-
-	mutex_lock(&fWriteLock);
-	mutex_unlock(&fWriteLock);
 }
 
 
@@ -505,7 +536,7 @@ SerialDevice::OnRead(char **buffer, size_t *numBytes)
 void
 SerialDevice::OnWrite(const char *buffer, size_t *numBytes, size_t *packetBytes)
 {
-	// default implementation - does nothing
+	memcpy(fWriteBuffer, buffer, *numBytes);
 }
 
 
@@ -517,33 +548,38 @@ SerialDevice::OnClose()
 
 
 int32
-SerialDevice::DeviceThread(void *data)
+SerialDevice::_InputThread(void *data)
 {
 	SerialDevice *device = (SerialDevice *)data;
 
-	while (!device->fStopDeviceThread) {
+	while (!device->fStopThreads) {
 		status_t status = gUSBModule->queue_bulk(device->fReadPipe,
 			device->fReadBuffer, device->fReadBufferSize,
-			device->ReadCallbackFunction, data);
+			device->_ReadCallbackFunction, data);
 		if (status < B_OK) {
-			TRACE_ALWAYS("device thread: queueing failed with error: 0x%08x\n", status);
-			break;
+			TRACE_ALWAYS("input thread: queueing failed with error: 0x%08x\n",
+				status);
+			return status;
 		}
 
 		status = acquire_sem_etc(device->fDoneRead, 1, B_CAN_INTERRUPT, 0);
 		if (status < B_OK) {
-			TRACE_ALWAYS("device thread: failed to get read done sem 0x%08x\n", status);
-			break;
+			TRACE_ALWAYS("input thread: failed to get read done sem 0x%08x\n",
+				status);
+			return status;
 		}
 
 		if (device->fStatusRead != B_OK) {
-			TRACE("device thread: device status error 0x%08x\n",
+			TRACE("input thread: device status error 0x%08x\n",
 				device->fStatusRead);
-			if (gUSBModule->clear_feature(device->fReadPipe,
-				USB_FEATURE_ENDPOINT_HALT) != B_OK) {
-				TRACE_ALWAYS("device thread: failed to clear halt feature\n");
-				break;
+			if (device->fStatusRead == B_DEV_STALLED
+				&& gUSBModule->clear_feature(device->fReadPipe,
+					USB_FEATURE_ENDPOINT_HALT) != B_OK) {
+				TRACE_ALWAYS("input thread: failed to clear halt feature\n");
+				return B_ERROR;
 			}
+
+			continue;
 		}
 
 		char *buffer = device->fReadBuffer;
@@ -555,7 +591,69 @@ SerialDevice::DeviceThread(void *data)
 		while (device->fInputStopped)
 			snooze(100);
 
-		gTTYModule->tty_write(device->fTTYCookie, buffer, &readLength);
+		status = gTTYModule->tty_write(device->fDeviceTTYCookie, buffer,
+			&readLength);
+		if (status != B_OK) {
+			TRACE_ALWAYS("input thread: failed to write into TTY\n");
+			return status;
+		}
+	}
+
+	return B_OK;
+}
+
+
+status_t
+SerialDevice::_WriteToDevice()
+{
+	char *buffer = fOutputBuffer;
+	size_t bytesLeft = fOutputBufferSize;
+	status_t status = gTTYModule->tty_read(fDeviceTTYCookie, buffer,
+		&bytesLeft);
+	if (status != B_OK) {
+		TRACE_ALWAYS("write to device: failed to read from TTY: %s\n",
+			strerror(status));
+		return status;
+	}
+
+	while (!fDeviceRemoved && bytesLeft > 0) {
+		size_t length = MIN(bytesLeft, fWriteBufferSize);
+		size_t packetLength = length;
+		OnWrite(buffer, &length, &packetLength);
+
+		status = gUSBModule->queue_bulk(fWritePipe, fWriteBuffer, packetLength,
+			_WriteCallbackFunction, this);
+		if (status != B_OK) {
+			TRACE_ALWAYS("write to device: queueing failed with status "
+				"0x%08x\n", status);
+			return status;
+		}
+
+		status = acquire_sem_etc(fDoneWrite, 1, B_CAN_INTERRUPT, 0);
+		if (status != B_OK) {
+			TRACE_ALWAYS("write to device: failed to get write done sem "
+				"0x%08x\n", status);
+			return status;
+		}
+
+		if (fStatusWrite != B_OK) {
+			TRACE("write to device: device status error 0x%08x\n",
+				fStatusWrite);
+			if (fStatusWrite == B_DEV_STALLED) {
+				status = gUSBModule->clear_feature(fWritePipe,
+					USB_FEATURE_ENDPOINT_HALT);
+				if (status != B_OK) {
+					TRACE_ALWAYS("write to device: failed to clear device "
+						"halt\n");
+					return B_ERROR;
+				}
+			}
+
+			continue;
+		}
+
+		buffer += length;
+		bytesLeft -= length;
 	}
 
 	return B_OK;
@@ -563,11 +661,11 @@ SerialDevice::DeviceThread(void *data)
 
 
 void
-SerialDevice::ReadCallbackFunction(void *cookie, int32 status, void *data,
+SerialDevice::_ReadCallbackFunction(void *cookie, status_t status, void *data,
 	uint32 actualLength)
 {
-	TRACE_FUNCALLS("read callback: cookie: 0x%08x status: 0x%08x data: 0x%08x len: %lu\n",
-		cookie, status, data, actualLength);
+	TRACE_FUNCALLS("read callback: cookie: 0x%08x status: 0x%08x data: 0x%08x "
+		"length: %lu\n", cookie, status, data, actualLength);
 
 	SerialDevice *device = (SerialDevice *)cookie;
 	device->fActualLengthRead = actualLength;
@@ -577,11 +675,11 @@ SerialDevice::ReadCallbackFunction(void *cookie, int32 status, void *data,
 
 
 void
-SerialDevice::WriteCallbackFunction(void *cookie, int32 status, void *data,
+SerialDevice::_WriteCallbackFunction(void *cookie, status_t status, void *data,
 	uint32 actualLength)
 {
-	TRACE_FUNCALLS("write callback: cookie: 0x%08x status: 0x%08x data: 0x%08x len: %lu\n",
-		cookie, status, data, actualLength);
+	TRACE_FUNCALLS("write callback: cookie: 0x%08x status: 0x%08x data: 0x%08x "
+		"length: %lu\n", cookie, status, data, actualLength);
 
 	SerialDevice *device = (SerialDevice *)cookie;
 	device->fActualLengthWrite = actualLength;
@@ -591,11 +689,11 @@ SerialDevice::WriteCallbackFunction(void *cookie, int32 status, void *data,
 
 
 void
-SerialDevice::InterruptCallbackFunction(void *cookie, int32 status,
+SerialDevice::_InterruptCallbackFunction(void *cookie, status_t status,
 	void *data, uint32 actualLength)
 {
-	TRACE_FUNCALLS("interrupt callback: cookie: 0x%08x status: 0x%08x data: 0x%08x len: %lu\n",
-		cookie, status, data, actualLength);
+	TRACE_FUNCALLS("interrupt callback: cookie: 0x%08x status: 0x%08x data: "
+		"0x%08x len: %lu\n", cookie, status, data, actualLength);
 
 	SerialDevice *device = (SerialDevice *)cookie;
 	device->fActualLengthInterrupt = actualLength;
@@ -606,10 +704,9 @@ SerialDevice::InterruptCallbackFunction(void *cookie, int32 status,
 	if (status == B_OK && !device->fDeviceRemoved) {
 		status = gUSBModule->queue_interrupt(device->fControlPipe,
 			device->fInterruptBuffer, device->fInterruptBufferSize,
-			device->InterruptCallbackFunction, device);
+			device->_InterruptCallbackFunction, device);
 	}
 }
-
 
 
 SerialDevice *
@@ -629,51 +726,83 @@ SerialDevice::MakeDevice(usb_device device, uint16 vendorID,
 		case VENDOR_HAL:
 		{
 			switch (productID) {
-				case PRODUCT_PROLIFIC_RSAQ2: description = "PL2303 Serial adapter (IODATA USB-RSAQ2)"; break;
-				case PRODUCT_IODATA_USBRSAQ: description = "I/O Data USB serial adapter USB-RSAQ1"; break;
-				case PRODUCT_ATEN_UC232A: description = "Aten Serial adapter"; break;
-				case PRODUCT_TDK_UHA6400: description = "TDK USB-PHS Adapter UHA6400"; break;
-				case PRODUCT_RATOC_REXUSB60: description = "Ratoc USB serial adapter REX-USB60"; break;
-				case PRODUCT_PROLIFIC_PL2303: description = "PL2303 Serial adapter (ATEN/IOGEAR UC232A)"; break;
-				case PRODUCT_ELECOM_UCSGT: description = "Elecom UC-SGT"; break;
-				case PRODUCT_SOURCENEXT_KEIKAI8: description = "SOURCENEXT KeikaiDenwa 8"; break;
-				case PRODUCT_SOURCENEXT_KEIKAI8_CHG: description = "SOURCENEXT KeikaiDenwa 8 with charger"; break;
-				case PRODUCT_HAL_IMR001: description = "HAL Corporation Crossam2+USB"; break;
+				case PRODUCT_PROLIFIC_RSAQ2:
+					description = "PL2303 Serial adapter (IODATA USB-RSAQ2)";
+					break;
+				case PRODUCT_IODATA_USBRSAQ:
+					description = "I/O Data USB serial adapter USB-RSAQ1";
+					break;
+				case PRODUCT_ATEN_UC232A:
+					description = "Aten Serial adapter";
+					break;
+				case PRODUCT_TDK_UHA6400:
+					description = "TDK USB-PHS Adapter UHA6400";
+					break;
+				case PRODUCT_RATOC_REXUSB60:
+					description = "Ratoc USB serial adapter REX-USB60";
+					break;
+				case PRODUCT_PROLIFIC_PL2303:
+					description = "PL2303 Serial adapter (ATEN/IOGEAR UC232A)";
+					break;
+				case PRODUCT_ELECOM_UCSGT:
+					description = "Elecom UC-SGT";
+					break;
+				case PRODUCT_SOURCENEXT_KEIKAI8:
+					description = "SOURCENEXT KeikaiDenwa 8";
+					break;
+				case PRODUCT_SOURCENEXT_KEIKAI8_CHG:
+					description = "SOURCENEXT KeikaiDenwa 8 with charger";
+					break;
+				case PRODUCT_HAL_IMR001:
+					description = "HAL Corporation Crossam2+USB";
+					break;
 			}
 
-			if (!description)
+			if (description == NULL)
 				break;
 
-			return new(std::nothrow) ProlificDevice(device, vendorID, productID, description);
+			return new(std::nothrow) ProlificDevice(device, vendorID, productID,
+				description);
 		}
 
 		case VENDOR_FTDI:
 		{
 			switch (productID) {
-				case PRODUCT_FTDI_8U100AX: description = "FTDI 8U100AX serial converter"; break;
-				case PRODUCT_FTDI_8U232AM: description = "FTDI 8U232AM serial converter"; break;
+				case PRODUCT_FTDI_8U100AX:
+					description = "FTDI 8U100AX serial converter";
+					break;
+				case PRODUCT_FTDI_8U232AM:
+					description = "FTDI 8U232AM serial converter";
+					break;
 			}
 
-			if (!description)
+			if (description == NULL)
 				break;
 
-			return new(std::nothrow) FTDIDevice(device, vendorID, productID, description);
+			return new(std::nothrow) FTDIDevice(device, vendorID, productID,
+				description);
 		}
 
 		case VENDOR_PALM:
 		case VENDOR_KLSI:
 		{
 			switch (productID) {
-				case PRODUCT_PALM_CONNECT: description = "PalmConnect RS232"; break;
-				case PRODUCT_KLSI_KL5KUSB105D: description = "KLSI KL5KUSB105D"; break;
+				case PRODUCT_PALM_CONNECT:
+					description = "PalmConnect RS232";
+					break;
+				case PRODUCT_KLSI_KL5KUSB105D:
+					description = "KLSI KL5KUSB105D";
+					break;
 			}
 
-			if (!description)
+			if (description == NULL)
 				break;
 
-			return new(std::nothrow) KLSIDevice(device, vendorID, productID, description);
+			return new(std::nothrow) KLSIDevice(device, vendorID, productID,
+				description);
 		}
 	}
 
-	return new(std::nothrow) ACMDevice(device, vendorID, productID, "CDC ACM compatible device");
+	return new(std::nothrow) ACMDevice(device, vendorID, productID,
+		"CDC ACM compatible device");
 }

@@ -7,9 +7,15 @@
  */
 
 
+#include <Catalog.h>
 #include <FileConfigView.h>
 #include <MailAddon.h>
+#include <MailPrivate.h>
 #include <ProtocolConfigView.h>
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "ConfigView"
 
 
 class POP3ConfigView : public BMailProtocolConfigView {
@@ -36,18 +42,18 @@ POP3ConfigView::POP3ConfigView(MailAddonSettings& settings,
 #endif
 		)
 {
-	AddAuthMethod("Plain text");
-	AddAuthMethod("APOP");
+	AddAuthMethod(B_TRANSLATE("Plain text"));
+	AddAuthMethod(B_TRANSLATE("APOP"));
 
 #if USE_SSL
-	AddFlavor("No encryption");
-	AddFlavor("SSL");
+	AddFlavor(B_TRANSLATE("No encryption"));
+	AddFlavor(B_TRANSLATE("SSL"));
 #endif
 
 	SetTo(settings);
 
-	fFileView =  new BMailFileConfigView("Destination:", "destination",
-		false, "/boot/home/mail/in");
+	fFileView =  new BMailFileConfigView(B_TRANSLATE("Destination:"),
+		"destination", false, BPrivate::default_mail_in_directory().Path());
 	fFileView->SetTo(&settings.Settings(), NULL);
 	AddChild(fFileView);
 	float w, h;

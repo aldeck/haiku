@@ -58,24 +58,24 @@ BNetEndpoint::BNetEndpoint(BMessage* archive)
 	in_addr addr, peer;
 	unsigned short addrPort = 0, peerPort = 0;
 
-	fStatus = archive->FindInt32("_BNetEndpoint_addr_addr", 
+	fStatus = archive->FindInt32("_BNetEndpoint_addr_addr",
 		(int32 *)&addr.s_addr);
 	if (fStatus == B_OK) {
-		fStatus = archive->FindInt16("_BNetEndpoint_addr_port", 
+		fStatus = archive->FindInt16("_BNetEndpoint_addr_port",
 			(int16 *)&addrPort);
 		if (fStatus == B_OK)
 			fStatus = fAddr.SetTo(addr, addrPort);
 	}
 
-	fStatus = archive->FindInt32("_BNetEndpoint_peer_addr", 
+	fStatus = archive->FindInt32("_BNetEndpoint_peer_addr",
 		(int32 *)&peer.s_addr);
 	if (fStatus == B_OK) {
-		fStatus = archive->FindInt16("_BNetEndpoint_peer_port", 
+		fStatus = archive->FindInt16("_BNetEndpoint_peer_port",
 			(int16 *)&peerPort);
 		if (fStatus == B_OK)
 			fStatus = fPeer.SetTo(peer, peerPort);
 	}
-	
+
 	fStatus = archive->FindInt64("_BNetEndpoint_timeout", (int64 *)&fTimeout);
 	if (fStatus == B_OK)
 		fStatus = archive->FindInt32("_BNetEndpoint_proto", (int32 *)&fType);
@@ -110,7 +110,7 @@ BNetEndpoint::operator=(const BNetEndpoint& endpoint)
 {
 	if (this == &endpoint)
 		return *this;
-	
+
 	Close();
 
 	fStatus = endpoint.fStatus;
@@ -295,6 +295,7 @@ void
 BNetEndpoint::SetTimeout(bigtime_t timeout)
 {
 	fTimeout = timeout;
+	// TODO: Map value < 0 to B_INFINITE_TIMEOUT or use -1 by default.
 }
 
 
@@ -416,6 +417,8 @@ BNetEndpoint::Listen(int backlog)
 BNetEndpoint*
 BNetEndpoint::Accept(int32 timeout)
 {
+	// TODO: IsDataPending() expects 0 as special value for infinite timeout,
+	// hence the following call is broken for timeout < 0 and timeout == 0.
 	if (!IsDataPending(timeout < 0 ? B_INFINITE_TIMEOUT : 1000LL * timeout))
 		return NULL;
 
@@ -455,7 +458,7 @@ BNetEndpoint::Accept(int32 timeout)
 
 bool
 BNetEndpoint::IsDataPending(bigtime_t timeout)
-{	
+{
 	struct timeval tv;
 	fd_set fds;
 
@@ -464,6 +467,7 @@ BNetEndpoint::IsDataPending(bigtime_t timeout)
 
 	if (timeout > 0) {
 		tv.tv_sec = timeout / 1000000;
+			// TODO: A big value (e.g. B_INFINITE_TIMEOUT) will overflow!
 		tv.tv_usec = (timeout % 1000000);
 	}
 
@@ -482,6 +486,8 @@ BNetEndpoint::Receive(void* buffer, size_t length, int flags)
 	if (fSocket < 0 && _SetupSocket() != B_OK)
 		return fStatus;
 
+	// TODO: For fTimeout == 0 this is broken as IsDataPending(0) means wait
+	// without timeout. Furthermore the default fTimeout is B_INFINITE_TIMEOUT.
 	if (fTimeout >= 0 && IsDataPending(fTimeout) == false)
 		return 0;
 
@@ -510,6 +516,8 @@ BNetEndpoint::ReceiveFrom(void* buffer, size_t length,
 	if (fSocket < 0 && _SetupSocket() != B_OK)
 		return fStatus;
 
+	// TODO: For fTimeout == 0 this is broken as IsDataPending(0) means wait
+	// without timeout. Furthermore the default fTimeout is B_INFINITE_TIMEOUT.
 	if (fTimeout >= 0 && IsDataPending(fTimeout) == false)
 		return 0;
 
@@ -609,13 +617,13 @@ status_t BNetEndpoint::InitCheck()
 }
 
 
-const BNetAddress& BNetEndpoint::LocalAddr() 
+const BNetAddress& BNetEndpoint::LocalAddr()
 {
 	return const_cast<const BNetEndpoint*>(this)->LocalAddr();
 }
 
 
-const BNetAddress& BNetEndpoint::RemoteAddr() 
+const BNetAddress& BNetEndpoint::RemoteAddr()
 {
 	return const_cast<const BNetEndpoint*>(this)->RemoteAddr();
 }

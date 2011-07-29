@@ -112,8 +112,6 @@ enum {
 
 	M_FILE_DELETE,
 
-	M_SHOW_IF_NEEDED,
-
 	M_SLIDE_CONTROLS,
 	M_FINISH_SLIDING_CONTROLS
 };
@@ -121,11 +119,11 @@ enum {
 
 static property_info sPropertyInfo[] = {
 	{ B_TRANSLATE("Next"), { B_EXECUTE_PROPERTY },
-		{ B_DIRECT_SPECIFIER, 0 }, 
+		{ B_DIRECT_SPECIFIER, 0 },
 		B_TRANSLATE("Skip to the next track."), 0
 	},
 	{ B_TRANSLATE("Prev"), { B_EXECUTE_PROPERTY },
-		{ B_DIRECT_SPECIFIER, 0 }, 
+		{ B_DIRECT_SPECIFIER, 0 },
 		B_TRANSLATE("Skip to the previous track."), 0
 	},
 	{ B_TRANSLATE("Play"), { B_EXECUTE_PROPERTY },
@@ -133,7 +131,7 @@ static property_info sPropertyInfo[] = {
 		B_TRANSLATE("Start playing."), 0
 	},
 	{ B_TRANSLATE("Stop"), { B_EXECUTE_PROPERTY },
-		{ B_DIRECT_SPECIFIER, 0 }, 
+		{ B_DIRECT_SPECIFIER, 0 },
 		B_TRANSLATE("Stop playing."), 0
 	},
 	{ B_TRANSLATE("Pause"), { B_EXECUTE_PROPERTY },
@@ -141,21 +139,21 @@ static property_info sPropertyInfo[] = {
 		B_TRANSLATE("Pause playback."), 0
 	},
 	{ B_TRANSLATE("TogglePlaying"), { B_EXECUTE_PROPERTY },
-		{ B_DIRECT_SPECIFIER, 0 }, 
+		{ B_DIRECT_SPECIFIER, 0 },
 		B_TRANSLATE("Toggle pause/play."), 0
 	},
 	{ B_TRANSLATE("Mute"), { B_EXECUTE_PROPERTY },
-		{ B_DIRECT_SPECIFIER, 0 }, 
+		{ B_DIRECT_SPECIFIER, 0 },
 		B_TRANSLATE("Toggle mute."), 0
 	},
 	{ B_TRANSLATE("Volume"), { B_GET_PROPERTY, B_SET_PROPERTY, 0 },
-		{ B_DIRECT_SPECIFIER, 0 }, 
+		{ B_DIRECT_SPECIFIER, 0 },
 		B_TRANSLATE("Gets/sets the volume (0.0-2.0)."), 0,
 		{ B_FLOAT_TYPE }
 	},
 	{ B_TRANSLATE("URI"), { B_GET_PROPERTY, 0 },
 		{ B_DIRECT_SPECIFIER, 0 },
-		B_TRANSLATE("Gets the URI of the currently playing item."), 0, 
+		B_TRANSLATE("Gets the URI of the currently playing item."), 0,
 		{ B_STRING_TYPE }
 	},
 	{ 0, { 0 }, { 0 }, 0, 0 }
@@ -169,13 +167,10 @@ static const char* kDisabledSeekMessage = B_TRANSLATE("Drop files to play");
 static const char* kApplicationName = B_TRANSLATE_SYSTEM_NAME(NAME);
 
 
-//#define printf(a...)
-
-
 MainWin::MainWin(bool isFirstWindow, BMessage* message)
 	:
 	BWindow(BRect(100, 100, 400, 300), kApplicationName, B_TITLED_WINDOW,
- 		B_ASYNCHRONOUS_CONTROLS /* | B_WILL_ACCEPT_FIRST_CLICK */),
+ 		B_ASYNCHRONOUS_CONTROLS),
  	fCreationTime(system_time()),
 	fInfoWin(NULL),
 	fPlaylistWindow(NULL),
@@ -624,7 +619,7 @@ MainWin::MessageReceived(BMessage* msg)
 		}
 		case MSG_PLAYLIST_IMPORT_FAILED:
 		{
-			BAlert* alert = new BAlert(B_TRANSLATE("Nothing to Play"), 
+			BAlert* alert = new BAlert(B_TRANSLATE("Nothing to Play"),
 				B_TRANSLATE("None of the files you wanted to play appear "
 				"to be media files."), B_TRANSLATE("OK"));
 			alert->Go();
@@ -939,10 +934,6 @@ MainWin::MessageReceived(BMessage* msg)
 			_AdoptGlobalSettings();
 			break;
 
-		case M_SHOW_IF_NEEDED:
-			_ShowIfNeeded();
-			break;
-
 		case M_SLIDE_CONTROLS:
 		{
 			float offset;
@@ -1094,12 +1085,6 @@ MainWin::OpenPlaylistItem(const PlaylistItemRef& item)
 		BString string;
 		string << "Opening '" << item->Name() << "'.";
 		fControls->SetDisabledString(string.String());
-
-		if (IsHidden()) {
-			BMessage showMessage(M_SHOW_IF_NEEDED);
-			BMessageRunner::StartSending(BMessenger(this), &showMessage,
-				150000, 1);
-		}
 	}
 }
 
@@ -1304,7 +1289,6 @@ MainWin::_RefsReceived(BMessage* message)
 
 	if (message->FindRect("window frame", &fNoVideoFrame) != B_OK)
 		fNoVideoFrame = BRect();
-	_ShowIfNeeded();
 }
 
 
@@ -1396,8 +1380,6 @@ MainWin::_SetupWindow()
 	}
 	_UpdateControlsEnabledStatus();
 
-	_ShowIfNeeded();
-
 	// Adopt the size and window layout if necessary
 	if (previousSourceWidth != fSourceWidth
 		|| previousSourceHeight != fSourceHeight
@@ -1415,6 +1397,8 @@ MainWin::_SetupWindow()
 		}
 	}
 
+	_ShowIfNeeded();
+
 	fVideoView->MakeFocus();
 }
 
@@ -1427,9 +1411,9 @@ MainWin::_CreateMenu()
 	fAudioMenu = new BMenu(B_TRANSLATE("Audio"));
 	fVideoMenu = new BMenu(B_TRANSLATE("Video"));
 	fVideoAspectMenu = new BMenu(B_TRANSLATE("Aspect ratio"));
-	fAudioTrackMenu = new BMenu(B_TRANSLATE_WITH_CONTEXT("Track", 
+	fAudioTrackMenu = new BMenu(B_TRANSLATE_WITH_CONTEXT("Track",
 		"Audio Track Menu"));
-	fVideoTrackMenu = new BMenu(B_TRANSLATE_WITH_CONTEXT("Track", 
+	fVideoTrackMenu = new BMenu(B_TRANSLATE_WITH_CONTEXT("Track",
 		"Video Track Menu"));
 	fSubTitleTrackMenu = new BMenu(B_TRANSLATE("Subtitles"));
 	fAttributesMenu = new BMenu(B_TRANSLATE("Attributes"));
@@ -1475,9 +1459,9 @@ MainWin::_CreateMenu()
 
 	fFileMenu->AddSeparatorItem();
 
-	fFileMenu->AddItem(new BMenuItem(B_TRANSLATE("Close"), 
+	fFileMenu->AddItem(new BMenuItem(B_TRANSLATE("Close"),
 		new BMessage(M_FILE_CLOSE), 'W'));
-	fFileMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"), 
+	fFileMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
 		new BMessage(M_FILE_QUIT), 'Q'));
 
 	fPlaylistMenu->SetRadioMode(true);
@@ -1920,20 +1904,7 @@ MainWin::_MouseDown(BMessage* msg, BView* originalHandler)
 		fMouseDownTracking = true;
 	}
 
-	// pop up a context menu if right mouse button is down for 200 ms
-
-	if ((buttons & B_SECONDARY_MOUSE_BUTTON) == 0)
-		return;
-
-	bigtime_t start = system_time();
-	bigtime_t delay = 200000;
-	BPoint location;
-	do {
-		fVideoView->GetMouse(&location, &buttons);
-		if ((buttons & B_SECONDARY_MOUSE_BUTTON) == 0)
-			break;
-		snooze(1000);
-	} while (system_time() - start < delay);
+	// pop up a context menu if right mouse button is down
 
 	if ((buttons & B_SECONDARY_MOUSE_BUTTON) != 0)
 		_ShowContextMenu(screenWhere);
@@ -2011,12 +1982,12 @@ MainWin::_ShowContextMenu(const BPoint& screenPoint)
 		new BMessage(M_TOGGLE_NO_INTERFACE), 'H'));
 	item->SetMarked(fNoInterface);
 	item->SetEnabled(fHasVideo && !fIsFullscreen);
-	
+
 	menu->AddItem(item = new BMenuItem(B_TRANSLATE("Always on top"),
 		new BMessage(M_TOGGLE_ALWAYS_ON_TOP), 'A'));
 	item->SetMarked(fAlwaysOnTop);
 	item->SetEnabled(fHasVideo);
-	
+
 	BMenu* aspectSubMenu = new BMenu(B_TRANSLATE("Aspect ratio"));
 	_SetupVideoAspectItems(aspectSubMenu);
 	aspectSubMenu->SetTargetForItems(this);
@@ -2333,13 +2304,16 @@ MainWin::_ToggleNoInterface()
 void
 MainWin::_ShowIfNeeded()
 {
+	// Only proceed if the window is already running
 	if (find_thread(NULL) != Thread())
 		return;
 
 	if (!fHasVideo && fNoVideoFrame.IsValid()) {
 		MoveTo(fNoVideoFrame.LeftTop());
 		ResizeTo(fNoVideoFrame.Width(), fNoVideoFrame.Height());
-	}
+	} else if (fHasVideo && IsHidden())
+		CenterOnScreen();
+
 	fNoVideoFrame = BRect();
 
 	if (IsHidden()) {

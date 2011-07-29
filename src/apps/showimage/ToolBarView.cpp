@@ -36,8 +36,8 @@ void
 ToolBarView::Hide()
 {
 	BView::Hide();
-	// TODO: This could be fixed in BView instead. Looking from the BIconButtons, they
-	// are not hidden, though, only their parent is...
+	// TODO: This could be fixed in BView instead. Looking from the 
+	// BIconButtons, they are not hidden though, only their parent is...
 	_HideToolTips();
 }
 
@@ -54,7 +54,7 @@ void
 ToolBarView::AddAction(BMessage* message, BHandler* target, const BBitmap* icon,
 	const char* toolTipText)
 {
-	BIconButton* button = new BIconButton(NULL, 0, NULL, message, target);
+	BIconButton* button = new BIconButton(NULL, NULL, message, target);
 	button->SetIcon(icon);
 	if (toolTipText != NULL)
 		button->SetToolTip(toolTipText);

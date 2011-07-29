@@ -3930,9 +3930,9 @@ vm_page_fault(addr_t address, addr_t faultAddress, bool isWrite, bool isUser,
 			Thread* thread = thread_get_current_thread();
 			dprintf("vm_page_fault: thread \"%s\" (%ld) in team \"%s\" (%ld) "
 				"tried to %s address %#lx, ip %#lx (\"%s\" +%#lx)\n",
-				thread->name, thread->id, thread->team->name, thread->team->id,
-				isWrite ? "write" : "read", address, faultAddress,
-				area ? area->name : "???",
+				thread->name, thread->id, thread->team->Name(),
+				thread->team->id, isWrite ? "write" : "read", address,
+				faultAddress, area ? area->name : "???",
 				faultAddress - (area ? area->Base() : 0x0));
 
 			// We can print a stack trace of the userland thread here.
@@ -3999,13 +3999,17 @@ vm_page_fault(addr_t address, addr_t faultAddress, bool isWrite, bool isUser,
 				// send it the signal. Otherwise we notify the user debugger
 				// first.
 				struct sigaction action;
-				if (sigaction(SIGSEGV, NULL, &action) == 0
-					&& action.sa_handler != SIG_DFL
-					&& action.sa_handler != SIG_IGN) {
-					send_signal(thread->id, SIGSEGV);
-				} else if (user_debug_exception_occurred(B_SEGMENT_VIOLATION,
+				if ((sigaction(SIGSEGV, NULL, &action) == 0
+						&& action.sa_handler != SIG_DFL
+						&& action.sa_handler != SIG_IGN)
+					|| user_debug_exception_occurred(B_SEGMENT_VIOLATION,
 						SIGSEGV)) {
-					send_signal(thread->id, SIGSEGV);
+					Signal signal(SIGSEGV,
+						status == B_PERMISSION_DENIED
+							? SEGV_ACCERR : SEGV_MAPERR,
+						EFAULT, thread->team->id);
+					signal.SetAddress((void*)address);
+					send_signal_to_thread(thread, signal, 0);
 				}
 			}
 		}
@@ -4757,6 +4761,33 @@ vm_resize_area(area_id areaID, size_t newSize, bool kernel)
 		}
 	}
 
+	if (status == B_OK) {
+		// Shrink or grow individual page protections if in use.
+		if (area->page_protections != NULL) {
+			uint32 bytes = (newSize / B_PAGE_SIZE + 1) / 2;
+			uint8* newProtections
+				= (uint8*)realloc(area->page_protections, bytes);
+			if (newProtections == NULL)
+				status = B_NO_MEMORY;
+			else {
+				area->page_protections = newProtections;
+
+				if (oldSize < newSize) {
+					// init the additional page protections to that of the area
+					uint32 offset = (oldSize / B_PAGE_SIZE + 1) / 2;
+					uint32 areaProtection = area->protection
+						& (B_READ_AREA | B_WRITE_AREA | B_EXECUTE_AREA);
+					memset(area->page_protections + offset,
+						areaProtection | (areaProtection << 4), bytes - offset);
+					if ((oldSize / B_PAGE_SIZE) % 2 != 0) {
+						uint8& entry = area->page_protections[offset - 1];
+						entry = (entry & 0x0f) | (areaProtection << 4);
+					}
+				}
+			}
+		}
+	}
+
 	// shrinking the cache can't fail, so we do it now
 	if (status == B_OK && newSize < oldSize)
 		status = cache->Resize(cache->virtual_base + newSize, priority);
@@ -4835,8 +4866,8 @@ status_t
 vm_debug_copy_page_memory(team_id teamID, void* unsafeMemory, void* buffer,
 	size_t size, bool copyToUnsafe)
 {
-	if (size > B_PAGE_SIZE
-			|| ((addr_t)unsafeMemory + size) % B_PAGE_SIZE < size) {
+	if (size > B_PAGE_SIZE || ROUNDDOWN((addr_t)unsafeMemory, B_PAGE_SIZE)
+			!= ROUNDDOWN((addr_t)unsafeMemory + size - 1, B_PAGE_SIZE)) {
 		return B_BAD_VALUE;
 	}
 
@@ -6296,6 +6327,41 @@ _user_memory_advice(void* address, size_t size, uint32 advice)
 {
 	// TODO: Implement!
 	return B_OK;
+}
+
+
+status_t
+_user_get_memory_properties(team_id teamID, const void* address,
+	uint32* _protected, uint32* _lock)
+{
+	if (!IS_USER_ADDRESS(_protected) || !IS_USER_ADDRESS(_lock))
+		return B_BAD_ADDRESS;
+
+	AddressSpaceReadLocker locker;
+	status_t error = locker.SetTo(teamID);
+	if (error != B_OK)
+		return error;
+
+	VMArea* area = locker.AddressSpace()->LookupArea((addr_t)address);
+	if (area == NULL)
+		return B_NO_MEMORY;
+
+
+	uint32 protection = area->protection;
+	if (area->page_protections != NULL)
+		protection = get_area_page_protection(area, (addr_t)address);
+
+	uint32 wiring = area->wiring;
+
+	locker.Unlock();
+
+	error = user_memcpy(_protected, &protection, sizeof(protection));
+	if (error != B_OK)
+		return error;
+
+	error = user_memcpy(_lock, &wiring, sizeof(wiring));
+
+	return error;
 }
 
 

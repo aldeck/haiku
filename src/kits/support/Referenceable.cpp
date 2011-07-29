@@ -28,24 +28,27 @@ BReferenceable::~BReferenceable()
 }
 
 
-void
+int32
 BReferenceable::AcquireReference()
 {
-	if (atomic_add(&fReferenceCount, 1) == 0)
+	int32 previousReferenceCount = atomic_add(&fReferenceCount, 1);
+	if (previousReferenceCount == 0)
 		FirstReferenceAcquired();
 
 	TRACE("%p: acquire %ld\n", this, fReferenceCount);
+
+	return previousReferenceCount;
 }
 
 
-bool
+int32
 BReferenceable::ReleaseReference()
 {
-	bool unreferenced = (atomic_add(&fReferenceCount, -1) == 1);
+	int32 previousReferenceCount = atomic_add(&fReferenceCount, -1);
 	TRACE("%p: release %ld\n", this, fReferenceCount);
-	if (unreferenced)
+	if (previousReferenceCount == 1)
 		LastReferenceReleased();
-	return unreferenced;
+	return previousReferenceCount;
 }
 
 

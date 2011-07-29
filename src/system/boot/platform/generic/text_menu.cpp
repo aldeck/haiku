@@ -1,5 +1,6 @@
 /*
  * Copyright 2004-2010, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2011, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 
@@ -57,13 +58,15 @@ print_spacing(int32 count)
 
 
 static void
-print_centered(int32 line, const char *text)
+print_centered(int32 line, const char *text, bool resetPosition = true)
 {
 	console_set_cursor(console_width() / 2 - strlen(text) / 2, line);
 	printf("%s", text);
 
-	console_set_cursor(0, 0);
-		// this avoids unwanted line feeds
+	if (resetPosition) {
+		console_set_cursor(0, 0);
+			// this avoids unwanted line feeds
+	}
 }
 
 
@@ -206,7 +209,7 @@ draw_menu(Menu *menu)
 	print_centered(2, "Haiku Boot Loader");
 
 	console_set_color(kCopyrightColor, kBackgroundColor);
-	print_centered(4, "Copyright 2004-2010 Haiku Inc.");
+	print_centered(4, "Copyright 2004-2011 Haiku Inc.");
 
 	if (menu->Title()) {
 		console_set_cursor(kOffsetX, kFirstLine - 2);
@@ -508,3 +511,110 @@ platform_generic_run_text_menu(Menu *menu)
 //	platform_switch_to_logo();
 }
 
+
+size_t
+platform_generic_get_user_input_text(Menu* menu, MenuItem* item, char* buffer,
+	size_t bufferSize)
+{
+	size_t pos = 0;
+
+	memset(buffer, 0, bufferSize);
+
+	int32 promptLength = strlen(item->Label()) + 2;
+	int32 line = menu->IndexOf(item) - sMenuOffset;
+	if (line < 0 || line >= menu_height())
+		return 0;
+
+	line += kFirstLine;
+	console_set_cursor(kOffsetX, line);
+	int32 x = kOffsetX + 1;
+	console_set_cursor(0, line);
+	console_set_color(kSelectedItemColor, kSelectedItemBackgroundColor);
+	print_spacing(console_width());
+	console_set_color(kTextColor, kBackgroundColor);
+	console_set_cursor(0, line);
+	print_spacing(x);
+	printf(item->Label());
+	printf(": ");
+	x += promptLength;
+	console_set_color(kSelectedItemColor, kSelectedItemBackgroundColor);
+	console_show_cursor();
+	console_set_cursor(x, line);
+
+	int32 scrollOffset = 0;
+	bool doScroll = false;
+	int key = 0;
+	size_t dataLength = 0;
+	while (true) {
+		key = console_wait_for_key();
+		if (key == TEXT_CONSOLE_KEY_RETURN || key == TEXT_CONSOLE_KEY_ESCAPE)
+			break;
+		else if (key >= TEXT_CONSOLE_CURSOR_KEYS_START
+			&& key < TEXT_CONSOLE_CURSOR_KEYS_END)
+		{
+			switch (key)	{
+				case TEXT_CONSOLE_KEY_LEFT:
+					if (pos > 0)
+						pos--;
+					else if (scrollOffset > 0) {
+						scrollOffset--;
+						doScroll = true;
+					}
+					break;
+				case TEXT_CONSOLE_KEY_RIGHT:
+					if (pos < dataLength) {
+						if (x + (int32)pos == console_width() - 1) {
+							scrollOffset++;
+							doScroll = true;
+						} else
+							pos++;
+					}
+					break;
+				default:
+					break;
+			}
+		} else if (key == TEXT_CONSOLE_KEY_BACKSPACE) {
+			if (pos != 0 || scrollOffset > 0) {
+				if (pos > 0)
+					pos--;
+				else if (scrollOffset > 0)
+					scrollOffset--;
+				dataLength--;
+				int32 offset = pos + scrollOffset;
+				memmove(buffer + offset, buffer + offset + 1, dataLength - offset);
+				console_set_cursor(x + pos, line);
+				putchar(' ');
+				// if this was a mid-line backspace, the line will need to be redrawn
+				if (pos + scrollOffset < dataLength)
+					doScroll = true;
+			}
+			// only accept printable ascii characters
+		} else if (key > 32 || key == TEXT_CONSOLE_KEY_SPACE) {
+			if (pos < (bufferSize - 1)) {
+				buffer[pos + scrollOffset] = key;
+				if (x + (int32)pos < console_width() - 1) {
+					putchar(key);
+					pos++;
+				} else {
+					scrollOffset++;
+					doScroll = true;
+				}
+
+				dataLength++;
+			}
+		}
+
+		if (doScroll) {
+			console_set_cursor(x, line);
+			for (int32 i = x; i < console_width() - 1; i++)
+				putchar(buffer[scrollOffset + i - x]);
+			doScroll = false;
+		}
+		console_set_cursor(x + pos, line);
+	}
+
+	console_hide_cursor();
+	draw_menu(menu);
+
+	return key == TEXT_CONSOLE_KEY_RETURN ? pos : 0;
+}

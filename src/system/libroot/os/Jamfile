@@ -20,11 +20,13 @@ MergeObject os_main.o :
 	fs_query.cpp
 	fs_volume.c
 	image.cpp
+	memory.cpp
 	parsedate.cpp
 	port.c
 	scheduler.c
 	sem.c
 	system_info.c
+	system_revision.c
 	team.c
 	thread.c
 	time.cpp

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2010, Haiku, Inc.
+ * Copyright 2005-2011, Haiku, Inc.
  * Distributed under the terms of the MIT license.
  *
  * Authors:
@@ -11,7 +11,6 @@
 
 #include <ctype.h>
 #include <stdio.h>
-#include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -47,6 +46,7 @@
 #include <AppMisc.h>
 #include <AutoDeleter.h>
 #include <cpu_type.h>
+#include <system_revision.h>
 
 #include <Catalog.h>
 #include <Language.h>
@@ -541,19 +541,14 @@ AboutView::AboutView()
 			strlcpy(string, versionInfo.short_info, sizeof(string));
 	}
 
-	// Add revision from uname() info
-	utsname unameInfo;
-	if (uname(&unameInfo) == 0) {
-		long revision;
-		if (sscanf(unameInfo.version, "r%ld", &revision) == 1) {
-			char version[16];
-			snprintf(version, sizeof(version), "%ld", revision);
-			strlcat(string, " (", sizeof(string));
-			strlcat(string, B_TRANSLATE("Revision"), sizeof(string));
-			strlcat(string, " ", sizeof(string));
-			strlcat(string, version, sizeof(string));
-			strlcat(string, ")", sizeof(string));
-		}
+	// Add system revision
+	const char* haikuRevision = __get_haiku_revision();
+	if (haikuRevision != NULL) {
+		strlcat(string, " (", sizeof(string));
+		strlcat(string, B_TRANSLATE("Revision"), sizeof(string));
+		strlcat(string, " ", sizeof(string));
+		strlcat(string, haikuRevision, sizeof(string));
+		strlcat(string, ")", sizeof(string));
 	}
 
 	BStringView* versionView = new BStringView("ostext", string);
@@ -998,6 +993,7 @@ AboutView::_CreateCreditsView()
 		"Jonas Sundström\n"
 		"Oliver Tappe\n"
 		"Gerasim Troeglazov\n"
+		"Alexander von Gluck IV\n"
 		"Ingo Weinhold\n"
 		"Alex Wilson\n"
 		"Artur Wyszyński\n"
@@ -1055,6 +1051,7 @@ AboutView::_CreateCreditsView()
 		"Andre Braga\n"
 		"Michael Bulash\n"
 		"Bruce Cameron\n"
+		"Jean-Loïc Charroud\n"
 		"Greg Crain\n"
 		"Michael Davidson\n"
 		"David Dengg\n"
@@ -1080,6 +1077,7 @@ AboutView::_CreateCreditsView()
 		"Mathew Hounsell\n"
 		"Morgan Howe\n"
 		"Christophe Huriaux\n"
+		"Jian Jiang\n"
 		"Ma Jie\n"
 		"Carwyn Jones\n"
 		"Vasilis Kaoutsis\n"
@@ -1095,6 +1093,7 @@ AboutView::_CreateCreditsView()
 		"Raynald Lesieur\n"
 		"Oscar Lesta\n"
 		"Jerome Leveque\n"
+		"Brian Luft\n"
 		"Christof Lutteroth\n"
 		"Graham MacDonald\n"
 		"Jorge G. Mare (Koki)\n"
@@ -1619,7 +1618,7 @@ AboutView::_CreateCreditsView()
 		.SetCopyright(B_TRANSLATE(COPYRIGHT_STRING
 			"1999-2010 by the authors of Gutenprint. All rights reserved."))
 		.SetLicense("GNU GPL v2")
-		.SetURL("http://gutenprint.sourceforge.net"));
+		.SetURL("http://gutenprint.sourceforge.net/"));
 
 	// libwebp
 	_AddPackageCredit(PackageCredit("libwebp")
@@ -1627,6 +1626,13 @@ AboutView::_CreateCreditsView()
 			"2010-2011 Google Inc. All rights reserved."))
 		.SetLicense(B_TRANSLATE("BSD (3-clause)"))
 		.SetURL("http://www.webmproject.org/code/#libwebp_webp_image_library"));
+
+	// GTF
+	_AddPackageCredit(PackageCredit("GTF")
+		.SetCopyright(B_TRANSLATE("2001 by Andy Ritger based on the "
+			"Generalized Timing Formula"))
+		.SetLicense(B_TRANSLATE("BSD (3-clause)"))
+		.SetURL("http://gtf.sourceforge.net/"));
 
 	_AddCopyrightsFromAttribute();
 	_AddPackageCreditEntries();

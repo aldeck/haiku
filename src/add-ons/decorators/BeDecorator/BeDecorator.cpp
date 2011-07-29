@@ -93,13 +93,6 @@ BeDecorAddOn::BeDecorAddOn(image_id id, const char* name)
 }
 
 
-float
-BeDecorAddOn::Version()
-{
-	return 1.00;
-}
-
-
 Decorator*
 BeDecorAddOn::_AllocateDecorator(DesktopSettings& settings, BRect rect,
 	window_look look, uint32 flags)
@@ -267,7 +260,7 @@ BeDecorator::_DoLayout()
 
 	bool hasTab = false;
 
-	switch (Look()) {
+	switch ((int)Look()) {
 		case B_MODAL_WINDOW_LOOK:
 			fBorderWidth = 5;
 			break;
@@ -429,7 +422,7 @@ BeDecorator::_DrawFrame(BRect invalid)
 
 	// Draw the border frame
 	BRect r = BRect(fTopBorder.LeftTop(), fBottomBorder.RightBottom());
-	switch (fLook) {
+	switch ((int)fLook) {
 		case B_TITLED_WINDOW_LOOK:
 		case B_DOCUMENT_WINDOW_LOOK:
 		case B_MODAL_WINDOW_LOOK:
@@ -540,7 +533,7 @@ BeDecorator::_DrawFrame(BRect invalid)
 	if (!(fFlags & B_NOT_RESIZABLE)) {
 		r = fResizeRect;
 
-		switch (fLook) {
+		switch ((int)fLook) {
 			case B_DOCUMENT_WINDOW_LOOK:
 			{
 				if (!invalid.Intersects(r))
@@ -884,7 +877,7 @@ BeDecorator::_ResizeBy(BPoint pt, BRegion* dirty)
 	// Handle invalidation of resize rect
 	if (dirty && !(fFlags & B_NOT_RESIZABLE)) {
 		BRect realResizeRect;
-		switch (fLook) {
+		switch ((int)fLook) {
 			case B_DOCUMENT_WINDOW_LOOK:
 				realResizeRect = fResizeRect;
 				// Resize rect at old location

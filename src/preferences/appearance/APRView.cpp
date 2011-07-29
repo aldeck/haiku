@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2009, Haiku. All rights reserved.
+ * Copyright 2002-2011, Haiku. All rights reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
@@ -7,7 +7,10 @@
  *		Rene Gollent (rene@gollent.com)
  */
 
+
 #include "APRView.h"
+
+#include <stdio.h>
 
 #include <Alert.h>
 #include <Catalog.h>
@@ -19,8 +22,6 @@
 #include <Messenger.h>
 #include <Path.h>
 #include <SpaceLayoutItem.h>
-
-#include <stdio.h>
 
 #include "APRWindow.h"
 #include "defs.h"
@@ -35,39 +36,31 @@
 #define COLOR_DROPPED 'cldp'
 #define DECORATOR_CHANGED 'dcch'
 
-namespace BPrivate
-{
-	int32 count_decorators(void);
-	status_t set_decorator(const int32 &index);
-	int32 get_decorator(void);
-	status_t get_decorator_name(const int32 &index, BString &name);
-	status_t get_decorator_preview(const int32 &index, BBitmap *bitmap);
-}
 
-APRView::APRView(const char *name, uint32 flags)
- :	BView(name, flags),
- 	fDefaultSet(ColorSet::DefaultColorSet()),
- 	fDecorMenu(NULL)
+APRView::APRView(const char* name, uint32 flags)
+	:
+	BView(name, flags),
+	fDefaultSet(ColorSet::DefaultColorSet())
 {
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 
 #if 0
 	fDecorMenu = new BMenu("Window Style");
-	int32 decorCount = BPrivate::count_decorators();
+	int32 decorCount = fDecorUtil->CountDecorators();
+	DecorInfo* decor = NULL;
 	if (decorCount > 1) {
 		for (int32 i = 0; i < decorCount; i++) {
-			BString name;
-			BPrivate::get_decorator_name(i, name);
-			if (name.CountChars() < 1)
+			decor = fDecorUtil->GetDecorator(i);
+			if (!decor)
 				continue;
-			fDecorMenu->AddItem(new BMenuItem(name.String(),
+			fDecorMenu->AddItem(new BMenuItem(decor->Name().String(),
 				new BMessage(DECORATOR_CHANGED)));
 		}
 
-		BMenuField *field = new BMenuField("Window Style", fDecorMenu);
+		BMenuField* field = new BMenuField("Window Style", fDecorMenu);
 		// TODO: use this menu field.
 	}
-	BMenuItem *marked = fDecorMenu->ItemAt(BPrivate::get_decorator());
+	BMenuItem* marked = fDecorMenu->ItemAt(fDecorUtil->IndexOfCurrentDecorator());
 	if (marked)
 		marked->SetMarked(true);
 	else {
@@ -129,9 +122,6 @@ APRView::AttachedToWindow()
 	fAttrList->SetTarget(this);
 	fColorWell->SetTarget(this);
 
-	if (fDecorMenu)
-		fDecorMenu->SetTargetForItems(BMessenger(this));
-
 	LoadSettings();
 	fAttrList->Select(0);
 }
@@ -151,15 +141,6 @@ APRView::MessageReceived(BMessage *msg)
 	}
 
 	switch (msg->what) {
-		case DECORATOR_CHANGED:
-		{
-			int32 index = fDecorMenu->IndexOf(fDecorMenu->FindMarked());
-			#ifdef HAIKU_TARGET_PLATFORM_HAIKU
-			if (index >= 0)
-				BPrivate::set_decorator(index);
-			#endif
-			break;
-		}
 		case UPDATE_COLOR:
 		{
 			// Received from the color fPicker when its color changes
@@ -202,15 +183,6 @@ APRView::MessageReceived(BMessage *msg)
 			UpdateControls();
 			UpdateAllColors();
 
-			if (fDecorMenu) {
-				BMenuItem *item = fDecorMenu->FindItem("Default");
-				if (item) {
-					item->SetMarked(true);
-					#ifdef HAIKU_TARGET_PLATFORM_HAIKU
-					BPrivate::set_decorator(fDecorMenu->IndexOf(item));
-					#endif
-				}
-			}
 			Window()->PostMessage(kMsgUpdate);
 			break;
 		}

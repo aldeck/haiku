@@ -13,6 +13,8 @@
 #ifndef _JOYSTICK_DRIVER_H
 #define _JOYSTICK_DRIVER_H
 
+#include <stdlib.h>
+
 #include <SupportDefs.h>
 #include <Drivers.h>
 #include <module.h>
@@ -39,13 +41,74 @@ typedef struct _extended_joystick {
 	uint32		buttons;		/* lsb to msb, 1 == on */
 	int16		axes[MAX_AXES];	/* -32768 to 32767, X, Y, Z, U, V, W */
 	uint8		hats[MAX_HATS];	/* 0 through 8 (1 == N, 3 == E, 5 == S, 7 == W) */
-} extended_joystick;
+} _PACKED extended_joystick;
+
+
+// This is a helper structure to manage variably sized data. It is here to
+// make storing and accessing the flat data in the "data" member easier. When
+// transferring data via read/write/ioctl only the flat data in "data" is ever
+// transmitted, not the whole structure.
+typedef struct _variable_joystick {
+#ifdef __cplusplus
+	status_t initialize(uint32 axisCount, uint32 hatCount, uint32 buttonCount)
+	{
+		axis_count = axisCount;
+		hat_count = hatCount;
+		button_blocks = (buttonCount + 31) / 32;
+
+		data_size = sizeof(bigtime_t)			// timestamp
+			+ button_blocks * sizeof(uint32)	// bitmaps
+			+ axis_count * sizeof(int16)		// axis values
+			+ hat_count * sizeof(uint8);		// hat values
+
+		data = (uint8 *)malloc(data_size);
+		if (data == NULL)
+			return B_NO_MEMORY;
+
+		// fill in the convenience pointers
+		timestamp = (bigtime_t *)data;
+		buttons = (uint32 *)&timestamp[1];
+		axes = (int16 *)&buttons[button_blocks];
+		hats = (uint8 *)&axes[axis_count];
+		return B_OK;
+	}
+
+	status_t initialize_to_extended_joystick()
+	{
+		return initialize(MAX_AXES, MAX_HATS, MAX_BUTTONS);
+	}
+#endif
+
+	uint32		axis_count;
+	uint32		hat_count;
+	uint32		button_blocks;
+		// count of 32 bit button bitmap blocks == (button_count + 31) / 32
+
+	// These pointers all point into the data section and are here for
+	// convenience. They need to be set up manually by the one who creates this
+	// structure or by using the initialize() method.
+	bigtime_t *	timestamp;
+	uint32 *	buttons;
+	int16 *		axes;
+	uint8 *		hats;
+
+	// The data is always structured in the following way (see extended_joystick
+	// for data interpretation):
+	//		bigtime_t	timestamp;
+	//		uint32		button_bitmap_blocks[button_blocks];
+	//		int16		axes[axis_count];
+	//		uint8		hats[hat_count];
+	size_t		data_size;
+	uint8 *		data;
+} variable_joystick;
+
 
 #define MAX_CONFIG_SIZE 100
 
 enum {	/* flags for joystick module info */
 	js_flag_force_feedback = 0x1,
-	js_flag_force_feedback_directional = 0x2
+	js_flag_force_feedback_directional = 0x2,
+	js_flag_variable_size_reads = 0x4
 };
 
 typedef struct _joystick_module_info {
@@ -79,7 +142,7 @@ typedef struct _joystick_module {
 	int _reserved_;
 } joystick_module;
 
-/** Doing force feedback means writing an extended_joystick to the device with force values. 
+/** Doing force feedback means writing an extended_joystick to the device with force values.
     The "timestamp" should be the duration of the feedback. Successive writes will be queued
     by the device module. */
 enum { /* Joystick driver ioctl() opcodes */

@@ -41,15 +41,15 @@ public:
 			status_t		GetDeviceName(int32 index, char* name,
 								size_t bufSize = B_OS_NAME_LENGTH);
 
+			status_t		RescanDevices();
+								// Haiku extension. Updates the list of devices
+								// as enumerated by CountDevices() and
+								// GetDeviceName() with possibly newly plugged
+								// in devices.
+
 			bool			EnterEnhancedMode(const entry_ref* ref = NULL);
 
 			int32			CountSticks();
-
-			status_t		GetControllerModule(BString* outName);
-			status_t		GetControllerName(BString* outName);
-
-			bool			IsCalibrationEnabled();
-			status_t		EnableCalibration(bool calibrates = true);
 
 			int32			CountAxes();
 			status_t		GetAxisValues(int16* outValues,
@@ -63,10 +63,25 @@ public:
 			status_t		GetHatNameAt(int32 index, BString* outName);
 
 			int32			CountButtons();
-
 			uint32			ButtonValues(int32 forStick = 0);
+								// Allows access to the first 32 buttons where
+								// each set bit indicates a pressed button.
+			status_t		GetButtonValues(bool* outButtons,
+								int32 forStick = 0);
+								// Haiku extension. Allows to retrieve the state
+								// of an arbitrary count of buttons. The
+								// outButtons argument is an array of boolean
+								// values with at least CountButtons() elements.
+								// True means the button is pressed and false
+								// means it is released.
 			status_t		GetButtonNameAt(int32 index,
 								BString* outName);
+
+			status_t		GetControllerModule(BString* outName);
+			status_t		GetControllerName(BString* outName);
+
+			bool			IsCalibrationEnabled();
+			status_t		EnableCalibration(bool calibrates = true);
 
 protected:
 	virtual	void			Calibrate(struct _extended_joystick*);
@@ -75,8 +90,6 @@ private:
 friend class _BJoystickTweaker;
 
 			void			ScanDevices(bool useDisabled = false);
-			status_t		GatherEnhanced_info(const entry_ref* ref = NULL);
-			status_t		SaveConfig(const entry_ref* ref = NULL);
 
 			void            _ReservedJoystick1();
 	virtual void            _ReservedJoystick2();
@@ -87,10 +100,11 @@ friend class _BJoystickTweaker;
 
 			bool			fBeBoxMode;
 			bool			fReservedBool;
-			int				ffd;
+			int				fFD;
 			BList*			fDevices;
 			_joystick_info*	fJoystickInfo;
-			char*			fDevName;
+			BList*			fJoystickData;
+
 			uint32          _reserved_Joystick_[10];
 };
 

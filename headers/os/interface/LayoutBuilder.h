@@ -61,6 +61,9 @@ public:
 	inline						Group(BWindow* window,
 									enum orientation orientation = B_HORIZONTAL,
 									float spacing = B_USE_DEFAULT_SPACING);
+	inline						Group(BView* view,
+									enum orientation orientation = B_HORIZONTAL,
+									float spacing = B_USE_DEFAULT_SPACING);
 	inline						Group(BGroupLayout* layout);
 	inline						Group(BGroupView* view);
 
@@ -102,6 +105,8 @@ public:
 
 	inline	ThisBuilder&		SetInsets(float left, float top, float right,
 									float bottom);
+	inline	ThisBuilder&		SetInsets(float horizontal, float vertical);
+	inline	ThisBuilder&		SetInsets(float insets);
 
 	inline						operator BGroupLayout*();
 
@@ -123,6 +128,9 @@ public:
 										= B_USE_DEFAULT_SPACING,
 									float vertical = B_USE_DEFAULT_SPACING);
 	inline						Grid(BWindow* window,
+									float horizontal = B_USE_DEFAULT_SPACING,
+									float vertical = B_USE_DEFAULT_SPACING);
+	inline						Grid(BView* view,
 									float horizontal = B_USE_DEFAULT_SPACING,
 									float vertical = B_USE_DEFAULT_SPACING);
 	inline						Grid(BGridLayout* layout);
@@ -185,6 +193,8 @@ public:
 
 	inline	ThisBuilder&		SetInsets(float left, float top, float right,
 									float bottom);
+	inline	ThisBuilder&		SetInsets(float horizontal, float vertical);
+	inline	ThisBuilder&		SetInsets(float insets);
 
 	inline						operator BGridLayout*();
 
@@ -246,6 +256,8 @@ public:
 
 	inline	ThisBuilder&		SetInsets(float left, float top, float right,
 									float bottom);
+	inline	ThisBuilder&		SetInsets(float horizontal, float vertical);
+	inline	ThisBuilder&		SetInsets(float insets);
 
 	inline						operator BSplitView*();
 
@@ -349,6 +361,18 @@ Group<ParentBuilder>::Group(BWindow* window, enum orientation orientation,
 	window->SetLayout(fLayout);
 
 	fLayout->Owner()->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+		// TODO: we get a white background if we don't do this
+}
+
+
+template<typename ParentBuilder>
+Group<ParentBuilder>::Group(BView* view, enum orientation orientation,
+	float spacing)
+	:
+	fLayout(new BGroupLayout(orientation, spacing))
+{
+	view->SetLayout(fLayout);
+	view->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 		// TODO: we get a white background if we don't do this
 }
 
@@ -563,6 +587,24 @@ Group<ParentBuilder>::SetInsets(float left, float top, float right,
 
 
 template<typename ParentBuilder>
+typename Group<ParentBuilder>::ThisBuilder&
+Group<ParentBuilder>::SetInsets(float horizontal, float vertical)
+{
+	fLayout->SetInsets(horizontal, vertical);
+	return *this;
+}
+
+
+template<typename ParentBuilder>
+typename Group<ParentBuilder>::ThisBuilder&
+Group<ParentBuilder>::SetInsets(float insets)
+{
+	fLayout->SetInsets(insets);
+	return *this;
+}
+
+
+template<typename ParentBuilder>
 Group<ParentBuilder>::operator BGroupLayout*()
 {
 	return fLayout;
@@ -589,6 +631,18 @@ Grid<ParentBuilder>::Grid(BWindow* window, float horizontalSpacing,
 	window->SetLayout(fLayout);
 
 	fLayout->Owner()->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+		// TODO: we get a white background if we don't do this
+}
+
+
+template<typename ParentBuilder>
+Grid<ParentBuilder>::Grid(BView* view, float horizontalSpacing,
+	float verticalSpacing)
+	:
+	fLayout(new BGridLayout(horizontalSpacing, verticalSpacing))
+{
+	view->SetLayout(fLayout);
+	view->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 		// TODO: we get a white background if we don't do this
 }
 
@@ -808,6 +862,24 @@ Grid<ParentBuilder>::SetInsets(float left, float top, float right,
 
 
 template<typename ParentBuilder>
+typename Grid<ParentBuilder>::ThisBuilder&
+Grid<ParentBuilder>::SetInsets(float horizontal, float vertical)
+{
+	fLayout->SetInsets(horizontal, vertical);
+	return *this;
+}
+
+
+template<typename ParentBuilder>
+typename Grid<ParentBuilder>::ThisBuilder&
+Grid<ParentBuilder>::SetInsets(float insets)
+{
+	fLayout->SetInsets(insets);
+	return *this;
+}
+
+
+template<typename ParentBuilder>
 Grid<ParentBuilder>::operator BGridLayout*()
 {
 	return fLayout;
@@ -1008,6 +1080,24 @@ Split<ParentBuilder>::SetInsets(float left, float top, float right,
 	float bottom)
 {
 	fView->SetInsets(left, top, right, bottom);
+	return *this;
+}
+
+
+template<typename ParentBuilder>
+typename Split<ParentBuilder>::ThisBuilder&
+Split<ParentBuilder>::SetInsets(float horizontal, float vertical)
+{
+	fView->SetInsets(horizontal, vertical);
+	return *this;
+}
+
+
+template<typename ParentBuilder>
+typename Split<ParentBuilder>::ThisBuilder&
+Split<ParentBuilder>::SetInsets(float insets)
+{
+	fView->SetInsets(insets);
 	return *this;
 }
 

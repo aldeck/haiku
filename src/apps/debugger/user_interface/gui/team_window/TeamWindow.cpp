@@ -32,6 +32,7 @@
 #include "FileSourceCode.h"
 #include "Image.h"
 #include "ImageDebugInfo.h"
+#include "InspectorWindow.h"
 #include "LocatableFile.h"
 #include "MessageCodes.h"
 #include "RegistersView.h"
@@ -168,6 +169,10 @@ TeamWindow::DispatchMessage(BMessage* message, BHandler* handler)
 					&& message->FindInt32("modifiers", (int32*)&modifiers)
 					== B_OK) {
 					switch (key) {
+						case B_F5_KEY:
+							fListener->ThreadActionRequested(
+								fActiveThread->ID(), MSG_THREAD_RUN);
+							break;
 						case B_F10_KEY:
 							fListener->ThreadActionRequested(
 								fActiveThread->ID(), MSG_THREAD_STEP_OVER);
@@ -203,6 +208,27 @@ void
 TeamWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case MSG_SHOW_INSPECTOR_WINDOW:
+		{
+			if (fInspectorWindow) {
+				fInspectorWindow->Activate(true);
+				break;
+			}
+
+			try {
+				fInspectorWindow = InspectorWindow::Create(fTeam, fListener,
+					this);
+				if (fInspectorWindow != NULL)
+					fInspectorWindow->Show();
+           	} catch (...) {
+           		// TODO: notify user
+           	}
+           	break;
+		}
+		case MSG_INSPECTOR_WINDOW_CLOSED:
+		{
+			fInspectorWindow = NULL;
+		}
 		case B_REFS_RECEIVED:
 		{
 			entry_ref locatedPath;
@@ -537,6 +563,12 @@ TeamWindow::_Init()
 	item = new BMenuItem("Select All", new BMessage(B_SELECT_ALL), 'A');
 	menu->AddItem(item);
 	item->SetTarget(this);
+	menu = new BMenu("Tools");
+	fMenuBar->AddItem(menu);
+	item = new BMenuItem("Inspect Memory",
+		new BMessage(MSG_SHOW_INSPECTOR_WINDOW), 'I');
+	menu->AddItem(item);
+	item->SetTarget(this);
 
 	AutoLocker< ::Team> locker(fTeam);
 	_UpdateRunButtons();
@@ -711,9 +743,6 @@ TeamWindow::_SetActiveBreakpoint(UserBreakpoint* breakpoint)
 void
 TeamWindow::_SetActiveFunction(FunctionInstance* functionInstance)
 {
-// TODO: If a function is selected by other means than via selecting a stack
-// frame, we should still select a matching stack frame, if it features the
-// same function.
 	if (functionInstance == fActiveFunction)
 		return;
 
@@ -760,6 +789,29 @@ TeamWindow::_SetActiveFunction(FunctionInstance* functionInstance)
 	_SetActiveSourceCode(sourceCode);
 
 	fImageFunctionsView->SetFunction(fActiveFunction);
+
+	locker.Lock();
+
+	// look if our current stack trace has a frame matching the selected
+	// function. If so, set it to match.
+	StackFrame* matchingFrame = NULL;
+	BReference<StackFrame> frameRef;
+
+	if (fActiveStackTrace != NULL) {
+		for (int32 i = 0; i < fActiveStackTrace->CountFrames(); i++) {
+			StackFrame* frame = fActiveStackTrace->FrameAt(i);
+			if (frame->Function() == fActiveFunction) {
+				matchingFrame = frame;
+				frameRef.SetTo(frame);
+				break;
+			}
+		}
+	}
+
+	locker.Unlock();
+
+	if (matchingFrame != NULL)
+		_SetActiveStackFrame(matchingFrame);
 }
 
 
@@ -974,26 +1026,27 @@ TeamWindow::_HandleSourceCodeChanged()
 	AutoLocker< ::Team> locker(fTeam);
 
 	SourceCode* sourceCode = fActiveFunction->GetFunction()->GetSourceCode();
-	if (sourceCode == NULL) {
+	LocatableFile* sourceFile = NULL;
+	BString sourceText;
+	if (sourceCode == NULL)
 		sourceCode = fActiveFunction->GetSourceCode();
 
-		BString sourceText;
-		LocatableFile* sourceFile = fActiveFunction->GetFunctionDebugInfo()
-			->SourceFile();
-		if (sourceFile != NULL && !sourceFile->GetLocatedPath(sourceText))
-			sourceFile->GetPath(sourceText);
+	if (sourceCode != NULL)
+		sourceFile = fActiveFunction->GetFunctionDebugInfo()->SourceFile();
 
-		if (sourceCode != NULL && sourceCode->GetSourceFile() == NULL
-			&& sourceFile != NULL) {
-			sourceText.Prepend("Click to locate source file '");
-			sourceText += "'";
-			fSourcePathView->SetText(sourceText.String());
-		} else if (sourceFile != NULL) {
-			sourceText.Prepend("File: ");
-			fSourcePathView->SetText(sourceText.String());
-		} else
-			fSourcePathView->SetText("Source file unavailable.");
-	}
+	if (sourceFile != NULL && !sourceFile->GetLocatedPath(sourceText))
+		sourceFile->GetPath(sourceText);
+
+	if (sourceCode != NULL && sourceCode->GetSourceFile() == NULL
+		&& sourceFile != NULL) {
+		sourceText.Prepend("Click to locate source file '");
+		sourceText += "'";
+		fSourcePathView->SetText(sourceText.String());
+	} else if (sourceFile != NULL) {
+		sourceText.Prepend("File: ");
+		fSourcePathView->SetText(sourceText.String());
+	} else
+		fSourcePathView->SetText("Source file unavailable.");
 
 	BReference<SourceCode> sourceCodeReference(sourceCode);
 

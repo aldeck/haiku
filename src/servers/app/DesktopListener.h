@@ -59,12 +59,14 @@ public:
 									bool minimize) = 0;
 
 	virtual void				WindowTabLocationChanged(Window* window,
-									float location) = 0;
+									float location, bool isShifting) = 0;
 	virtual void				SizeLimitsChanged(Window* window,
 									int32 minWidth, int32 maxWidth,
 									int32 minHeight, int32 maxHeight) = 0;
 	virtual void				WindowLookChanged(Window* window,
 									window_look look) = 0;
+	virtual void				WindowFeelChanged(Window* window,
+									window_feel feel) = 0;
 
 	virtual bool				SetDecoratorSettings(Window* window,
 									const BMessage& settings) = 0;
@@ -113,12 +115,14 @@ public:
 									bool minimize);
 
 			void				NotifyWindowTabLocationChanged(Window* window,
-									float location);
+									float location, bool isShifting);
 			void				NotifySizeLimitsChanged(Window* window,
 									int32 minWidth, int32 maxWidth,
 									int32 minHeight, int32 maxHeight);
 			void				NotifyWindowLookChanged(Window* window,
 									window_look look);
+			void				NotifyWindowFeelChanged(Window* window,
+									window_feel feel);
 
 			bool				SetDecoratorSettings(Window* window,
 									const BMessage& settings);

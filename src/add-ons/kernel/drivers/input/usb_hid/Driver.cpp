@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2009 Michael Lotz <mmlr@mlotz.ch>
+ * Copyright 2008-2011 Michael Lotz <mmlr@mlotz.ch>
  * Distributed under the terms of the MIT license.
  */
 
@@ -11,6 +11,7 @@
 #include "Driver.h"
 #include "HIDDevice.h"
 #include "ProtocolHandler.h"
+#include "QuirkyDevices.h"
 
 #include <lock.h>
 #include <util/AutoLock.h>
@@ -31,6 +32,7 @@ usb_module_info *gUSBModule = NULL;
 DeviceList *gDeviceList = NULL;
 static int32 sParentCookie = 0;
 static mutex sDriverLock;
+static usb_support_descriptor *sSupportDescriptors;
 
 
 // #pragma mark - notify hooks
@@ -80,10 +82,33 @@ usb_hid_device_added(usb_device device, void **cookie)
 			i, interfaceClass, interface->descr->interface_subclass,
 			interface->descr->interface_protocol);
 
-		if (interfaceClass == USB_INTERFACE_CLASS_HID) {
+		// check for quirky devices first
+		int32 quirkyIndex = -1;
+		for (int32 j = 0; j < gQuirkyDeviceCount; j++) {
+			usb_hid_quirky_device &quirky = gQuirkyDevices[j];
+			if ((quirky.vendor_id != 0
+					&& deviceDescriptor->vendor_id != quirky.vendor_id)
+				|| (quirky.product_id != 0
+					&& deviceDescriptor->product_id != quirky.product_id)
+				|| (quirky.device_class != 0
+					&& interfaceClass != quirky.device_class)
+				|| (quirky.device_subclass != 0
+					&& interface->descr->interface_subclass
+						!= quirky.device_subclass)
+				|| (quirky.device_protocol != 0
+					&& interface->descr->interface_protocol
+						!= quirky.device_protocol)) {
+				continue;
+			}
+
+			quirkyIndex = j;
+			break;
+		}
+
+		if (quirkyIndex >= 0 || interfaceClass == USB_INTERFACE_CLASS_HID) {
 			mutex_lock(&sDriverLock);
 			HIDDevice *hidDevice
-				= new(std::nothrow) HIDDevice(device, config, i);
+				= new(std::nothrow) HIDDevice(device, config, i, quirkyIndex);
 
 			if (hidDevice != NULL && hidDevice->InitCheck() == B_OK) {
 				hidDevice->SetParentCookie(parentCookie);
@@ -177,7 +202,7 @@ static status_t
 usb_hid_open(const char *name, uint32 flags, void **_cookie)
 {
 	TRACE("open(%s, %lu, %p)\n", name, flags, _cookie);
-	
+
 	device_cookie *cookie = new(std::nothrow) device_cookie();
 	if (cookie == NULL)
 		return B_NO_MEMORY;
@@ -206,21 +231,25 @@ usb_hid_open(const char *name, uint32 flags, void **_cookie)
 
 
 static status_t
-usb_hid_read(void *cookie, off_t position, void *buffer, size_t *numBytes)
+usb_hid_read(void *_cookie, off_t position, void *buffer, size_t *numBytes)
 {
-	TRACE_ALWAYS("read on hid device\n");
-	*numBytes = 0;
-	return B_ERROR;
+	device_cookie *cookie = (device_cookie *)_cookie;
+
+	TRACE("read(%p, %llu, %p, %p (%lu)\n", cookie, position, buffer, numBytes,
+		numBytes != NULL ? *numBytes : 0);
+	return cookie->handler->Read(&cookie->cookie, position, buffer, numBytes);
 }
 
 
 static status_t
-usb_hid_write(void *cookie, off_t position, const void *buffer,
+usb_hid_write(void *_cookie, off_t position, const void *buffer,
 	size_t *numBytes)
 {
-	TRACE_ALWAYS("write on hid device\n");
-	*numBytes = 0;
-	return B_ERROR;
+	device_cookie *cookie = (device_cookie *)_cookie;
+
+	TRACE("write(%p, %llu, %p, %p (%lu)\n", cookie, position, buffer, numBytes,
+		numBytes != NULL ? *numBytes : 0);
+	return cookie->handler->Write(&cookie->cookie, position, buffer, numBytes);
 }
 
 
@@ -307,11 +336,32 @@ init_driver()
 		&usb_hid_device_removed
 	};
 
-	static usb_support_descriptor supportDescriptor = {
+	static usb_support_descriptor genericHIDSupportDescriptor = {
 		USB_INTERFACE_CLASS_HID, 0, 0, 0, 0
 	};
 
-	gUSBModule->register_driver(DRIVER_NAME, &supportDescriptor, 1, NULL);
+	int32 supportDescriptorCount = 1 + gQuirkyDeviceCount;
+	sSupportDescriptors
+		= new(std::nothrow) usb_support_descriptor[supportDescriptorCount];
+	if (sSupportDescriptors != NULL) {
+		sSupportDescriptors[0] = genericHIDSupportDescriptor;
+		for (int32 i = 0; i < gQuirkyDeviceCount; i++) {
+			usb_support_descriptor &descriptor = sSupportDescriptors[i + 1];
+			descriptor.dev_class = gQuirkyDevices[i].device_class;
+			descriptor.dev_subclass = gQuirkyDevices[i].device_subclass;
+			descriptor.dev_protocol = gQuirkyDevices[i].device_protocol;
+			descriptor.vendor = gQuirkyDevices[i].vendor_id;
+			descriptor.product = gQuirkyDevices[i].product_id;
+		}
+
+		gUSBModule->register_driver(DRIVER_NAME, sSupportDescriptors,
+			supportDescriptorCount, NULL);
+	} else {
+		// no memory for quirky devices, at least support proper HID
+		gUSBModule->register_driver(DRIVER_NAME, &genericHIDSupportDescriptor,
+			1, NULL);
+	}
+
 	gUSBModule->install_notify(DRIVER_NAME, &notifyHooks);
 	TRACE("init_driver() OK\n");
 	return B_OK;
@@ -324,6 +374,8 @@ uninit_driver()
 	TRACE("uninit_driver()\n");
 	gUSBModule->uninstall_notify(DRIVER_NAME);
 	put_module(B_USB_MODULE_NAME);
+	delete[] sSupportDescriptors;
+	sSupportDescriptors = NULL;
 	delete gDeviceList;
 	gDeviceList = NULL;
 	mutex_destroy(&sDriverLock);

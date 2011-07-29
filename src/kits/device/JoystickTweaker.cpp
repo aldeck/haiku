@@ -8,19 +8,20 @@
  */
 #include "JoystickTweaker.h"
 
+#include <new>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <Path.h>
-#include <Directory.h>
-#include <String.h>
 #include <Debug.h>
-
-#include "Joystick.h"
-
-#define STRINGLENGTHCPY 64
-
+#include <Directory.h>
+#include <Joystick.h>
+#include <Path.h>
+#include <String.h>
 #include <UTF8.h>
+
+
+#define STACK_STRING_BUFFER_SIZE	64
+
 
 #if DEBUG
 inline void
@@ -31,7 +32,9 @@ LOG(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsprintf(buf, fmt, ap);
 	va_end(ap);
-	fputs(buf, _BJoystickTweaker::sLogFile); fflush(_BJoystickTweaker::sLogFile);
+
+	fputs(buf, _BJoystickTweaker::sLogFile);
+	fflush(_BJoystickTweaker::sLogFile);
 }
 #	define LOG_ERR(text...) LOG(text)
 FILE *_BJoystickTweaker::sLogFile = NULL;
@@ -42,21 +45,22 @@ FILE *_BJoystickTweaker::sLogFile = NULL;
 
 #define CALLED() LOG("%s\n", __PRETTY_FUNCTION__)
 
+
 _BJoystickTweaker::_BJoystickTweaker()
 {
-	CALLED();
 #if DEBUG
-	sLogFile = fopen("/var/log/libdevice.log", "a");
+	sLogFile = fopen("/var/log/joystick.log", "a");
 #endif
+	CALLED();
 }
 
 
 _BJoystickTweaker::_BJoystickTweaker(BJoystick &stick)
 {
-	CALLED();
 #if DEBUG
-	sLogFile = fopen("/var/log/libdevice.log", "a");
+	sLogFile = fopen("/var/log/joystick.log", "a");
 #endif
+	CALLED();
 
 	fJoystick = &stick;
 }
@@ -76,13 +80,13 @@ _BJoystickTweaker::save_config(const entry_ref *ref)
 
 
 status_t
-_BJoystickTweaker::_ScanIncludingDisabled(const char* rootPath, BList *list,
+_BJoystickTweaker::_ScanIncludingDisabled(const char *rootPath, BList *list,
 	BEntry *rootEntry)
 {
 	BDirectory root;
 
 	if (rootEntry != NULL)
-		root.SetTo( rootEntry);
+		root.SetTo(rootEntry);
 	else if (rootPath != NULL)
 		root.SetTo(rootPath);
 	else
@@ -91,18 +95,31 @@ _BJoystickTweaker::_ScanIncludingDisabled(const char* rootPath, BList *list,
 	BEntry entry;
 
 	ASSERT(list != NULL);
-	while ((root.GetNextEntry(&entry)) > B_ERROR ) {
+	while (root.GetNextEntry(&entry) == B_OK) {
 		if (entry.IsDirectory()) {
-			_ScanIncludingDisabled(rootPath, list, &entry);
-		} else {
-			BPath path;
-			entry.GetPath(&path);
+			status_t result = _ScanIncludingDisabled(rootPath, list, &entry);
+			if (result != B_OK)
+				return result;
 
-			BString *str = new BString(path.Path());
-			str->RemoveFirst(rootPath);
-			list->AddItem(str);
+			continue;
+		}
+
+		BPath path;
+		status_t result = entry.GetPath(&path);
+		if (result != B_OK)
+			return result;
+
+		BString *deviceName = new(std::nothrow) BString(path.Path());
+		if (deviceName == NULL)
+			return B_NO_MEMORY;
+
+		deviceName->RemoveFirst(rootPath);
+		if (!list->AddItem(deviceName)) {
+			delete deviceName;
+			return B_ERROR;
 		}
 	}
+
 	return B_OK;
 }
 
@@ -111,17 +128,18 @@ void
 _BJoystickTweaker::scan_including_disabled()
 {
 	CALLED();
-	// First, we empty the list
 	_EmpyList(fJoystick->fDevices);
-	_ScanIncludingDisabled(DEVICEPATH, fJoystick->fDevices);
+	_ScanIncludingDisabled(DEVICE_BASE_PATH, fJoystick->fDevices);
 }
 
 
 void
 _BJoystickTweaker::_EmpyList(BList *list)
 {
-	for (int32 count = list->CountItems() - 1; count >= 0; count--)
-		free(list->RemoveItem(count));
+	for (int32 i = 0; i < list->CountItems(); i++)
+		delete (BString *)list->ItemAt(i);
+
+	list->MakeEmpty();
 }
 
 
@@ -134,55 +152,56 @@ _BJoystickTweaker::get_info()
 
 
 status_t
-_BJoystickTweaker::GetInfo(_joystick_info* info,
-						const char * ref)
+_BJoystickTweaker::GetInfo(_joystick_info *info, const char *ref)
 {
 	CALLED();
-	status_t err = B_ERROR;
-	BString str(JOYSTICKPATH);
-	str.Append(ref);
+	BString configFilePath(JOYSTICK_CONFIG_BASE_PATH);
+	configFilePath.Append(ref);
 
-	FILE *file = fopen(str.String(), "r");
-	if (file != NULL) {
-		char line [STRINGLENGTHCPY];
-		while (fgets ( line, sizeof line, file ) != NULL ) {
-			int len = strlen(line);
-    		if (len > 0 && line[len-1] == '\n')
-        		line[len-1] = '\0';
-			_BuildFromJoystickDesc(line, info);
-		}
-		fclose(file);
+	FILE *file = fopen(configFilePath.String(), "r");
+	if (file == NULL)
+		return B_ERROR;
+
+	char line[STACK_STRING_BUFFER_SIZE];
+	while (fgets(line, sizeof(line), file) != NULL) {
+		int length = strlen(line);
+		if (length > 0 && line[length - 1] == '\n')
+			line[length - 1] = '\0';
+
+		_BuildFromJoystickDesc(line, info);
 	}
 
-	err = B_OK;
-	return err;
+	fclose(file);
+	return B_OK;
 }
 
 
 void
-_BJoystickTweaker::_BuildFromJoystickDesc(char *string, _joystick_info* info)
+_BJoystickTweaker::_BuildFromJoystickDesc(char *string, _joystick_info *info)
 {
 	BString str(string);
 	str.RemoveAll("\"");
 
 	if (str.IFindFirst("module") != -1) {
 		str.RemoveFirst("module = ");
-		strlcpy(info->module_name, str.String(), STRINGLENGTHCPY);
+		strlcpy(info->module_info.module_name, str.String(),
+			STACK_STRING_BUFFER_SIZE);
 	} else if (str.IFindFirst("gadget") != -1) {
 		str.RemoveFirst("gadget = ");
-		strlcpy(info->controller_name, str.String(), STRINGLENGTHCPY);
+		strlcpy(info->module_info.device_name, str.String(),
+			STACK_STRING_BUFFER_SIZE);
 	} else if (str.IFindFirst("num_axes") != -1) {
 		str.RemoveFirst("num_axes = ");
-		info->num_axes = atoi(str.String());		
+		info->module_info.num_axes = atoi(str.String());
 	} else if (str.IFindFirst("num_hats") != -1) {
 		str.RemoveFirst("num_hats = ");
-		info->num_hats = atoi(str.String());
+		info->module_info.num_hats = atoi(str.String());
 	} else if (str.IFindFirst("num_buttons") != -1) {
 		str.RemoveFirst("num_buttons = ");
-		info->num_buttons = atoi(str.String());
+		info->module_info.num_buttons = atoi(str.String());
 	} else if (str.IFindFirst("num_sticks") != -1) {
 		str.RemoveFirst("num_sticks = ");
-		info->num_sticks = atoi(str.String());
+		info->module_info.num_sticks = atoi(str.String());
 	} else {
 		LOG("Path = %s\n", str.String());
 	}
@@ -192,7 +211,6 @@ _BJoystickTweaker::_BuildFromJoystickDesc(char *string, _joystick_info* info)
 status_t
 _BJoystickTweaker::SendIOCT(uint32 op)
 {
-	status_t err = B_ERROR;
 	switch (op) {
 		case B_JOYSTICK_SET_DEVICE_MODULE:
 				break;
@@ -208,5 +226,6 @@ _BJoystickTweaker::SendIOCT(uint32 op)
 		default:
 				break;
 	}
-	return err;
+
+	return B_ERROR;
 }

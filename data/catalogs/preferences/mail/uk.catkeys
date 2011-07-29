@@ -1,32 +1,38 @@
-1	ukrainian	x-vnd.Haiku-Mail	2507564917
+1	ukrainian	x-vnd.Haiku-Mail	2363284004
 Account name:	Config Views		Ім'я аккаунта:
+Account name:	E-Mail		Ім'я акаунту:
 Account settings	Config Views		Настройка аккаунта
 Accounts	Config Window		Аккаунти
 Add	Config Window		Додати
-Alpha	Config Window		Альфа
+Add filter	Config Views		Додати фільтр
 Always	Config Window		Завжди
 Apply	Config Window		Прийняти
-Beta	Config Window		Бета
 Check every	Config Window		Перевіряти кожні
-Development	Config Window		Розробка
+Choose Protocol	E-Mail		Вибрати протокол
+E-mail address:	E-Mail		Адреса E-mail :
 Edit mailbox menu…	Config Window		Редагувати почтове меню…
 Error	Config Window		Помилка
 Error retrieving general settings: %s\n	Config Window		Помилка при відновленні основних настройок: %s\n
-Final	Config Window		Закінчення
-Gamma	Config Window		Гамма
-Golden master	Config Window		Золотий майстер
-Mail Daemon Replacement\n\nby Haiku, Inc. All rights reserved.\n\nVersion %ld.%ld.%ld %s\n\nSee LICENSE file included in the installation package for more information.\n\n\n\nYou can contact us at:\n%s\n\nPlease submit bug reports using the %s\n\nProject homepage at:\n%s	Config Window		Mail Daemon Replacement\n\nдля Haiku, Inc. All rights reserved.\n\nВерсія %ld.%ld.%ld %s\n\nДля більшої інформації дивись файл LICENSE в інсталяційному пакунку.\n\n\n\nВи можете зв'язатись з нами:\n%s\n\nБагрепорти відправляйте на %s\n\nСторінка проекту:\n%s
+Incoming mail filters	Config Views		Вхідний поштовий фільтр
+Login name:	E-Mail		Логін:
 Mail checking	Config Window		Перевірка пошти
 Miscellaneous	Config Window		Змішаний
+OK	Config Views		Гаразд
 OK	Config Window		Гаразд
+Outgoing mail filters	Config Views		Фільтри вихідної пошти
+Password:	E-Mail		Пароль:
 Real name:	Config Views		Справжнє ім'я:
+Real name:	E-Mail		Справжнє ім'я:
+Remove	Config Views		Видалити
 Remove	Config Window		Видалити
 Return address:	Config Views		Зворотня адреса:
 Revert	Config Window		Повернути
 Schedule outgoing mail when dial-up is disconnected	Config Window		Затримувати відправку вихідних при відключеному діалапі
+Server Name:	E-Mail		Ім'я серверу:
 Settings	Config Window		Налаштування
 Show connection status window:	Config Window		Показати вікно стану підключення:
 Start mail services on startup	Config Window		Запускати сервіс при старті
+The filter could not be moved. Deleting filter.	Config Views		Фільтр неможливо перемістити. Видалення фільтра.
 While sending	Config Window		Поки відправляється
 While sending and receiving	Config Window		При відправці і отриманні
 \nThe general settings couldn't be reverted.\n\nError retrieving general settings:\n%s\n	Config Window		\nОсновні налаштування неможливо повернути.\n\nПомилка при відновленні налаштувань:\n%s\n

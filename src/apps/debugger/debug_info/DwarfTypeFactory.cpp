@@ -27,6 +27,7 @@
 #include "SourceLanguageInfo.h"
 #include "StringUtils.h"
 #include "Tracing.h"
+#include "TypeLookupConstraints.h"
 #include "ValueLocation.h"
 
 
@@ -291,9 +292,15 @@ DwarfTypeFactory::CreateType(DIEType* typeEntry, DwarfType*& _type)
 	DwarfUtils::GetFullyQualifiedDIEName(typeEntry, name);
 // TODO: The DIE may not have a name (e.g. pointer and reference types don't).
 
+	TypeLookupConstraints constraints(
+		dwarf_tag_to_type_kind(typeEntry->Tag()));
+	int32 subtypeKind = dwarf_tag_to_subtype_kind(typeEntry->Tag());
+	if (subtypeKind >= 0)
+		constraints.SetSubtypeKind(subtypeKind);
+
 	AutoLocker<GlobalTypeCache> cacheLocker(fTypeCache);
 	Type* globalType = name.Length() > 0
-		? fTypeCache->GetType(name) : NULL;
+		? fTypeCache->GetType(name, constraints) : NULL;
 	if (globalType == NULL) {
 		// lookup by name failed -- try lookup by ID
 		BString id;
@@ -315,7 +322,8 @@ DwarfTypeFactory::CreateType(DIEType* typeEntry, DwarfType*& _type)
 	// If the type entry indicates a declaration only, we try to look the
 	// type up globally first.
 	if (typeEntry->IsDeclaration() && name.Length() > 0
-		&& fTypeLookup->GetType(fTypeCache, name, globalType)
+		&& fTypeLookup->GetType(fTypeCache, name,
+			constraints, globalType)
 			== B_OK) {
 		DwarfType* globalDwarfType
 			= dynamic_cast<DwarfType*>(globalType);
@@ -338,7 +346,7 @@ DwarfTypeFactory::CreateType(DIEType* typeEntry, DwarfType*& _type)
 	// have been inserted (e.g. in the compound type case).
 	cacheLocker.Lock();
 	if (name.Length() > 0
-			? fTypeCache->GetType(name) == NULL
+			? fTypeCache->GetType(name, constraints) == NULL
 			: fTypeCache->GetTypeByID(type->ID()) == NULL) {
 		error = fTypeCache->AddType(type);
 		if (error != B_OK)

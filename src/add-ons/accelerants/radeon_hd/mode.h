@@ -13,6 +13,7 @@
 #include <ddc.h>
 #include <edid.h>
 
+#include "mc.h"
 
 #define T_POSITIVE_SYNC (B_POSITIVE_HSYNC | B_POSITIVE_VSYNC)
 
@@ -20,6 +21,9 @@
 #define D2_REG_OFFSET 0x0800
 #define FMT1_REG_OFFSET 0x0000
 #define FMT2_REG_OFFSET 0x800
+
+#define OVERSCAN 0
+	// TODO : Overscan and scaling support
 
 
 status_t create_mode_list(void);

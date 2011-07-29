@@ -29,7 +29,7 @@
 
 AutoConfigWindow::AutoConfigWindow(BRect rect, ConfigWindow *parent)
 	:
-	BWindow(rect, "Create new account", B_TITLED_WINDOW_LOOK,
+	BWindow(rect, B_TRANSLATE("Create new account"), B_TITLED_WINDOW_LOOK,
 		B_MODAL_APP_WINDOW_FEEL,
 		B_NOT_RESIZABLE | B_NOT_ZOOMABLE | B_AVOID_FRONT, B_ALL_WORKSPACES),
 	fParentWindow(parent),
@@ -55,9 +55,10 @@ AutoConfigWindow::AutoConfigWindow(BRect rect, ConfigWindow *parent)
 	fBackButton->SetEnabled(false);
 	fRootView->AddChild(fBackButton);
 
-	buttonRect.left+= 5 + buttonWidth;
+	buttonRect.left += 5 + buttonWidth;
 	buttonRect.right = buttonRect.left + buttonWidth;
-	fNextButton = new BButton(buttonRect, "ok", B_TRANSLATE("OK"), new BMessage(kOkMsg));
+	fNextButton = new BButton(buttonRect, "next", B_TRANSLATE("Next"),
+		new BMessage(kOkMsg));
 	fNextButton->MakeDefault(true);
 	fRootView->AddChild(fNextButton);
 
@@ -85,24 +86,24 @@ AutoConfigWindow::MessageReceived(BMessage* msg)
 {
 	status_t status = B_ERROR;
 	BAlert* invalidMailAlert = NULL;
-	switch (msg->what)
-	{
+
+	switch (msg->what) {
 		case kOkMsg:
-		{
 			if (fMainConfigState) {
 				fMainView->GetBasicAccountInfo(fAccountInfo);
 				if (!fMainView->IsValidMailAddress(fAccountInfo.email)) {
 					invalidMailAlert = new BAlert("invalidMailAlert",
-						"Enter a valid e-mail address.", "OK");
+						B_TRANSLATE("Enter a valid e-mail address."),
+						B_TRANSLATE("OK"));
 					invalidMailAlert->Go();
 					return;
 				}
 				if (fAutoConfigServer) {
 					status = fAutoConfig.GetInfoFromMailAddress(
 						fAccountInfo.email.String(),
-						&(fAccountInfo.providerInfo));
+						&fAccountInfo.providerInfo);
 				}
-				if(status == B_OK){
+				if (status == B_OK) {
 					fParentWindow->Lock();
 					GenerateBasicAccount();
 					fParentWindow->Unlock();
@@ -111,13 +112,13 @@ AutoConfigWindow::MessageReceived(BMessage* msg)
 				fMainConfigState = false;
 				fServerConfigState = true;
 				fMainView->Hide();
-				
+
 				fServerView = new ServerSettingsView(fBoxRect, fAccountInfo);
 				fRootView->AddChild(fServerView);
-				
+
 				fBackButton->SetEnabled(true);
-			}
-			else{
+				fNextButton->SetLabel(B_TRANSLATE("Finish"));
+			} else {
 				fServerView->GetServerInfo(fAccountInfo);
 				fParentWindow->Lock();
 				GenerateBasicAccount();
@@ -125,28 +126,26 @@ AutoConfigWindow::MessageReceived(BMessage* msg)
 				Quit();
 			}
 			break;
-		}
+
 		case kBackMsg:
-		{
-			if(fServerConfigState){
+			if (fServerConfigState) {
 				fServerView->GetServerInfo(fAccountInfo);
 
 				fMainConfigState = true;
 				fServerConfigState = false;
-								
+
 				fRootView->RemoveChild(fServerView);
 				delete fServerView;
-				
+
 				fMainView->Show();
 				fBackButton->SetEnabled(false);
 			}
 			break;
-		}
+
 		case kServerChangedMsg:
-		{
 			fAutoConfigServer = false;
 			break;
-		}
+
 		default:
 			BWindow::MessageReceived(msg);
 			break;
@@ -154,8 +153,8 @@ AutoConfigWindow::MessageReceived(BMessage* msg)
 }
 
 
-bool 
-AutoConfigWindow::QuitRequested(void)
+bool
+AutoConfigWindow::QuitRequested()
 {
 	return true;
 }
@@ -164,7 +163,7 @@ AutoConfigWindow::QuitRequested(void)
 BMailAccountSettings*
 AutoConfigWindow::GenerateBasicAccount()
 {
-	if(!fAccount) {
+	if (!fAccount) {
 		fParentWindow->Lock();
 		fAccount = fParentWindow->AddAccount();
 		fParentWindow->Unlock();

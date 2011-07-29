@@ -219,8 +219,14 @@ private:
 
 			int					fHideCursorCountDown;
 				// Hides the cursor when it reaches zero
+			int 				fStickyZoomCountDown;
+				// Make the zoom sticky at 1.0 when zoomed with the mousewheel
+
 			bool				fIsActiveWin;
 				// Is the parent window the active window?
+
+			BCursor*			fDefaultCursor;
+			BCursor*			fGrabCursor;
 
 			image_orientation	fImageOrientation;
 	static	image_orientation	fTransformation[

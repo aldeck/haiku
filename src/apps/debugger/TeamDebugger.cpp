@@ -37,6 +37,8 @@
 #include "Statement.h"
 #include "SymbolInfo.h"
 #include "TeamDebugInfo.h"
+#include "TeamMemoryBlock.h"
+#include "TeamMemoryBlockManager.h"
 #include "TeamSettings.h"
 #include "Tracing.h"
 #include "ValueNode.h"
@@ -139,6 +141,7 @@ TeamDebugger::TeamDebugger(Listener* listener, UserInterface* userInterface,
 	fFileManager(NULL),
 	fWorker(NULL),
 	fBreakpointManager(NULL),
+	fMemoryBlockManager(NULL),
 	fDebugEventListener(-1),
 	fUserInterface(userInterface),
 	fTerminating(false),
@@ -157,8 +160,10 @@ TeamDebugger::~TeamDebugger()
 
 	fTerminating = true;
 
-	if (fDebuggerInterface != NULL)
+	if (fDebuggerInterface != NULL) {
 		fDebuggerInterface->Close(fKillTeamOnQuit);
+		fDebuggerInterface->ReleaseReference();
+	}
 
 	if (fWorker != NULL)
 		fWorker->ShutDown();
@@ -189,7 +194,7 @@ TeamDebugger::~TeamDebugger()
 	delete fImageHandlers;
 
 	delete fBreakpointManager;
-	delete fDebuggerInterface;
+	delete fMemoryBlockManager;
 	delete fWorker;
 	delete fTeam;
 	delete fFileManager;
@@ -248,7 +253,8 @@ TeamDebugger::Init(team_id teamID, thread_id threadID, bool stopInMain)
 
 	// create a team object
 	fTeam = new(std::nothrow) ::Team(fTeamID, fDebuggerInterface,
-		fDebuggerInterface->GetArchitecture(), teamDebugInfo);
+		fDebuggerInterface->GetArchitecture(), teamDebugInfo,
+		teamDebugInfo);
 	if (fTeam == NULL)
 		return B_NO_MEMORY;
 
@@ -290,6 +296,15 @@ TeamDebugger::Init(team_id teamID, thread_id threadID, bool stopInMain)
 		return B_NO_MEMORY;
 
 	error = fBreakpointManager->Init();
+	if (error != B_OK)
+		return error;
+
+	// create the memory block manager
+	fMemoryBlockManager = new(std::nothrow) TeamMemoryBlockManager();
+	if (fMemoryBlockManager == NULL)
+		return B_NO_MEMORY;
+
+	error = fMemoryBlockManager->Init();
 	if (error != B_OK)
 		return error;
 
@@ -446,6 +461,22 @@ TeamDebugger::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_INSPECT_ADDRESS:
+		{
+			TeamMemoryBlock::Listener* listener;
+			if (message->FindPointer("listener",
+				reinterpret_cast<void **>(&listener)) != B_OK) {
+				break;
+			}
+
+			target_addr_t address;
+			if (message->FindUInt64("address",
+				&address) == B_OK) {
+				_HandleInspectAddress(address, listener);
+			}
+			break;
+		}
+
 		case MSG_THREAD_STATE_CHANGED:
 		{
 			int32 threadID;
@@ -596,9 +627,8 @@ TeamDebugger::ValueNodeValueRequested(CpuState* cpuState,
 	// schedule the job
 	status_t error = fWorker->ScheduleJob(
 		new(std::nothrow) ResolveValueNodeValueJob(fDebuggerInterface,
-			fDebuggerInterface->GetArchitecture(), cpuState, container,
-			valueNode),
-		this);
+			fDebuggerInterface->GetArchitecture(), cpuState,
+			fTeam->GetTeamTypeInformation(), container,	valueNode),	this);
 	if (error != B_OK) {
 		// scheduling failed -- set the value to invalid
 		valueNode->SetLocationAndValue(NULL, NULL, error);
@@ -661,6 +691,17 @@ TeamDebugger::ClearBreakpointRequested(UserBreakpoint* breakpoint)
 }
 
 
+void
+TeamDebugger::InspectRequested(target_addr_t address,
+	TeamMemoryBlock::Listener *listener)
+{
+	BMessage message(MSG_INSPECT_ADDRESS);
+	message.AddUInt64("address", address);
+	message.AddPointer("listener", listener);
+	PostMessage(&message);
+}
+
+
 bool
 TeamDebugger::UserInterfaceQuitRequested()
 {
@@ -712,6 +753,7 @@ void
 TeamDebugger::JobFailed(Job* job)
 {
 	TRACE_JOBS("TeamDebugger::JobFailed(%p)\n", job);
+	// TODO: notify user
 }
 
 
@@ -1240,6 +1282,44 @@ void
 TeamDebugger::_HandleClearUserBreakpoint(UserBreakpoint* breakpoint)
 {
 	fBreakpointManager->UninstallUserBreakpoint(breakpoint);
+}
+
+
+void
+TeamDebugger::_HandleInspectAddress(target_addr_t address,
+	TeamMemoryBlock::Listener* listener)
+{
+	TRACE_CONTROL("TeamDebugger::_HandleInspectAddress(%" B_PRIx64 ", %p)\n",
+		address, listener);
+
+	TeamMemoryBlock* memoryBlock = fMemoryBlockManager
+		->GetMemoryBlock(address);
+
+	if (memoryBlock == NULL) {
+		_NotifyUser("Inspect Address", "Failed to allocate memory block");
+		return;
+	}
+
+	if (!memoryBlock->HasListener(listener))
+		memoryBlock->AddListener(listener);
+
+	if (!memoryBlock->IsValid()) {
+		AutoLocker< ::Team> teamLocker(fTeam);
+
+		TeamMemory* memory = fTeam->GetTeamMemory();
+		// schedule the job
+		status_t result;
+		if ((result = fWorker->ScheduleJob(
+			new(std::nothrow) RetrieveMemoryBlockJob(fTeam, memory,
+				memoryBlock),
+			this)) != B_OK) {
+			memoryBlock->ReleaseReference();
+			_NotifyUser("Inspect Address", "Failed to retrieve memory data: %s",
+				strerror(result));
+		}
+	} else
+		memoryBlock->NotifyDataRetrieved();
+
 }
 
 

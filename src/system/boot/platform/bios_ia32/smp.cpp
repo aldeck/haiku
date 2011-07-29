@@ -60,15 +60,14 @@ static int smp_get_current_cpu(void);
 static uint32
 apic_read(uint32 offset)
 {
-	return *(uint32 *)((uint32)gKernelArgs.arch_args.apic + offset);
+	return *(volatile uint32 *)((uint32)gKernelArgs.arch_args.apic + offset);
 }
 
 
 static void
 apic_write(uint32 offset, uint32 data)
 {
-	uint32 *addr = (uint32 *)((uint32)gKernelArgs.arch_args.apic + offset);
-	*addr = data;
+	*(volatile uint32 *)((uint32)gKernelArgs.arch_args.apic + offset) = data;
 }
 
 
@@ -78,9 +77,9 @@ smp_get_current_cpu(void)
 	if (gKernelArgs.arch_args.apic == NULL)
 		return 0;
 
-	uint8_t apic_id = (apic_read(APIC_ID) & 0xffffffff) >> 24;
+	uint8 apicID = apic_read(APIC_ID) >> 24;
 	for (uint32 i = 0; i < gKernelArgs.num_cpus; i++) {
-		if (gKernelArgs.arch_args.cpu_apic_id[i] == apic_id)
+		if (gKernelArgs.arch_args.cpu_apic_id[i] == apicID)
 			return i;
 	}
 
@@ -204,7 +203,8 @@ smp_do_mp_config(mp_floating_struct *floatingStruct)
 				struct mp_base_ioapic *io = (struct mp_base_ioapic *)pointer;
 				pointer += sizeof(struct mp_base_ioapic);
 
-				gKernelArgs.arch_args.ioapic_phys = (uint32)io->addr;
+				if (gKernelArgs.arch_args.ioapic_phys == 0)
+					gKernelArgs.arch_args.ioapic_phys = (uint32)io->addr;
 
 				TRACE(("smp: found io apic with apic id %d, version %d\n",
 					io->ioapic_id, io->ioapic_version));
@@ -290,9 +290,12 @@ smp_do_acpi_config(void)
 				acpi_io_apic *ioApic = (acpi_io_apic *)apic;
 				TRACE(("smp: found io APIC with id %u and address 0x%lx\n",
 					ioApic->io_apic_id, ioApic->io_apic_address));
-				gKernelArgs.arch_args.ioapic_phys = ioApic->io_apic_address;
+				if (gKernelArgs.arch_args.ioapic_phys == 0)
+					gKernelArgs.arch_args.ioapic_phys = ioApic->io_apic_address;
 				break;
 			}
+			default:
+				break;
 		}
 
 		apic = (acpi_apic *)((uint8 *)apic + apic->length);
@@ -397,8 +400,9 @@ smp_init_other_cpus(void)
 	}
 
 	if (get_safemode_boolean(B_SAFEMODE_DISABLE_APIC, false)) {
-		TRACE(("local apic disabled per safemode setting\n"));
+		TRACE(("local apic disabled per safemode setting, disabling smp\n"));
 		gKernelArgs.arch_args.apic_phys = 0;
+		gKernelArgs.num_cpus = 1;
 	}
 
 	if (gKernelArgs.arch_args.apic_phys == 0)
@@ -410,16 +414,11 @@ smp_init_other_cpus(void)
 	TRACE(("smp: ioapic_phys = %p\n",
 		(void *)gKernelArgs.arch_args.ioapic_phys));
 
-	// map in the apic & ioapic (if available)
+	// map in the apic
 	gKernelArgs.arch_args.apic = (uint32 *)mmu_map_physical_memory(
 		gKernelArgs.arch_args.apic_phys, B_PAGE_SIZE, kDefaultPageFlags);
-	if (gKernelArgs.arch_args.ioapic_phys != 0) {
-		gKernelArgs.arch_args.ioapic = (uint32 *)mmu_map_physical_memory(
-			gKernelArgs.arch_args.ioapic_phys, B_PAGE_SIZE, kDefaultPageFlags);
-	}
 
-	TRACE(("smp: apic = %p\n", gKernelArgs.arch_args.apic));
-	TRACE(("smp: ioapic = %p\n", gKernelArgs.arch_args.ioapic));
+	TRACE(("smp: apic (mapped) = %p\n", gKernelArgs.arch_args.apic));
 
 	// calculate how fast the apic timer is
 	calculate_apic_timer_conversion_factor();
@@ -580,26 +579,18 @@ smp_add_safemode_menus(Menu *menu)
 	MenuItem *item;
 
 	if (gKernelArgs.arch_args.ioapic_phys != 0) {
-#if 0
 		menu->AddItem(item = new(nothrow) MenuItem("Disable IO-APIC"));
 		item->SetType(MENU_ITEM_MARKABLE);
 		item->SetData(B_SAFEMODE_DISABLE_IOAPIC);
 		item->SetHelpText("Disables using the IO APIC for interrupt routing, "
 			"forcing the use of the legacy PIC instead.");
-#else
-		// TODO: This can be removed once IO-APIC code is broadly tested
-		menu->AddItem(item = new(nothrow) MenuItem("Enable IO-APIC"));
-		item->SetType(MENU_ITEM_MARKABLE);
-		item->SetData(B_SAFEMODE_ENABLE_IOAPIC);
-		item->SetHelpText("Enables using the IO APIC for interrupt routing.");
-#endif
 	}
 
 	if (gKernelArgs.arch_args.apic_phys != 0) {
-		menu->AddItem(item = new(nothrow) MenuItem("Disable LOCAL APIC"));
+		menu->AddItem(item = new(nothrow) MenuItem("Disable local APIC"));
 		item->SetType(MENU_ITEM_MARKABLE);
 		item->SetData(B_SAFEMODE_DISABLE_APIC);
-		item->SetHelpText("Disables using the LOCAL APIC for timekeeping.");
+		item->SetHelpText("Disables using the local APIC, also disables SMP.");
 	}
 
 	if (gKernelArgs.num_cpus < 2)
@@ -620,6 +611,17 @@ smp_init(void)
 	gKernelArgs.num_cpus = 1;
 	return;
 #endif
+
+	cpuid_info info;
+	if (get_current_cpuid(&info, 1) != B_OK)
+		return;
+
+	if ((info.eax_1.features & IA32_FEATURE_APIC) == 0) {
+		// Local APICs aren't present; As they form the basis for all inter CPU
+		// communication and therefore SMP, we don't need to go any further.
+		dprintf("no local APIC present, not attempting SMP init\n");
+		return;
+	}
 
 	// first try to find ACPI tables to get MP configuration as it handles
 	// physical as well as logical MP configurations as in multiple cpus,

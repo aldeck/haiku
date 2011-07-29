@@ -130,29 +130,32 @@ class EntryListenerTree : public _EntryListenerTree {};
 */
 
 // constructor
-Volume::Volume()
-	: fID(0),
-	  fNextNodeID(kRootParentID + 1),
-	  fNodeTable(NULL),
-	  fDirectoryEntryTable(NULL),
-	  fNodeAttributeTable(NULL),
-	  fIndexDirectory(NULL),
-	  fRootDirectory(NULL),
-	  fName(kDefaultVolumeName),
-	  fLocker("volume"),
-	  fIteratorLocker("iterators"),
-	  fQueryLocker("queries"),
-	  fNodeListeners(NULL),
-	  fAnyNodeListeners(),
-	  fEntryListeners(NULL),
-	  fAnyEntryListeners(),
-	  fBlockAllocator(NULL),
-	  fBlockSize(kDefaultBlockSize),
-	  fAllocatedBlocks(0),
-	  fAccessTime(0),
-	  fMounted(false)
+Volume::Volume(fs_volume* volume)
+	:
+	fVolume(volume),
+	fID(0),
+	fNextNodeID(kRootParentID + 1),
+	fNodeTable(NULL),
+	fDirectoryEntryTable(NULL),
+	fNodeAttributeTable(NULL),
+	fIndexDirectory(NULL),
+	fRootDirectory(NULL),
+	fName(kDefaultVolumeName),
+	fLocker("volume"),
+	fIteratorLocker("iterators"),
+	fQueryLocker("queries"),
+	fNodeListeners(NULL),
+	fAnyNodeListeners(),
+	fEntryListeners(NULL),
+	fAnyEntryListeners(),
+	fBlockAllocator(NULL),
+	fBlockSize(kDefaultBlockSize),
+	fAllocatedBlocks(0),
+	fAccessTime(0),
+	fMounted(false)
 {
 }
+
 
 // destructor
 Volume::~Volume()
@@ -160,9 +163,10 @@ Volume::~Volume()
 	Unmount();
 }
 
+
 // Mount
 status_t
-Volume::Mount(dev_t id)
+Volume::Mount(uint32 flags)
 {
 	Unmount();
 
@@ -508,7 +512,7 @@ status_t
 Volume::AddNodeListener(NodeListener *listener, Node *node, uint32 flags)
 {
 	// check parameters
-	if (!listener || !node && !(flags & NODE_LISTEN_ANY_NODE)
+	if (!listener || (!node && !(flags & NODE_LISTEN_ANY_NODE))
 		|| !(flags & NODE_LISTEN_ALL)) {
 		return B_BAD_VALUE;
 	}
@@ -620,7 +624,7 @@ status_t
 Volume::AddEntryListener(EntryListener *listener, Entry *entry, uint32 flags)
 {
 	// check parameters
-	if (!listener || !entry && !(flags & ENTRY_LISTEN_ANY_ENTRY)
+	if (!listener || (!entry && !(flags & ENTRY_LISTEN_ANY_ENTRY))
 		|| !(flags & ENTRY_LISTEN_ALL)) {
 		return B_BAD_VALUE;
 	}

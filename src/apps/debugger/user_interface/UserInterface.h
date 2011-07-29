@@ -10,6 +10,7 @@
 
 #include <Referenceable.h>
 
+#include "TeamMemoryBlock.h"
 #include "Types.h"
 
 
@@ -81,6 +82,10 @@ public:
 	virtual	void				ClearBreakpointRequested(
 									UserBreakpoint* breakpoint) = 0;
 									// TODO: Consolidate those!
+
+	virtual void				InspectRequested(
+									target_addr_t address,
+									TeamMemoryBlock::Listener* listener) = 0;
 
 	virtual	bool				UserInterfaceQuitRequested() = 0;
 };

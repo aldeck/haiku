@@ -703,16 +703,15 @@ BSlider::SetValue(int32 value)
 	if (fOrientation == B_HORIZONTAL)
 		oldThumbFrame.top = BarFrame().top;
 	else
-		oldThumbFrame.right = BarFrame().right;
+		oldThumbFrame.left = BarFrame().left;
 
 	BControl::SetValueNoUpdate(value);
 	BRect invalid = oldThumbFrame | ThumbFrame();
 
 	if (Style() == B_TRIANGLE_THUMB) {
-		// 1) we need to take care of pixels touched because of
-		//    anti-aliasing
-		// 2) we need to update the region with the focus mark as well
-		//    (a method BSlider::FocusMarkFrame() would be nice as well)
+		// 1) We need to take care of pixels touched because of anti-aliasing.
+		// 2) We need to update the region with the focus mark as well. (A
+		// method BSlider::FocusMarkFrame() would be nice as well.)
 		if (fOrientation == B_HORIZONTAL) {
 			if (IsFocus())
 				invalid.bottom += 2;
@@ -809,21 +808,6 @@ BSlider::Draw(BRect updateRect)
 		// This view is embedded somewhere, most likely the Tracker Desktop
 		// shelf.
 		drawBackground = false;
-	}
-
-	// ToDo: the triangle thumb doesn't delete its background, so we still have
-	// to do it Note, this also creates a different behaviour for subclasses,
-	// depending on the thumb style - if possible this should be avoided.
-	if (Style() == B_BLOCK_THUMB) {
-		BRect thumbFrame = ThumbFrame();
-		if (be_control_look != NULL) {
-			// fill background where shadow will be...
-			// TODO: Such drawint dependent behavior should be moved into
-			// BControlLook of course.
-			thumbFrame.right--;
-			thumbFrame.bottom--;
-		}
-		background.Exclude(thumbFrame);
 	}
 
 #if USE_OFF_SCREEN_VIEW
@@ -1445,16 +1429,27 @@ BSlider::GetPreferredSize(float* _width, float* _height)
 {
 	BSize preferredSize = PreferredSize();
 
-	if (_width) {
-//		*_width = preferredSize.width;
-		// NOTE: For compatibility reasons, the BSlider never shrinks
-		// horizontally. This only affects applications which do not
-		// use the new layout system.
-		*_width = max_c(Bounds().Width(), preferredSize.width);
-	}
+	if (Orientation() == B_HORIZONTAL) {
+		if (_width != NULL) {
+			// NOTE: For compatibility reasons, a horizontal BSlider
+			// never shrinks horizontally. This only affects applications
+			// which do not use the new layout system.
+			*_width = max_c(Bounds().Width(), preferredSize.width);
+		}
 
-	if (_height)
-		*_height = preferredSize.height;
+		if (_height != NULL)
+			*_height = preferredSize.height;
+	} else {
+		if (_width != NULL)
+			*_width = preferredSize.width;
+
+		if (_height != NULL) {
+			// NOTE: Similarly, a vertical BSlider never shrinks
+			// vertically. This only affects applications which do not
+			// use the new layout system.
+			*_height = max_c(Bounds().Height(), preferredSize.height);
+		}
+	}
 }
 
 

@@ -5,17 +5,21 @@
 */
 
 
-#include <Message.h>
-#include <String.h>
 #include <Alert.h>
-#include <Beep.h>
-#include <Path.h>
 #include <Application.h>
+#include <Beep.h>
+#include <Catalog.h>
+#include <Message.h>
+#include <Path.h>
+#include <String.h>
 
 #include <MailAddon.h>
-#include <MDRLanguage.h>
 
 #include "ConfigView.h"
+
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "filter"
 
 
 class NotifyFilter : public MailFilter
@@ -63,14 +67,18 @@ NotifyFilter::MailboxSynced(status_t status)
 		system_beep("New E-mail");
 
 	if (fStrategy & alert) {
-		BString text;
-		MDR_DIALECT_CHOICE (
-		text << "You have " << fNNewMessages << " new message" << ((fNNewMessages != 1) ? "s" : "")
-		<< " for " << fMailProtocol.AccountSettings().Name() << ".",
+		BString text, numString;
+		if (fNNewMessages != 1)
+			text << B_TRANSLATE("You have %num new messages for %name.");
+		else
+			text << B_TRANSLATE("You have %num new message for %name.");
 
-		text << fMailProtocol.AccountSettings().Name() << "より\n" << fNNewMessages << " 通のメッセージが届きました");
+		numString << fNNewMessages;
+		text.ReplaceFirst("%num", numString);
+		text.ReplaceFirst("%name", fMailProtocol.AccountSettings().Name());
 
-		BAlert *alert = new BAlert(MDR_DIALECT_CHOICE ("New messages","新着メッセージ"), text.String(), "OK", NULL, NULL, B_WIDTH_AS_USUAL);
+		BAlert *alert = new BAlert(B_TRANSLATE("New messages"), text.String(),
+			B_TRANSLATE("OK"), NULL, NULL, B_WIDTH_AS_USUAL);
 		alert->SetFeel(B_NORMAL_WINDOW_FEEL);
 		alert->Go(NULL);
 	}
@@ -90,8 +98,15 @@ NotifyFilter::MailboxSynced(status_t status)
 	}
 
 	if (fStrategy & log_window) {
-		BString message;
-		message << fNNewMessages << " new message" << ((fNNewMessages != 1) ? "s" : "");
+		BString message, numString;
+		if (fNNewMessages != 1)
+			message << B_TRANSLATE("%num new messages");
+		else
+			message << B_TRANSLATE("%num new message");
+
+		numString << fNNewMessages;
+		message.ReplaceFirst("%num", numString);
+
 		fMailProtocol.ShowMessage(message.String());
 	}
 

@@ -16,6 +16,7 @@ set -o errexit
 # dontClearImage
 # isVMwareImage
 # optionalPackageDescriptions
+# stripOptionalPackageDebugSymbols
 #
 # addattr
 # copyattr
@@ -141,6 +142,20 @@ else
 fi
 
 
+stripDebugInfo()
+{
+	file="$1"
+
+	# Determine whether the file is an ELF file by checking the ELF signature,
+	# or at least the printable characters.
+	elfMarker=`dd "if=$file" bs=1 skip=1 count=3 2> /dev/null`
+	if [ "$elfMarker" = 'ELF' ]; then
+		# make user-writable first -- some files aren't
+		chmod u+w "$file"
+		strip --strip-debug "$file"
+	fi
+}
+
 extractFile()
 {
 	# extractFile <archive> <directory>
@@ -171,6 +186,24 @@ extractFile()
 		cat $extractDir/.OptionalPackageDescription >> $copyrightsFile
 		echo >> $copyrightsFile
 		rm $extractDir/.OptionalPackageDescription
+	fi
+
+	if [ "$stripOptionalPackageDebugSymbols" = "1" ]; then
+		# strip executables in common/bin
+		if [ -d $extractDir/common/bin ]; then
+			for file in `find $extractDir/common/bin -type f -a -perm +100 \
+					-a -size +1k`; do
+				stripDebugInfo "$file"
+			done
+		fi
+
+		# strip libraries in common/lib
+		if [ -d $extractDir/common/lib ]; then
+			for file in `find $extractDir/common/lib -type f -a -size +1k \
+					-a -name lib\*`; do
+				stripDebugInfo "$file"
+			done
+		fi
 	fi
 
 	$cp -r "${sPrefix}$extractDir/$extractedSubDir/." "${tPrefix}$targetExtractedDir"
@@ -313,9 +346,20 @@ if [ $isCD ]; then
 	echo "Copying boot image ..."
 	$cp "$cdBootFloppy" "$outputDir"
 
-	# build the iso image
-	echo "Building CD image ..."
-	mkisofs -uid 0 -gid 0 -b `basename $cdBootFloppy` -R -V "$cdLabel" -o "$cdImagePath" "$tPrefix"
+	if [ $(which mkisofs) ]; then
+		# build the iso image using mkisofs
+		echo "Building CD image (mkisofs)..."
+		mkisofs -uid 0 -gid 0 -b `basename $cdBootFloppy` -R -V "$cdLabel" -o "$cdImagePath" "$tPrefix"
+	elif [ $(which genisoimage) ]; then
+		# build the iso image using genisoimage
+		echo "Building CD image (genisoimage)..."
+		echo "WARNING: genisoimage fallback has known problems with long filenames!"
+		echo "         Please install mkisofs before making production releases!"
+		genisoimage -r -iso-level 4 -b `basename $cdBootFloppy` -V "$cdLabel" -o "$cdImagePath" "$tPrefix"
+	else
+		echo "you need mkisofs (preferred) or genisoimage to create a CD image."
+		exit 1
+	fi
 
 	# cleanup output dir
 	$rmAttrs -rf "$outputDir"

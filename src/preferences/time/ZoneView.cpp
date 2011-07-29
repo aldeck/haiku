@@ -8,12 +8,14 @@
  *		Philippe Saint-Pierre <stpere@gmail.com>
  *		Adrien Destugues <pulkomandy@pulkomandy.ath.cx>
  *		Oliver Tappe <zooey@hirschkaefer.de>
+ *		Hamish Morrison <hamish@lavabit.com>
  */
 
 
 #include "ZoneView.h"
 
 #include <stdlib.h>
+#include <syscalls.h>
 
 #include <map>
 #include <new>
@@ -22,6 +24,7 @@
 #include <Button.h>
 #include <Catalog.h>
 #include <Collator.h>
+#include <ControlLook.h>
 #include <Country.h>
 #include <Directory.h>
 #include <Entry.h>
@@ -36,11 +39,9 @@
 #include <StorageDefs.h>
 #include <String.h>
 #include <TimeZone.h>
+#include <ToolTip.h>
 #include <View.h>
 #include <Window.h>
-
-#include <syscalls.h>
-#include <ToolTip.h>
 
 #include <unicode/datefmt.h>
 #include <unicode/utmscale.h>
@@ -49,7 +50,6 @@
 #include "TimeMessages.h"
 #include "TimeZoneListItem.h"
 #include "TZDisplay.h"
-#include "TimeWindow.h"
 
 
 #undef B_TRANSLATE_CONTEXT
@@ -77,9 +77,9 @@ private:
 
 
 
-TimeZoneView::TimeZoneView(BRect frame)
+TimeZoneView::TimeZoneView(const char* name)
 	:
-	BView(frame, "timeZoneView", B_FOLLOW_NONE, B_WILL_DRAW | B_NAVIGABLE_JUMP),
+	BGroupView(name, B_HORIZONTAL, B_USE_DEFAULT_SPACING),
 	fToolTip(NULL),
 	fCurrentZoneItem(NULL),
 	fOldZoneItem(NULL),
@@ -109,26 +109,25 @@ TimeZoneView::AttachedToWindow()
 	BView::AttachedToWindow();
 	if (Parent())
 		SetViewColor(Parent()->ViewColor());
-}
 
-
-void
-TimeZoneView::AllAttached()
-{
-	BView::AllAttached();
 	if (!fInitialized) {
 		fInitialized = true;
 
 		fSetZone->SetTarget(this);
 		fZoneList->SetTarget(this);
-
-		// update displays
-		if (fCurrentZoneItem != NULL) {
-			fZoneList->Select(fZoneList->IndexOf(fCurrentZoneItem));
-			fCurrent->SetText(fCurrentZoneItem->Text());
-		}
 	}
-	fZoneList->ScrollToSelection();
+}
+
+
+void
+TimeZoneView::DoLayout()
+{
+	BView::DoLayout();
+	if (fCurrentZoneItem != NULL) {
+		fZoneList->Select(fZoneList->IndexOf(fCurrentZoneItem));
+		fCurrent->SetText(fCurrentZoneItem->Text());
+		fZoneList->ScrollToSelection();
+	}
 }
 
 
@@ -159,7 +158,7 @@ TimeZoneView::MessageReceived(BMessage* message)
 		case H_SET_TIME_ZONE:
 		{
 			_SetSystemTimeZone();
-			((TTimeWindow*)Window())->SetRevertStatus();
+			Looper()->PostMessage(new BMessage(kMsgChange));
 			break;
 		}
 
@@ -173,7 +172,7 @@ TimeZoneView::MessageReceived(BMessage* message)
 			break;
 
 		default:
-			BView::MessageReceived(message);
+			BGroupView::MessageReceived(message);
 			break;
 	}
 }
@@ -233,51 +232,32 @@ TimeZoneView::_UpdateDateTime(BMessage* message)
 void
 TimeZoneView::_InitView()
 {
-	// left side
-	BRect frameLeft(Bounds());
-	frameLeft.right = frameLeft.Width() / 2.0;
-	frameLeft.InsetBy(10.0f, 10.0f);
-
-	// City Listing
-	fZoneList = new BOutlineListView(frameLeft, "cityList",
-		B_SINGLE_SELECTION_LIST);
+	fZoneList = new BOutlineListView("cityList", B_SINGLE_SELECTION_LIST);
 	fZoneList->SetSelectionMessage(new BMessage(H_CITY_CHANGED));
 	fZoneList->SetInvocationMessage(new BMessage(H_SET_TIME_ZONE));
-
 	_BuildZoneMenu();
-
 	BScrollView* scrollList = new BScrollView("scrollList", fZoneList,
-		B_FOLLOW_ALL, 0, false, true);
-	AddChild(scrollList);
+		B_FRAME_EVENTS | B_WILL_DRAW, false, true);
 
-	// right side
-	BRect frameRight(Bounds());
-	frameRight.left = frameRight.Width() / 2.0;
-	frameRight.InsetBy(10.0f, 10.0f);
-	frameRight.top = frameLeft.top;
+	fCurrent = new TTZDisplay("currentTime", B_TRANSLATE("Current time:"));
+	fPreview = new TTZDisplay("previewTime", B_TRANSLATE("Preview time:"));
 
-	// Time Displays
-	fCurrent = new TTZDisplay(frameRight, "currentTime",
-		B_TRANSLATE("Current time:"));
-	AddChild(fCurrent);
-	fCurrent->ResizeToPreferred();
-
-	frameRight.top = fCurrent->Frame().bottom + 10.0;
-	fPreview = new TTZDisplay(frameRight, "previewTime",
-		B_TRANSLATE("Preview time:"));
-	AddChild(fPreview);
-	fPreview->ResizeToPreferred();
-
-	// set button
-	fSetZone = new BButton(frameRight, "setTimeZone",
-		B_TRANSLATE("Set time zone"),
+	fSetZone = new BButton("setTimeZone", B_TRANSLATE("Set time zone"),
 		new BMessage(H_SET_TIME_ZONE));
-	AddChild(fSetZone);
 	fSetZone->SetEnabled(false);
-	fSetZone->ResizeToPreferred();
+	fSetZone->SetExplicitAlignment(
+		BAlignment(B_ALIGN_RIGHT, B_ALIGN_BOTTOM));
 
-	fSetZone->MoveTo(frameRight.right - fSetZone->Bounds().Width(),
-		scrollList->Frame().bottom - fSetZone->Bounds().Height());
+	const float kInset = be_control_look->DefaultItemSpacing();
+	BLayoutBuilder::Group<>(this)
+		.Add(scrollList)
+		.AddGroup(B_VERTICAL, kInset)
+			.Add(fCurrent)
+			.Add(fPreview)
+			.AddGlue()
+			.Add(fSetZone)
+		.End()
+		.SetInsets(kInset, kInset, kInset, kInset);
 }
 
 
@@ -336,7 +316,7 @@ TimeZoneView::_BuildZoneMenu()
 
 			BString region(zoneID, slashPos);
 
-			if (region == "Etc")
+			if (region == B_TRANSLATE("Etc"))
 				region = kOtherRegion;
 			else if (countryName.Length() == 0) {
 				// skip global timezones from other regions, we are just

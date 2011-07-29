@@ -14,6 +14,7 @@
 #include <Flattenable.h>
 #include <OS.h>
 #include <Rect.h>
+#include <Size.h>
 
 #include <AppDefs.h>		/* For convenience */
 #include <TypeConstants.h>	/* For convenience */
@@ -375,7 +376,7 @@ class BMessage {
 
 		enum			{ sNumReplyPorts = 3 };
 		static port_id	sReplyPorts[sNumReplyPorts];
-		static long		sReplyPortInUse[sNumReplyPorts];
+		static int32	sReplyPortInUse[sNumReplyPorts];
 		static int32	sGetCachedReplyPort();
 
 		static BBlockCache* sMsgCache;

@@ -1,10 +1,10 @@
 SubDir HAIKU_TOP src build libbe support ;
 
-UseHeaders [ FDirName $(HAIKU_TOP) headers build private app ] : true ;
-UseHeaders [ FDirName $(HAIKU_TOP) headers build private interface ] : true ;
-UseHeaders [ FDirName $(HAIKU_TOP) headers build private shared ] : true ;
+UsePrivateBuildHeaders app interface shared ;
 
 USES_BE_API on <libbe_build>support_kit.o = true ;
+
+SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src kits support ] ;
 
 BuildPlatformMergeObjectPIC <libbe_build>support_kit.o :
 	Archivable.cpp

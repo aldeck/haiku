@@ -1,4 +1,4 @@
-1	swedish	x-vnd.Haiku-ShowImage	1687870740
+1	swedish	x-vnd.Haiku-ShowImage	886873119
 %SECONDS seconds	Menus	Don't translate %SECONDS	%SECONDS sekunder
 Browse	Menus		Bläddra
 Cancel	ClosePrompt		Avbryt
@@ -23,6 +23,7 @@ High-quality zooming	Menus		Högkvalitets inzomning
 Image	Menus		Bild
 Job setup	PrintOptionsWindow		Utskriftsinställningar
 Last page	Menus		Sista sidan
+Leave full screen	Menus		Lämna fullskärmsläge
 Next file	Menus		Nästa fil
 Next page	Menus		Nästa sida
 OK	Alerts		OK

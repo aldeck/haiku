@@ -159,6 +159,7 @@ main(int argc, char **argv)
 					outputFile.String(), strerror(res));
 				exit(-1);
 			}
+			break;
 		}
 		default: {
 			res = targetCatalog.WriteToFile(outputFile.String());
@@ -168,6 +169,7 @@ main(int argc, char **argv)
 					outputFile.String(), strerror(res));
 				exit(-1);
 			}
+			break;
 		}
 	}
 	if (showSummary) {

@@ -1,7 +1,5 @@
 SubDir HAIKU_TOP src add-ons mail_daemon inbound_protocols pop3 ;
 
-SetSubDirSupportedPlatformsBeOSCompatible ;
-
 if $(TARGET_PLATFORM) != haiku {
 	UsePublicHeaders mail ;
 }
@@ -30,13 +28,22 @@ if $(HAIKU_OPENSSL_ENABLED) {
 	SetupFeatureObjectsDir no-ssl ;
 }
 
+AddResources POP3 : POP3.rdef ;
+
 Addon POP3
 	: $(sources)
-	: be libmail.so $(TARGET_NETWORK_LIBS) $(HAIKU_OPENSSL_LIBS)
-		$(TARGET_LIBSUPC++)
+	: be libmail.so $(HAIKU_LOCALE_LIBS) $(HAIKU_OPENSSL_LIBS)
+		$(TARGET_LIBSUPC++) $(TARGET_NETWORK_LIBS)
 ;
 
 Package haiku-maildaemon-cvs :
 	POP3 :
 	boot home config add-ons mail_daemon inbound_protocols
+;
+
+DoCatalogs POP3 :
+	x-vnd.Haiku-POP3
+	:
+	ConfigView.cpp
+	pop3.cpp
 ;

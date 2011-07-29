@@ -251,7 +251,6 @@ ShowImageWindow::ShowImageWindow(BRect frame, const entry_ref& ref,
 
 	// Update minimum window size
 	float toolBarMinWidth = fToolBarView->MinSize().width;
-	printf("menu min size: %.1f, tool bar: %.1f\n", menuBarMinWidth, toolBarMinWidth);
 	SetSizeLimits(std::max(menuBarMinWidth, toolBarMinWidth), 100000, 100,
 		100000);
 
@@ -1295,6 +1294,10 @@ ShowImageWindow::_ToggleFullScreen()
 
 	fImageView->SetHideIdlingCursor(fFullScreen);
 	fImageView->SetShowCaption(fFullScreen && fShowCaption);
+
+	Layout(false);
+		// We need to manually relayout here, as the views are layouted
+		// asynchronously, and FitToBounds() would still have the wrong size
 	fImageView->FitToBounds();
 }
 
@@ -1540,6 +1543,7 @@ ShowImageWindow::_SetToolBarVisible(bool visible, bool animate)
 		fScrollView->MoveBy(0, diff);
 		fVerticalScrollBar->ResizeBy(0, -diff);
 		fVerticalScrollBar->MoveBy(0, diff);
+		fToolBarView->MoveBy(0, diff);
 		if (!visible)
 			fToolBarView->Hide();
 	}

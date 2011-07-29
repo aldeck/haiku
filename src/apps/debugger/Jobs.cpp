@@ -6,6 +6,7 @@
 #include "Jobs.h"
 
 #include <AutoLocker.h>
+#include <memory_private.h>
 
 #include "Architecture.h"
 #include "BitBuffer.h"
@@ -25,6 +26,9 @@
 #include "StackTrace.h"
 #include "Team.h"
 #include "TeamDebugInfo.h"
+#include "TeamMemory.h"
+#include "TeamMemoryBlock.h"
+#include "TeamTypeInformation.h"
 #include "Thread.h"
 #include "Tracing.h"
 #include "Type.h"
@@ -413,12 +417,14 @@ LoadSourceCodeJob::Do()
 
 ResolveValueNodeValueJob::ResolveValueNodeValueJob(
 	DebuggerInterface* debuggerInterface, Architecture* architecture,
-	CpuState* cpuState, ValueNodeContainer*	container, ValueNode* valueNode)
+	CpuState* cpuState, TeamTypeInformation* typeInformation,
+	ValueNodeContainer* container, ValueNode* valueNode)
 	:
 	fKey(valueNode, JOB_TYPE_RESOLVE_VALUE_NODE_VALUE),
 	fDebuggerInterface(debuggerInterface),
 	fArchitecture(architecture),
 	fCpuState(cpuState),
+	fTypeInformation(typeInformation),
 	fContainer(container),
 	fValueNode(valueNode)
 {
@@ -531,7 +537,8 @@ ResolveValueNodeValueJob::_ResolveNodeValue()
 	}
 
 	// resolve the node location and value
-	ValueLoader valueLoader(fArchitecture, fDebuggerInterface, fCpuState);
+	ValueLoader valueLoader(fArchitecture, fDebuggerInterface,
+		fTypeInformation, fCpuState);
 	ValueLocation* location;
 	Value* value;
 	status_t error = fValueNode->ResolvedLocationAndValue(&valueLoader,
@@ -562,7 +569,8 @@ status_t
 ResolveValueNodeValueJob::_ResolveNodeChildLocation(ValueNodeChild* nodeChild)
 {
 	// resolve the location
-	ValueLoader valueLoader(fArchitecture, fDebuggerInterface, fCpuState);
+	ValueLoader valueLoader(fArchitecture, fDebuggerInterface,
+		fTypeInformation, fCpuState);
 	ValueLocation* location = NULL;
 	status_t error = nodeChild->ResolveLocation(&valueLoader, location);
 	BReference<ValueLocation> locationReference(location, true);
@@ -602,7 +610,8 @@ ResolveValueNodeValueJob::_ResolveParentNodeValue(ValueNode* parentNode)
 		// schedule the job
 		status_t error = GetWorker()->ScheduleJob(
 			new(std::nothrow) ResolveValueNodeValueJob(fDebuggerInterface,
-				fArchitecture, fCpuState, fContainer, parentNode));
+				fArchitecture, fCpuState, fTypeInformation, fContainer,
+				parentNode));
 		if (error != B_OK) {
 			// scheduling failed -- set the value to invalid
 			parentNode->SetLocationAndValue(NULL, NULL, error);
@@ -632,4 +641,52 @@ ResolveValueNodeValueJob::_ResolveParentNodeValue(ValueNode* parentNode)
 	nodeResolutionState = parentNode->LocationAndValueResolutionState();
 	return nodeResolutionState != VALUE_NODE_UNRESOLVED
 		? nodeResolutionState : B_ERROR;
+}
+
+
+RetrieveMemoryBlockJob::RetrieveMemoryBlockJob(Team* team,
+	TeamMemory* teamMemory, TeamMemoryBlock* memoryBlock)
+	:
+	fKey(memoryBlock, JOB_TYPE_GET_MEMORY_BLOCK),
+	fTeam(team),
+	fTeamMemory(teamMemory),
+	fMemoryBlock(memoryBlock)
+{
+	fTeamMemory->AcquireReference();
+	fMemoryBlock->AcquireReference();
+}
+
+
+RetrieveMemoryBlockJob::~RetrieveMemoryBlockJob()
+{
+	fTeamMemory->ReleaseReference();
+	fMemoryBlock->ReleaseReference();
+}
+
+
+const JobKey&
+RetrieveMemoryBlockJob::Key() const
+{
+	return fKey;
+}
+
+
+status_t
+RetrieveMemoryBlockJob::Do()
+{
+	ssize_t result = fTeamMemory->ReadMemory(fMemoryBlock->BaseAddress(),
+		fMemoryBlock->Data(), fMemoryBlock->Size());
+	if (result < 0)
+		return result;
+
+	uint32 protection = 0;
+	uint32 locking = 0;
+	status_t error = get_memory_properties(fTeam->ID(),
+		(const void *)fMemoryBlock->BaseAddress(), &protection, &locking);
+	if (error != B_OK)
+		return error;
+
+	fMemoryBlock->SetWritable((protection & B_WRITE_AREA) != 0);
+	fMemoryBlock->MarkValid();
+	return B_OK;
 }

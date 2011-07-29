@@ -47,6 +47,7 @@ enum {
 	MSG_KEYMAP_SELECTED		= 'kmps'
 };
 
+
 #undef B_TRANSLATE_CONTEXT
 #define B_TRANSLATE_CONTEXT "BootPromptWindow"
 
@@ -54,6 +55,15 @@ enum {
 namespace BPrivate {
 	void ForceUnloadCatalog();
 };
+
+
+static const char* kLanguageKeymapMappings[] = {
+	// While there is a "Dutch" keymap, it apparently has not been widely
+	// adopted, and the US-International keymap is common
+	"Dutch", "US-International"
+};
+static const size_t kLanguageKeymapMappingsSize
+	 = sizeof(kLanguageKeymapMappings) / sizeof(kLanguageKeymapMappings[0]);
 
 
 class LanguageItem : public BStringItem {
@@ -66,7 +76,7 @@ public:
 		fIcon = new(std::nothrow) BBitmap(BRect(0, 0, 15, 15), B_RGBA32);
 		if (fIcon != NULL
 			&& (!fIcon->IsValid()
-				|| BLocaleRoster::Default()->GetFlagIconForCountry(fIcon,
+				|| BLocaleRoster::Default()->GetFlagIconForLanguage(fIcon,
 					language) != B_OK)) {
 			delete fIcon;
 			fIcon = NULL;
@@ -127,7 +137,8 @@ compare_void_list_items(const void* _a, const void* _b)
 BootPromptWindow::BootPromptWindow()
 	:
 	BWindow(BRect(0, 0, 530, 400), "",
-		B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_NOT_MINIMIZABLE | B_NOT_CLOSABLE)
+		B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_NOT_MINIMIZABLE | B_NOT_CLOSABLE),
+	fDefaultKeymapItem(NULL)
 {
 	SetSizeLimits(450, 16384, 350, 16384);
 
@@ -210,7 +221,14 @@ BootPromptWindow::MessageReceived(BMessage* message)
 				MutableLocaleRoster::Default()->SetPreferredLanguages(
 					&preferredLanguages);
 				_InitCatalog(true);
-				// TODO: select default keymap by language
+
+				// Select default keymap by language
+				BLanguage language(item->Language());
+				BMenuItem* item = _KeymapItemForLanguage(language);
+				if (item != NULL) {
+					item->SetMarked(true);
+					_ActivateKeymap(item->Message());
+				}
 			}
 			// Calling it here is a cheap way of preventing the user to have
 			// no item selected. Always the current item will be selected.
@@ -218,12 +236,8 @@ BootPromptWindow::MessageReceived(BMessage* message)
 			break;
 
 		case MSG_KEYMAP_SELECTED:
-		{
-			entry_ref ref;
-			if (message->FindRef("ref", &ref) == B_OK)
-				_StoreKeymap(ref);
+			_ActivateKeymap(message);
 			break;
-		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -268,7 +282,7 @@ BootPromptWindow::_UpdateStrings()
 		"Do you wish to run the Installer or continue booting to the "
 		"Desktop?\n",
 
-		"For other languages, a test like the following could be added: \""
+		"For other languages, a note could be added: \""
 		"Note: Localization of Haiku applications and other components is "
 		"an on-going effort. You will frequently encounter untranslated "
 		"strings, but if you like, you can join in the work at "
@@ -279,7 +293,8 @@ BootPromptWindow::_UpdateStrings()
 
 	fLanguagesLabelView->SetText(B_TRANSLATE("Language"));
 	fKeymapsMenuField->SetLabel(B_TRANSLATE("Keymap"));
-	fKeymapsMenuField->MenuItem()->SetLabel(B_TRANSLATE("Custom"));
+	if (fKeymapsMenuField->Menu()->FindMarked() == NULL)
+		fKeymapsMenuField->MenuItem()->SetLabel(B_TRANSLATE("Custom"));
 }
 
 
@@ -307,7 +322,7 @@ BootPromptWindow::_PopulateLanguages()
 
 	// Try to instantiate a BCatalog for each language, it will only work
 	// for translations of this application. So the list of languages will be
-	//  limited to catalogs written for this application, which is on purpose!
+	// limited to catalogs written for this application, which is on purpose!
 
 	const char* languageID;
 	LanguageItem* currentItem = NULL;
@@ -340,7 +355,7 @@ BootPromptWindow::_PopulateLanguages()
 
 			delete language;
 		} else
-			printf("failed to get BLanguage for %s\n", languageID);
+			fprintf(stderr, "failed to get BLanguage for %s\n", languageID);
 	}
 
 	fLanguagesListView->SortItems(compare_void_list_items);
@@ -373,6 +388,10 @@ BootPromptWindow::_PopulateKeymaps()
 		return;
 	}
 
+	// US-International is the default keymap, if we could not found a
+	// matching one
+	BString usInternational("US-International");
+
 	// Populate the menu
 	BDirectory directory;
 	if (directory.SetTo(path.Path()) == B_OK) {
@@ -385,14 +404,21 @@ BootPromptWindow::_PopulateKeymaps()
 
 			if (currentName == ref.name)
 				item->SetMarked(true);
+
+			if (usInternational == ref.name)
+				fDefaultKeymapItem = item;
 		}
 	}
 }
 
 
 void
-BootPromptWindow::_StoreKeymap(const entry_ref& ref) const
+BootPromptWindow::_ActivateKeymap(const BMessage* message) const
 {
+	entry_ref ref;
+	if (message == NULL || message->FindRef("ref", &ref) != B_OK)
+		return;
+
 	// Load and use the new keymap
 	Keymap keymap;
 	if (keymap.Load(ref) != B_OK) {
@@ -426,4 +452,35 @@ BootPromptWindow::_GetCurrentKeymapRef(entry_ref& ref) const
 	}
 
 	return get_ref_for_path(path.Path(), &ref);
+}
+
+
+BMenuItem*
+BootPromptWindow::_KeymapItemForLanguage(BLanguage& language) const
+{
+	BLanguage english("en");
+	BString name;
+	if (language.GetName(name, &english) != B_OK)
+		return fDefaultKeymapItem;
+
+	// Check special mappings first
+	for (size_t i = 0; i < kLanguageKeymapMappingsSize; i += 2) {
+		if (!strcmp(name, kLanguageKeymapMappings[i])) {
+			name = kLanguageKeymapMappings[i + 1];
+			break;
+		}
+	}
+
+	BMenu* menu = fKeymapsMenuField->Menu();
+	for (int32 i = 0; i < menu->CountItems(); i++) {
+		BMenuItem* item = menu->ItemAt(i);
+		BMessage* message = item->Message();
+
+		entry_ref ref;
+		if (message->FindRef("ref", &ref) == B_OK
+			&& name == ref.name)
+			return item;
+	}
+
+	return fDefaultKeymapItem;
 }

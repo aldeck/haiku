@@ -1,36 +1,42 @@
-1	russian	x-vnd.Haiku-Mail	2472596775
+1	russian	x-vnd.Haiku-Mail	2328315862
 Account name:	Config Views		Имя аккаунта:
+Account name:	E-Mail		Имя аккаунта:
 Account settings	Config Views		Настройки аккаунта
 Accounts	Config Window		Аккаунты
 Add	Config Window		Добавить
-Alpha	Config Window		Альфа
+Add filter	Config Views		Добавить фильтр
 Always	Config Window		Всегда
 Apply	Config Window		Применить
-Beta	Config Window		Бета
 Check every	Config Window		Проверять каждые
-Development	Config Window		В разработке
+Choose Protocol	E-Mail		Выберите протокол
 E-mail	System name		Почта
+E-mail address:	E-Mail		E-mail адрес:
 Edit mailbox menu…	Config Window		Изменить меню…
 Error	Config Window		Ошибка
 Error retrieving general settings: %s\n	Config Window		Возникла ошибка при получении общих настроек: %s\n
-Final	Config Window		Финальная
-Gamma	Config Window		Гамма
-Golden master	Config Window		Золотая
-Mail Daemon Replacement\n\nby Haiku, Inc. All rights reserved.\n\nVersion %ld.%ld.%ld %s\n\nSee LICENSE file included in the installation package for more information.\n\n\n\nYou can contact us at:\n%s\n\nPlease submit bug reports using the %s\n\nProject homepage at:\n%s	Config Window		Mail Daemon Replacement\n\nразработан Haiku, Inc. Все права защищены.\n\nВерсия %ld.%ld.%ld %s\n\nДля более подробной информации смотрите файл LICENSE, находящийся в установочном архиве.\n\n\n\nВы можете связаться с нами:\n%s\n\nПожалуйста, отправляйте отчеты об ошибках используя %s\n\nСтраница проекта:\n%s
+Incoming mail filters	Config Views		Фильтры входящей почты
+Login name:	E-Mail		Имя пользователя:
 Mail checking	Config Window		Проверка почты
 Miscellaneous	Config Window		Разное
+OK	Config Views		ОК
 OK	Config Window		ОК
 Only when dial-up is connected	Config Window		Только при наличии связи
+Outgoing mail filters	Config Views		Фильтры исходящей почты
+Password:	E-Mail		Пароль:
 Real name:	Config Views		Настоящее имя:
+Real name:	E-Mail		Настоящее имя:
+Remove	Config Views		Удалить
 Remove	Config Window		Удалить
 Return address:	Config Views		Обратный адрес:
 Revert	Config Window		Вернуть
 Schedule outgoing mail when dial-up is disconnected	Config Window		Ставить в очередь исходящую почту пока отсутствует подключение
+Server Name:	E-Mail		Адрес сервера:
 Settings	Config Window		Настройки
 Show connection status window:	Config Window		Отображать окно статуса соединения:
-Start mail services on startup	Config Window		Запускать почтовые службы при старте
+Start mail services on startup	Config Window		Запускать почтовые службы при загрузке
+The filter could not be moved. Deleting filter.	Config Views		Фильтр не может быть перемещен. Удаление фильтра.
 While sending	Config Window		во время отправки
-While sending and receiving	Config Window		во время отсылки и получения
+While sending and receiving	Config Window		во время отправки и получения
 \nThe general settings couldn't be reverted.\n\nError retrieving general settings:\n%s\n	Config Window		\nНевозможно получить общие настройки.\n\nВозникла ошибка при получении общих настроек:\n%s\n
 \n\nCreate a new account with the Add button.\n\nRemove an account with the Remove button on the selected item.\n\nSelect an item in the list to change its settings.	Config Window		\n\nДля создания аккаунта нажмите кнопку Добавить.\n\nДля удаления выберите нужный аккаунт и нажмите кнопку Удалить.\n\nИзменить настройки аккаунта можно просто выбрав нужный из списка.
 days	Config Window		дней

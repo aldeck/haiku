@@ -1,7 +1,7 @@
 SubDir HAIKU_TOP src tools ;
 
-UseHeaders [ FDirName $(HAIKU_TOP) headers build private app ] : true ;
-UseHeaders [ FDirName $(HAIKU_TOP) headers build private storage ] : true ;
+UseHeaders [ FDirName $(HAIKU_TOP) headers build ] : true ;
+UsePrivateBuildHeaders app storage ;
 
 SEARCH_SOURCE += [ FDirName $(HAIKU_TOP) src/bin ] ;
 
@@ -96,6 +96,7 @@ MODE on <build>rm_attrs = 755 ;
 
 BuildPlatformMain <build>rmattr : rmattr.cpp : $(HOST_LIBBE) ;
 
+UsePrivateObjectHeaders set_haiku_revision : system libroot : : true ;
 BuildPlatformMain <build>set_haiku_revision : set_haiku_revision.cpp
 	: $(HOST_LIBSTDC++) $(HOST_LIBSUPC++) ;
 

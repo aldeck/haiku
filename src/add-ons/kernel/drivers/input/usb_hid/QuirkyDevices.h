@@ -5,23 +5,27 @@
 #ifndef USB_HID_QUIRKY_DEVICES
 #define USB_HID_QUIRKY_DEVICES
 
-static uint8 sDescriptorExample[] = { 0x00, 0x00 };
+#include "Driver.h"
+
+class HIDWriter;
+
+typedef status_t (*quirky_init_function)(usb_device device,
+	const usb_configuration_info *config, size_t interfaceIndex);
+typedef status_t (*quirky_build_descriptor)(HIDWriter &writer);
 
 struct usb_hid_quirky_device {
-	uint16			vendor_id;
-	uint16			product_id;
-	size_t			descriptor_length;
-	const uint8 *	fixed_descriptor;
+	uint16					vendor_id;
+	uint16					product_id;
+
+	uint8					device_class;
+	uint8					device_subclass;
+	uint8					device_protocol;
+
+	quirky_init_function	init_function;
+	quirky_build_descriptor	build_descriptor;
 };
 
-#define ADD_QUIRKY_DEVICE(vendorID, productID, descriptor) \
-	{ vendorID, productID, sizeof(descriptor), descriptor }
-
-static usb_hid_quirky_device sQuirkyDevices[] = {
-	ADD_QUIRKY_DEVICE(0xffff, 0xffff, sDescriptorExample)
-};
-
-static int32 sQuirkyDeviceCount
-	= sizeof(sQuirkyDevices) / sizeof(sQuirkyDevices[0]);
+extern usb_hid_quirky_device gQuirkyDevices[];
+extern int32 gQuirkyDeviceCount;
 
 #endif // USB_HID_QUIRKY_DEVICES

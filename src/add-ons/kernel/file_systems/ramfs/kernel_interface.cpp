@@ -80,42 +80,43 @@ notify_if_stat_changed(Volume *volume, Node *node)
 
 // ramfs_mount
 static status_t
-ramfs_mount(dev_t nsid, const char* /*device*/, uint32 flags,
-	const char* /*args*/, fs_volume* _volume, ino_t* rootID)
+ramfs_mount(fs_volume* _volume, const char* /*device*/, uint32 flags,
+	const char* /*args*/, ino_t* _rootID)
 {
 	FUNCTION_START();
 	// parameters are ignored for now
-	status_t error = B_OK;
+
 	// fail, if read-only mounting is requested
 	if (flags & B_MOUNT_READ_ONLY)
-		error = B_BAD_VALUE;
-	// allocate and init the volume
-	Volume *volume = NULL;
-	if (error == B_OK) {
-		volume = new(nothrow) Volume;
-		if (!volume)
-			SET_ERROR(error, B_NO_MEMORY);
-		if (error == B_OK)
-			error = volume->Mount(nsid);
-	}
-	// set the results
-	if (error == B_OK) {
-		*rootID = volume->GetRootDirectory()->GetID();
-		*_volume = volume;
-	}
-	// cleanup on failure
-	if (error != B_OK && volume)
-		delete volume;
+		return B_BAD_VALUE;
 
-	RETURN_ERROR(error);
+	// allocate and init the volume
+	Volume *volume = new(std::nothrow) Volume(_volume);
+
+	if (volume == NULL)
+		return B_NO_MEMORY;
+
+	status_t status = volume->Mount(flags);
+
+	if (status != B_OK) {
+		delete volume;
+		RETURN_ERROR(status);
+	}
+
+	*_rootID = volume->GetRootDirectory()->GetID();
+	_volume->private_volume = volume;
+
+	RETURN_ERROR(B_OK);
 }
+
 
 // ramfs_unmount
 static status_t
-ramfs_unmount(fs_volume fs)
+ramfs_unmount(fs_volume* _volume)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
+
 	status_t error = volume->Unmount();
 	if (error == B_OK)
 		delete volume;
@@ -124,22 +125,24 @@ ramfs_unmount(fs_volume fs)
 	return error;
 }
 
+
 // ramfs_read_fs_info
 static status_t
-ramfs_read_fs_info(fs_volume fs, struct fs_info *info)
+ramfs_read_fs_info(fs_volume* _volume, struct fs_info *info)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		info->flags = B_FS_IS_PERSISTENT | B_FS_HAS_ATTR | B_FS_HAS_MIME
-					  | B_FS_HAS_QUERY;
+			| B_FS_HAS_QUERY;
 		info->block_size = volume->GetBlockSize();
 		info->io_size = kOptimalIOSize;
 		info->total_blocks = volume->CountBlocks();
 		info->free_blocks = volume->CountFreeBlocks();
 		info->device_name[0] = '\0';
-		strncpy(info->volume_name, volume->GetName(), sizeof(info->volume_name));
+		strncpy(info->volume_name, volume->GetName(),
+			sizeof(info->volume_name));
 		strcpy(info->fsh_name, "ramfs");
 	} else
 		SET_ERROR(error, B_ERROR);
@@ -149,11 +152,11 @@ ramfs_read_fs_info(fs_volume fs, struct fs_info *info)
 
 // ramfs_write_fs_info
 static status_t
-ramfs_write_fs_info(fs_volume fs, const struct fs_info *info, uint32 mask)
+ramfs_write_fs_info(fs_volume* _volume, const struct fs_info *info, uint32 mask)
 
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 	status_t error = B_OK;
 	if (VolumeWriteLocker locker = volume) {
 		if (mask & FS_WRITE_FSINFO_NAME)
@@ -163,9 +166,10 @@ ramfs_write_fs_info(fs_volume fs, const struct fs_info *info, uint32 mask)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_sync
 static status_t
-ramfs_sync(fs_volume /*fs*/)
+ramfs_sync(fs_volume* /*fs*/)
 {
 	FUNCTION_START();
 	return B_OK;
@@ -177,13 +181,15 @@ ramfs_sync(fs_volume /*fs*/)
 
 // ramfs_lookup
 static status_t
-ramfs_lookup(fs_volume fs, fs_vnode _dir, const char *entryName, ino_t *vnid,
-	int *type)
+ramfs_lookup(fs_volume* _volume, fs_vnode* _dir, const char* entryName,
+	ino_t* _vnodeID)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Directory *dir = dynamic_cast<Directory*>((Node*)_dir);
-FUNCTION(("dir: (%llu), entry: `%s'\n", (dir ? dir->GetID() : -1), entryName));
+	Volume* volume = (Volume*)_volume->private_volume;
+	Directory* dir = dynamic_cast<Directory*>((Node*)_dir);
+
+	FUNCTION(("dir: (%llu), entry: `%s'\n", (dir ? dir->GetID() : -1),
+		entryName));
 
 	// check for non-directories
 	if (!dir)
@@ -195,13 +201,13 @@ FUNCTION(("dir: (%llu), entry: `%s'\n", (dir ? dir->GetID() : -1), entryName));
 
 		// special entries: "." and ".."
 		if (!strcmp(entryName, ".")) {
-			*vnid = dir->GetID();
-			if (volume->GetVNode(*vnid, &node) != B_OK)
+			*_vnodeID = dir->GetID();
+			if (volume->GetVNode(*_vnodeID, &node) != B_OK)
 				error = B_BAD_VALUE;
 		} else if (!strcmp(entryName, "..")) {
 			Directory *parent = dir->GetParent();
 			if (parent && volume->GetVNode(parent->GetID(), &node) == B_OK)
-				*vnid = node->GetID();
+				*_vnodeID = node->GetID();
 			else
 				error = B_BAD_VALUE;
 
@@ -211,38 +217,38 @@ FUNCTION(("dir: (%llu), entry: `%s'\n", (dir ? dir->GetID() : -1), entryName));
 			error = dir->FindAndGetNode(entryName, &node);
 SET_ERROR(error, error);
 			if (error == B_OK)
-				*vnid = node->GetID();
+				*_vnodeID = node->GetID();
 		}
 
-		// get the node's type
-		if (error == B_OK)
-			*type = node->GetMode() & S_IFMT;
 	} else
 		SET_ERROR(error, B_ERROR);
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_read_vnode
 static status_t
-ramfs_read_vnode(fs_volume fs, ino_t vnid, fs_vnode *node, bool reenter)
+ramfs_read_vnode(fs_volume* _volume, ino_t vnid, fs_vnode* node, int* _type,
+	uint32* _flags, bool reenter)
 {
 //	FUNCTION_START();
-FUNCTION(("node: %Ld\n", vnid));
-	Volume *volume = (Volume*)fs;
+	FUNCTION(("node: %Ld\n", vnid));
+	Volume* volume = (Volume*)_volume->private_volume;
 	Node *foundNode = NULL;
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		error = volume->FindNode(vnid, &foundNode);
 		if (error == B_OK)
-			*node = foundNode;
+			node->private_node = foundNode;
 	} else
 		SET_ERROR(error, B_ERROR);
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_write_vnode
 static status_t
-ramfs_write_vnode(fs_volume /*fs*/, fs_vnode DARG(_node), bool /*reenter*/)
+ramfs_write_vnode(fs_volume* /*fs*/, fs_vnode* DARG(_node), bool /*reenter*/)
 {
 // DANGER: If dbg_printf() is used, this thread will enter another FS and
 // even perform a write operation. The is dangerous here, since this hook
@@ -255,13 +261,15 @@ ramfs_write_vnode(fs_volume /*fs*/, fs_vnode DARG(_node), bool /*reenter*/)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_remove_vnode
 static status_t
-ramfs_remove_vnode(fs_volume fs, fs_vnode _node, bool /*reenter*/)
+ramfs_remove_vnode(fs_volume* _volume, fs_vnode* _node, bool /*reenter*/)
 {
-FUNCTION(("node: %Ld\n", ((Node*)_node)->GetID()));
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	FUNCTION(("node: %Ld\n", ((Node*)_node)->GetID()));
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
 	status_t error = B_OK;
 	if (VolumeWriteLocker locker = volume) {
 		volume->NodeRemoved(node);
@@ -277,12 +285,12 @@ FUNCTION(("node: %Ld\n", ((Node*)_node)->GetID()));
 
 // ramfs_ioctl
 static status_t
-ramfs_ioctl(fs_volume fs, fs_vnode /*node*/, fs_cookie /*cookie*/, uint32 cmd,
-	void *buffer, size_t /*length*/)
-
+ramfs_ioctl(fs_volume* _volume, fs_vnode* /*node*/, void* /*cookie*/,
+	uint32 cmd, void *buffer, size_t /*length*/)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
+
 	status_t error = B_OK;
 	switch (cmd) {
 		case RAMFS_IOCTL_GET_ALLOCATION_INFO:
@@ -324,32 +332,36 @@ PRINT(("  RAMFS_IOCTL_DUMP_INDEX, `%s'\n", name));
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_set_flags
 static status_t
-ramfs_set_flags(fs_volume /*fs*/, fs_vnode /*node*/, fs_cookie /*cookie*/,
+ramfs_set_flags(fs_volume* /*fs*/, fs_vnode* /*node*/, void* /*cookie*/,
 	int /*flags*/)
 {
 	FUNCTION_START();
-// TODO:...
+	// TODO : ramfs_set_flags
 	return B_OK;
 }
+
 
 // ramfs_fsync
 static status_t
-ramfs_fsync(fs_volume /*fs*/, fs_vnode /*node*/)
+ramfs_fsync(fs_volume* /*fs*/, fs_vnode* /*node*/)
 {
 	FUNCTION_START();
 	return B_OK;
 }
 
+
 // ramfs_read_symlink
 static status_t
-ramfs_read_symlink(fs_volume fs, fs_vnode _node, char *buffer,
+ramfs_read_symlink(fs_volume* _volume, fs_vnode* _node, char *buffer,
 	size_t *bufferSize)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		// read symlinks only
@@ -365,7 +377,7 @@ ramfs_read_symlink(fs_volume fs, fs_vnode _node, char *buffer,
 				*bufferSize = toRead;
 			} else {
 				FATAL(("Node %Ld pretends to be a SymLink, but isn't!\n",
-					   node->GetID()));
+					node->GetID()));
 				error = B_BAD_VALUE;
 			}
 		}
@@ -374,14 +386,16 @@ ramfs_read_symlink(fs_volume fs, fs_vnode _node, char *buffer,
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_create_symlink
 static status_t
-ramfs_create_symlink(fs_volume fs, fs_vnode _dir, const char *name,
+ramfs_create_symlink(fs_volume* _volume, fs_vnode* _dir, const char *name,
 	const char *path, int mode)
 {
 	FUNCTION(("name: `%s', path: `%s'\n", name, path));
-	Volume *volume = (Volume*)fs;
-	Directory *dir = dynamic_cast<Directory*>((Node*)_dir);
+	Volume* volume = (Volume*)_volume->private_volume;
+	Directory* dir = dynamic_cast<Directory*>((Node*)_dir->private_node);
+
 	status_t error = B_OK;
 	// check name
 	if (!name || *name == '\0') {
@@ -393,8 +407,8 @@ ramfs_create_symlink(fs_volume fs, fs_vnode _dir, const char *name,
 		NodeMTimeUpdater mTimeUpdater(dir);
 		// directory deleted?
 		bool removed;
-		if (get_vnode_removed(volume->GetID(), dir->GetID(), &removed) != B_OK
-			|| removed) {
+		if (get_vnode_removed(volume->FSVolume(), dir->GetID(), &removed)
+			!= B_OK || removed) {
 			SET_ERROR(error, B_NOT_ALLOWED);
 		}
 		// check directory write permissions
@@ -430,14 +444,17 @@ ramfs_create_symlink(fs_volume fs, fs_vnode _dir, const char *name,
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_link
 static status_t
-ramfs_link(fs_volume fs, fs_vnode _dir, const char *name, fs_vnode _node)
+ramfs_link(fs_volume* _volume, fs_vnode* _dir, const char *name,
+	fs_vnode* _node)
 {
 	FUNCTION(("name: `%s'\n", name));
-	Volume *volume = (Volume*)fs;
-	Directory *dir = dynamic_cast<Directory*>((Node*)_dir);
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Directory* dir = dynamic_cast<Directory*>((Node*)_dir->private_node);
+	Node* node = (Node*)_node->private_node;
+
 	status_t error = B_OK;
 	// check directory
 	if (!dir) {
@@ -446,8 +463,8 @@ ramfs_link(fs_volume fs, fs_vnode _dir, const char *name, fs_vnode _node)
 		NodeMTimeUpdater mTimeUpdater(dir);
 		// directory deleted?
 		bool removed;
-		if (get_vnode_removed(volume->GetID(), dir->GetID(), &removed) != B_OK
-			|| removed) {
+		if (get_vnode_removed(volume->FSVolume(), dir->GetID(), &removed)
+			!= B_OK || removed) {
 			SET_ERROR(error, B_NOT_ALLOWED);
 		}
 		// check directory write permissions
@@ -472,14 +489,16 @@ ramfs_link(fs_volume fs, fs_vnode _dir, const char *name, fs_vnode _node)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_unlink
 static status_t
-ramfs_unlink(fs_volume fs, fs_vnode _dir, const char *name)
+ramfs_unlink(fs_volume* _volume, fs_vnode* _dir, const char *name)
 {
 	FUNCTION(("name: `%s'\n", name));
-	Volume *volume = (Volume*)fs;
-	Directory *dir = dynamic_cast<Directory*>((Node*)_dir);
+	Volume* volume = (Volume*)_volume->private_volume;
+	Directory* dir = dynamic_cast<Directory*>((Node*)_dir->private_node);
 	status_t error = B_OK;
+
 	// check name
 	if (!name || *name == '\0' || !strcmp(name, ".") || !strcmp(name, "..")) {
 		SET_ERROR(error, B_BAD_VALUE);
@@ -515,14 +534,16 @@ ramfs_unlink(fs_volume fs, fs_vnode _dir, const char *name)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_rename
 static status_t
-ramfs_rename(fs_volume fs, fs_vnode _oldDir, const char *oldName,
-	fs_vnode _newDir, const char *newName)
+ramfs_rename(fs_volume* _volume, fs_vnode* _oldDir, const char *oldName,
+	fs_vnode* _newDir, const char *newName)
 {
-	Volume *volume = (Volume*)fs;
-	Directory *oldDir = dynamic_cast<Directory*>((Node*)_oldDir);
-	Directory *newDir = dynamic_cast<Directory*>((Node*)_newDir);
+	Volume* volume = (Volume*)_volume->private_volume;
+
+	Directory* oldDir = dynamic_cast<Directory*>((Node*)_oldDir->private_node);
+	Directory* newDir = dynamic_cast<Directory*>((Node*)_newDir->private_node);
 	status_t error = B_OK;
 
 	if (VolumeWriteLocker locker = volume) {
@@ -533,9 +554,8 @@ oldDir->GetID(), oldName, newDir->GetID(), newName));
 
 		// target directory deleted?
 		bool removed;
-		if (get_vnode_removed(volume->GetID(), newDir->GetID(), &removed)
-				!= B_OK
-			|| removed) {
+		if (get_vnode_removed(volume->FSVolume(), newDir->GetID(), &removed)
+				!= B_OK || removed) {
 			SET_ERROR(error, B_NOT_ALLOWED);
 		}
 
@@ -556,8 +576,8 @@ oldDir->GetID(), oldName, newDir->GetID(), newName));
 					// check whether the entry is a descendent of the target
 					// directory
 					for (Directory *parent = newDir;
-						 parent;
-						 parent = parent->GetParent()) {
+						parent;
+						parent = parent->GetParent()) {
 						if (parent == node) {
 							error = B_BAD_VALUE;
 							break;
@@ -572,7 +592,7 @@ oldDir->GetID(), oldName, newDir->GetID(), newName));
 			Entry *clobberEntry = NULL;
 			if (error == B_OK) {
 				if (newDir->FindAndGetNode(newName, &clobberNode,
-										   &clobberEntry) == B_OK) {
+					&clobberEntry) == B_OK) {
 					if (clobberNode->IsDirectory()
 						&& !dynamic_cast<Directory*>(clobberNode)->IsEmpty()) {
 						SET_ERROR(error, B_NAME_IN_USE);
@@ -631,13 +651,15 @@ oldDir->GetID(), oldName, newDir->GetID(), newName));
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_access
 static status_t
-ramfs_access(fs_volume fs, fs_vnode _node, int mode)
+ramfs_access(fs_volume* _volume, fs_vnode* _node, int mode)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		error = node->CheckPermissions(mode);
@@ -646,14 +668,16 @@ ramfs_access(fs_volume fs, fs_vnode _node, int mode)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_read_stat
 static status_t
-ramfs_read_stat(fs_volume fs, fs_vnode _node, struct stat *st)
+ramfs_read_stat(fs_volume* _volume, fs_vnode* _node, struct stat *st)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
-FUNCTION(("node: %Ld\n", node->GetID()));
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
+	FUNCTION(("node: %Ld\n", node->GetID()));
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		st->st_dev = volume->GetID();
@@ -673,14 +697,16 @@ FUNCTION(("node: %Ld\n", node->GetID()));
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_write_stat
 static status_t
-ramfs_write_stat(fs_volume fs, fs_vnode _node, const struct stat *st,
+ramfs_write_stat(fs_volume* _volume, fs_vnode* _node, const struct stat *st,
 	uint32 mask)
 {
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
 	FUNCTION(("mask: %lx\n", mask));
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
 	status_t error = B_OK;
 	if (VolumeWriteLocker locker = volume) {
 		NodeMTimeUpdater mTimeUpdater(node);
@@ -692,8 +718,8 @@ ramfs_write_stat(fs_volume fs, fs_vnode _node, const struct stat *st,
 		if (error == B_OK) {
 			// permissions
 			if (mask & B_STAT_MODE) {
-				node->SetMode(node->GetMode() & ~S_IUMSK
-					| st->st_mode & S_IUMSK);
+				node->SetMode((node->GetMode() & ~S_IUMSK)
+					| (st->st_mode & S_IUMSK));
 			}
 			// UID
 			if (mask & B_STAT_UID)
@@ -725,35 +751,37 @@ class FileCookie {
 public:
 	FileCookie(int openMode) : fOpenMode(openMode), fLastNotificationTime(0) {}
 
-	inline int GetOpenMode()				{ return fOpenMode; }
+	inline int GetOpenMode() { return fOpenMode; }
+	inline bigtime_t GetLastNotificationTime() { return fLastNotificationTime; }
 
-	inline bigtime_t GetLastNotificationTime()
-		{ return fLastNotificationTime; }
-
-	inline bool NotificationIntervalElapsed(bool set = false)
+	inline bool	NotificationIntervalElapsed(bool set = false)
 	{
 		bigtime_t currentTime = system_time();
-		bool result = (currentTime - fLastNotificationTime
-					   > kNotificationInterval);
+		bool result = (currentTime
+			- fLastNotificationTime > kNotificationInterval);
+
 		if (set && result)
 			fLastNotificationTime = currentTime;
+
 		return result;
 	}
 
 private:
-	int			fOpenMode;
-	bigtime_t	fLastNotificationTime;
+	int fOpenMode;
+	bigtime_t fLastNotificationTime;
 };
+
 
 // ramfs_create
 static status_t
-ramfs_create(fs_volume fs, fs_vnode _dir, const char *name, int openMode,
-	int mode, fs_cookie *_cookie, ino_t *vnid)
+ramfs_create(fs_volume* _volume, fs_vnode* _dir, const char *name, int openMode,
+	int mode, void** _cookie, ino_t *vnid)
 {
 //	FUNCTION_START();
 	FUNCTION(("name: `%s', open mode: %x, mode: %x\n", name, openMode, mode));
-	Volume *volume = (Volume*)fs;
-	Directory *dir = dynamic_cast<Directory*>((Node*)_dir);
+	Volume* volume = (Volume*)_volume->private_volume;
+	Directory* dir = dynamic_cast<Directory*>((Node*)_dir->private_node);
+
 	status_t error = B_OK;
 	// check name
 	if (!name || *name == '\0') {
@@ -765,8 +793,8 @@ ramfs_create(fs_volume fs, fs_vnode _dir, const char *name, int openMode,
 		NodeMTimeUpdater mTimeUpdater(dir);
 		// directory deleted?
 		bool removed;
-		if (get_vnode_removed(volume->GetID(), dir->GetID(), &removed) != B_OK
-			|| removed) {
+		if (get_vnode_removed(volume->FSVolume(), dir->GetID(), &removed)
+			!= B_OK || removed) {
 			SET_ERROR(error, B_NOT_ALLOWED);
 		}
 		// create the file cookie
@@ -788,8 +816,7 @@ ramfs_create(fs_volume fs, fs_vnode _dir, const char *name, int openMode,
 				} else if (!node->IsFile()) {
 					SET_ERROR(error, B_NOT_ALLOWED);
 				// the user must have write permission for an existing entry
-				} else if ((error = node->CheckPermissions(ACCESS_W))
-						   == B_OK) {
+				} else if ((error = node->CheckPermissions(ACCESS_W)) == B_OK) {
 					// truncate, if requested
 					if (openMode & O_TRUNC)
 						error = node->SetSize(0);
@@ -829,14 +856,16 @@ ramfs_create(fs_volume fs, fs_vnode _dir, const char *name, int openMode,
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_open
 static status_t
-ramfs_open(fs_volume fs, fs_vnode _node, int openMode, fs_cookie *_cookie)
+ramfs_open(fs_volume* _volume, fs_vnode* _node, int openMode, void** _cookie)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
-FUNCTION(("node: %Ld\n", node->GetID()));
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
+	FUNCTION(("node: %Ld\n", node->GetID()));
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		// directory can be opened read-only
@@ -870,14 +899,16 @@ FUNCTION(("node: %Ld\n", node->GetID()));
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_close
 static status_t
-ramfs_close(fs_volume fs, fs_vnode _node, fs_cookie /*cookie*/)
+ramfs_close(fs_volume* _volume, fs_vnode* _node, void* /*cookie*/)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
-FUNCTION(("node: %Ld\n", node->GetID()));
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
+	FUNCTION(("node: %Ld\n", node->GetID()));
 	status_t error = B_OK;
 	// notify listeners
 	if (VolumeReadLocker locker = volume) {
@@ -888,9 +919,10 @@ FUNCTION(("node: %Ld\n", node->GetID()));
 
 }
 
+
 // ramfs_free_cookie
 static status_t
-ramfs_free_cookie(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
+ramfs_free_cookie(fs_volume* /*fs*/, fs_vnode* /*_node*/, void* _cookie)
 {
 	FUNCTION_START();
 	FileCookie *cookie = (FileCookie*)_cookie;
@@ -898,15 +930,17 @@ ramfs_free_cookie(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
 	return B_OK;
 }
 
+
 // ramfs_read
 static status_t
-ramfs_read(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
+ramfs_read(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
 	void *buffer, size_t *bufferSize)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
 	FileCookie *cookie = (FileCookie*)_cookie;
+
 //	FUNCTION(("((%lu, %lu), %Ld, %p, %lu)\n", node->GetDirID(),
 //			  node->GetObjectID(), pos, buffer, *bufferSize));
 	status_t error = B_OK;
@@ -924,7 +958,7 @@ ramfs_read(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
 				error = file->ReadAt(pos, buffer, *bufferSize, bufferSize);
 			else {
 				FATAL(("Node %Ld pretends to be a File, but isn't!\n",
-					   node->GetID()));
+					node->GetID()));
 				error = B_BAD_VALUE;
 			}
 		}
@@ -933,14 +967,16 @@ ramfs_read(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_write
 static status_t
-ramfs_write(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
+ramfs_write(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
 	const void *buffer, size_t *bufferSize)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
 	FileCookie *cookie = (FileCookie*)_cookie;
 //	FUNCTION(("((%lu, %lu), %Ld, %p, %lu)\n", node->GetDirID(),
 //			  node->GetObjectID(), pos, buffer, *bufferSize));
@@ -961,10 +997,10 @@ ramfs_write(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
 				// write
 				if (File *file = dynamic_cast<File*>(node)) {
 					error = file->WriteAt(pos, buffer, *bufferSize,
-										  bufferSize);
+						bufferSize);
 				} else {
 					FATAL(("Node %Ld pretends to be a File, but isn't!\n",
-						   node->GetID()));
+					node->GetID()));
 					error = B_BAD_VALUE;
 				}
 			}
@@ -986,11 +1022,12 @@ ramfs_write(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
 class DirectoryCookie {
 public:
 	DirectoryCookie(Directory *directory = NULL)
-		: fIterator(directory),
-		  fDotIndex(DOT_INDEX),
-		  // debugging
-		  fIteratorID(atomic_add(&fNextIteratorID, 1)),
-		  fGetNextCounter(0)
+		:
+		fIterator(directory),
+		fDotIndex(DOT_INDEX),
+		// debugging
+		fIteratorID(atomic_add(&fNextIteratorID, 1)),
+		fGetNextCounter(0)
 	{
 	}
 
@@ -1026,9 +1063,10 @@ fGetNextCounter++;
 				*entryName = entry->GetName();
 			}
 		}
-PRINT(("EntryIterator %ld, GetNext() counter: %ld, entry: %p (%Ld)\n",
-fIteratorID, fGetNextCounter, fIterator.GetCurrent(),
-(fIterator.GetCurrent() ? fIterator.GetCurrent()->GetNode()->GetID() : -1)));
+		PRINT(("EntryIterator %ld, GetNext() counter: %ld, entry: %p (%Ld)\n",
+		fIteratorID, fGetNextCounter, fIterator.GetCurrent(),
+			(fIterator.GetCurrent()
+				? fIterator.GetCurrent()->GetNode()->GetID() : -1)));
 		return error;
 	}
 
@@ -1057,15 +1095,19 @@ private:
 	int32			fGetNextCounter;
 	static vint32	fNextIteratorID;
 };
+
+
 vint32 DirectoryCookie::fNextIteratorID = 0;
+
 
 // ramfs_create_dir
 static status_t
-ramfs_create_dir(fs_volume fs, fs_vnode _dir, const char *name, int mode)
+ramfs_create_dir(fs_volume* _volume, fs_vnode* _dir, const char *name, int mode)
 {
 	FUNCTION(("name: `%s', mode: %x\n", name, mode));
-	Volume *volume = (Volume*)fs;
-	Directory *dir = dynamic_cast<Directory*>((Node*)_dir);
+	Volume* volume = (Volume*)_volume->private_volume;
+	Directory* dir = dynamic_cast<Directory*>((Node*)_dir->private_node);
+
 	status_t error = B_OK;
 	// check name
 	if (!name || *name == '\0') {
@@ -1077,8 +1119,8 @@ ramfs_create_dir(fs_volume fs, fs_vnode _dir, const char *name, int mode)
 		NodeMTimeUpdater mTimeUpdater(dir);
 		// directory deleted?
 		bool removed;
-		if (get_vnode_removed(volume->GetID(), dir->GetID(), &removed) != B_OK
-			|| removed) {
+		if (get_vnode_removed(volume->FSVolume(), dir->GetID(), &removed)
+			!= B_OK || removed) {
 			SET_ERROR(error, B_NOT_ALLOWED);
 		}
 		// check directory write permissions
@@ -1114,14 +1156,16 @@ ramfs_create_dir(fs_volume fs, fs_vnode _dir, const char *name, int mode)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_remove_dir
 static status_t
-ramfs_remove_dir(fs_volume fs, fs_vnode _dir, const char *name)
+ramfs_remove_dir(fs_volume* _volume, fs_vnode* _dir, const char *name)
 {
 	FUNCTION(("name: `%s'\n", name));
-	Volume *volume = (Volume*)fs;
-	Directory *dir = dynamic_cast<Directory*>((Node*)_dir);
+	Volume* volume = (Volume*)_volume->private_volume;
+	Directory* dir = dynamic_cast<Directory*>((Node*)_dir->private_node);
 	status_t error = B_OK;
+
 	// check name
 	if (!name || *name == '\0' || !strcmp(name, ".") || !strcmp(name, "..")) {
 		SET_ERROR(error, B_BAD_VALUE);
@@ -1157,14 +1201,16 @@ ramfs_remove_dir(fs_volume fs, fs_vnode _dir, const char *name)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_open_dir
 static status_t
-ramfs_open_dir(fs_volume /*fs*/, fs_vnode _node, fs_cookie *_cookie)
+ramfs_open_dir(fs_volume* /*fs*/, fs_vnode* _node, void** _cookie)
 {
 //	FUNCTION_START();
 //	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
-FUNCTION(("dir: (%Lu)\n", node->GetID()));
+	Node* node = (Node*)_node->private_node;
+
+	FUNCTION(("dir: (%Lu)\n", node->GetID()));
 	// get the Directory
 	status_t error = (node->IsDirectory() ? B_OK : B_NOT_A_DIRECTORY);
 	Directory *dir = NULL;
@@ -1172,7 +1218,7 @@ FUNCTION(("dir: (%Lu)\n", node->GetID()));
 		dir = dynamic_cast<Directory*>(node);
 		if (!dir) {
 			FATAL(("Node %Ld pretends to be a Directory, but isn't!\n",
-				   node->GetID()));
+				node->GetID()));
 			error = B_NOT_A_DIRECTORY;
 		}
 	}
@@ -1192,12 +1238,13 @@ FUNCTION(("dir: (%Lu)\n", node->GetID()));
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_close_dir
 static status_t
-ramfs_close_dir(fs_volume /*fs*/, fs_vnode DARG(_node), fs_cookie _cookie)
+ramfs_close_dir(fs_volume* /*fs*/, fs_vnode* DARG(_node), void* _cookie)
 {
 	FUNCTION_START();
-FUNCTION(("dir: (%Lu)\n", ((Node*)_node)->GetID()));
+	FUNCTION(("dir: (%Lu)\n", ((Node*)_node)->GetID()));
 	// No locking needed, since the Directory is guaranteed to live at this
 	// time and for iterators there is a separate locking.
 	DirectoryCookie *cookie = (DirectoryCookie*)_cookie;
@@ -1205,9 +1252,10 @@ FUNCTION(("dir: (%Lu)\n", ((Node*)_node)->GetID()));
 	return B_OK;
 }
 
+
 // ramfs_free_dir_cookie
 static status_t
-ramfs_free_dir_cookie(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
+ramfs_free_dir_cookie(fs_volume* /*fs*/, fs_vnode* /*_node*/, void* _cookie)
 {
 	FUNCTION_START();
 	DirectoryCookie *cookie = (DirectoryCookie*)_cookie;
@@ -1215,15 +1263,17 @@ ramfs_free_dir_cookie(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
 	return B_OK;
 }
 
+
 // ramfs_read_dir
 static status_t
-ramfs_read_dir(fs_volume fs, fs_vnode DARG(_node), fs_cookie _cookie,
+ramfs_read_dir(fs_volume* _volume, fs_vnode* DARG(_node), void* _cookie,
 	struct dirent *buffer, size_t bufferSize, uint32 *count)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-DARG(Node *node = (Node*)_node; )
-FUNCTION(("dir: (%Lu)\n", node->GetID()));
+	Volume* volume = (Volume*)_volume->private_volume;
+	DARG(Node *node = (Node*)_node; )
+
+	FUNCTION(("dir: (%Lu)\n", node->GetID()));
 	DirectoryCookie *cookie = (DirectoryCookie*)_cookie;
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
@@ -1233,7 +1283,7 @@ FUNCTION(("dir: (%Lu)\n", node->GetID()));
 			ino_t nodeID = -1;
 			const char *name = NULL;
 			if (cookie->GetNext(&nodeID, &name) == B_OK) {
-PRINT(("  entry: `%s'\n", name));
+				PRINT(("  entry: `%s'\n", name));
 				size_t nameLen = strlen(name);
 				// check, whether the entry fits into the buffer,
 				// and fill it in
@@ -1248,18 +1298,21 @@ PRINT(("  entry: `%s'\n", name));
 				} else {
 					SET_ERROR(error, B_BUFFER_OVERFLOW);
 				}
-	 		} else
-	 			*count = 0;
-	 		cookie->Suspend();
+			} else
+				*count = 0;
+
+			cookie->Suspend();
 		}
 	} else
 		SET_ERROR(error, B_ERROR);
+
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_rewind_dir
 static status_t
-ramfs_rewind_dir(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
+ramfs_rewind_dir(fs_volume* /*fs*/, fs_vnode* /*_node*/, void* _cookie)
 {
 	FUNCTION_START();
 	// No locking needed, since the Directory is guaranteed to live at this
@@ -1276,11 +1329,12 @@ ramfs_rewind_dir(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
 
 // ramfs_open_attr_dir
 static status_t
-ramfs_open_attr_dir(fs_volume fs, fs_vnode _node, fs_cookie *cookie)
+ramfs_open_attr_dir(fs_volume* _volume, fs_vnode* _node, void** _cookie)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		// check permissions
@@ -1296,7 +1350,7 @@ ramfs_open_attr_dir(fs_volume fs, fs_vnode _node, fs_cookie *cookie)
 		}
 		// set result / cleanup on failure
 		if (error == B_OK)
-			*cookie = iterator;
+			*_cookie = iterator;
 		else
 			delete iterator;
 	} else
@@ -1304,39 +1358,43 @@ ramfs_open_attr_dir(fs_volume fs, fs_vnode _node, fs_cookie *cookie)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_close_attr_dir
 static status_t
-ramfs_close_attr_dir(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie cookie)
+ramfs_close_attr_dir(fs_volume* /*fs*/, fs_vnode* /*_node*/, void* _cookie)
 {
 	FUNCTION_START();
 	// No locking needed, since the Node is guaranteed to live at this time
 	// and for iterators there is a separate locking.
-	AttributeIterator *iterator = (AttributeIterator*)cookie;
+	AttributeIterator *iterator = (AttributeIterator*)_cookie;
 	iterator->Unset();
 	return B_OK;
 }
 
+
 // ramfs_free_attr_dir_cookie
 static status_t
-ramfs_free_attr_dir_cookie(fs_volume /*fs*/, fs_vnode /*_node*/,
-	fs_cookie cookie)
+ramfs_free_attr_dir_cookie(fs_volume* /*fs*/, fs_vnode* /*_node*/,
+	void* _cookie)
 {
 	FUNCTION_START();
 	// No locking needed, since the Node is guaranteed to live at this time
 	// and for iterators there is a separate locking.
-	AttributeIterator *iterator = (AttributeIterator*)cookie;
+	AttributeIterator *iterator = (AttributeIterator*)_cookie;
 	delete iterator;
 	return B_OK;
 }
 
+
 // ramfs_read_attr_dir
 static status_t
-ramfs_read_attr_dir(fs_volume fs, fs_vnode _node, fs_cookie cookie,
+ramfs_read_attr_dir(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 	struct dirent *buffer, size_t bufferSize, uint32 *count)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	AttributeIterator *iterator = (AttributeIterator*)cookie;
+	Volume* volume = (Volume*)_volume->private_volume;
+
+	AttributeIterator *iterator = (AttributeIterator*)_cookie;
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		error = iterator->Resume();
@@ -1361,21 +1419,24 @@ ramfs_read_attr_dir(fs_volume fs, fs_vnode _node, fs_cookie cookie,
 				}
 			} else
 				*count = 0;
-	 		iterator->Suspend();
+
+			iterator->Suspend();
 		}
 	} else
 		SET_ERROR(error, B_ERROR);
+
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_rewind_attr_dir
 static status_t
-ramfs_rewind_attr_dir(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie cookie)
+ramfs_rewind_attr_dir(fs_volume* /*fs*/, fs_vnode* /*_node*/, void* _cookie)
 {
 	FUNCTION_START();
 	// No locking needed, since the Node is guaranteed to live at this time
 	// and for iterators there is a separate locking.
-	AttributeIterator *iterator = (AttributeIterator*)cookie;
+	AttributeIterator *iterator = (AttributeIterator*)_cookie;
 	// no need to Resume(), iterator remains suspended
 	status_t error = iterator->Rewind();
 	RETURN_ERROR(error);
@@ -1410,7 +1471,7 @@ public:
 	{
 		bigtime_t currentTime = system_time();
 		bool result = (currentTime - fLastNotificationTime
-					   > kNotificationInterval);
+			> kNotificationInterval);
 		if (set && result)
 			fLastNotificationTime = currentTime;
 		return result;
@@ -1422,14 +1483,15 @@ private:
 	bigtime_t	fLastNotificationTime;
 };
 
+
 // ramfs_create_attr
 static status_t
-ramfs_create_attr(fs_volume fs, fs_vnode _node, const char *name, uint32 type,
-	int openMode, fs_cookie *_cookie)
+ramfs_create_attr(fs_volume* _volume, fs_vnode* _node, const char *name,
+	uint32 type, int openMode, void** _cookie)
 {
 
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
 
 	if (VolumeWriteLocker locker = volume) {
 		// try to find the attribute
@@ -1492,15 +1554,17 @@ ramfs_create_attr(fs_volume fs, fs_vnode _node, const char *name, uint32 type,
 	return B_OK;
 }
 
+
 // ramfs_open_attr
 static status_t
-ramfs_open_attr(fs_volume fs, fs_vnode _node, const char *name, int openMode,
-	fs_cookie *_cookie)
+ramfs_open_attr(fs_volume* _volume, fs_vnode* _node, const char *name,
+	int openMode, void** _cookie)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
-FUNCTION(("node: %lld\n", node->GetID()));
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
+	FUNCTION(("node: %lld\n", node->GetID()));
 	status_t error = B_OK;
 
 	if (VolumeWriteLocker locker = volume) {
@@ -1550,14 +1614,16 @@ FUNCTION(("node: %lld\n", node->GetID()));
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_close_attr
 static status_t
-ramfs_close_attr(fs_volume fs, fs_vnode _node, fs_cookie cookie)
+ramfs_close_attr(fs_volume* _volume, fs_vnode* _node, void* _cookie)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
-FUNCTION(("node: %lld\n", node->GetID()));
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
+
+	FUNCTION(("node: %lld\n", node->GetID()));
 	status_t error = B_OK;
 
 	// notify listeners
@@ -1569,9 +1635,10 @@ FUNCTION(("node: %lld\n", node->GetID()));
 
 }
 
+
 // ramfs_free_attr_cookie
 static status_t
-ramfs_free_attr_cookie(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
+ramfs_free_attr_cookie(fs_volume* /*fs*/, fs_vnode* /*_node*/, void* _cookie)
 {
 	FUNCTION_START();
 	AttributeCookie *cookie = (AttributeCookie*)_cookie;
@@ -1579,17 +1646,19 @@ ramfs_free_attr_cookie(fs_volume /*fs*/, fs_vnode /*_node*/, fs_cookie _cookie)
 	return B_OK;
 }
 
+
 // ramfs_read_attr
 static status_t
-ramfs_read_attr(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
+ramfs_read_attr(fs_volume* _volume, fs_vnode* _node, void* _cookie, off_t pos,
 	void *buffer, size_t *bufferSize)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
-	AttributeCookie *cookie = (AttributeCookie*)_cookie;
-	status_t error = B_OK;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
 
+	AttributeCookie *cookie = (AttributeCookie*)_cookie;
+
+	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		// find the attribute
 		Attribute *attribute = NULL;
@@ -1609,22 +1678,24 @@ ramfs_read_attr(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_write_attr
 static status_t
-ramfs_write_attr(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
-	const void *buffer, size_t *bufferSize)
+ramfs_write_attr(fs_volume* _volume, fs_vnode* _node, void* _cookie,
+	off_t pos, const void *buffer, size_t *bufferSize)
 {
-//	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	//	FUNCTION_START();
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
 	AttributeCookie *cookie = (AttributeCookie*)_cookie;
-	status_t error = B_OK;
 
+	status_t error = B_OK;
 	// Don't allow writing the reserved attributes.
 	const char *name = cookie->GetName();
 	if (name[0] == '\0' || !strcmp(name, "name")
 		|| !strcmp(name, "last_modified") || !strcmp(name, "size")) {
-//FUNCTION(("failed: node: %s, attribute: %s\n", node->GetName(), name));
+		// FUNCTION(("failed: node: %s, attribute: %s\n",
+		//	node->GetName(), name));
 		RETURN_ERROR(B_NOT_ALLOWED);
 	}
 
@@ -1652,17 +1723,19 @@ ramfs_write_attr(fs_volume fs, fs_vnode _node, fs_cookie _cookie, off_t pos,
 		}
 	} else
 		SET_ERROR(error, B_ERROR);
+
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_read_attr_stat
 static status_t
-ramfs_read_attr_stat(fs_volume fs, fs_vnode _node, fs_cookie _cookie,
+ramfs_read_attr_stat(fs_volume* _volume, fs_vnode* _node, void* _cookie,
 	struct stat *st)
 {
 //	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
 	AttributeCookie *cookie = (AttributeCookie*)_cookie;
 	status_t error = B_OK;
 
@@ -1687,24 +1760,26 @@ ramfs_read_attr_stat(fs_volume fs, fs_vnode _node, fs_cookie _cookie,
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_rename_attr
 static status_t
-ramfs_rename_attr(fs_volume /*fs*/, fs_vnode /*_fromNode*/,
-	const char */*fromName*/, fs_vnode /*_toNode*/, const char */*toName*/)
+ramfs_rename_attr(fs_volume* /*fs*/, fs_vnode* /*_fromNode*/,
+	const char */*fromName*/, fs_vnode* /*_toNode*/, const char */*toName*/)
 {
-	// TODO:...
+	// TODO : ramfs_rename_attr
 	return B_BAD_VALUE;
 }
 
+
 // ramfs_remove_attr
 static status_t
-ramfs_remove_attr(fs_volume fs, fs_vnode _node, const char *name)
-
+ramfs_remove_attr(fs_volume* _volume, fs_vnode* _node, const char *name)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
-	Node *node = (Node*)_node;
+	Volume* volume = (Volume*)_volume->private_volume;
+	Node* node = (Node*)_node->private_node;
 	status_t error = B_OK;
+
 	if (VolumeWriteLocker locker = volume) {
 		NodeMTimeUpdater mTimeUpdater(node);
 
@@ -1727,6 +1802,7 @@ ramfs_remove_attr(fs_volume fs, fs_vnode _node, const char *name)
 		}
 	} else
 		SET_ERROR(error, B_ERROR);
+
 	RETURN_ERROR(error);
 }
 
@@ -1742,12 +1818,13 @@ public:
 	int32	index_index;
 };
 
+
 // ramfs_open_index_dir
 static status_t
-ramfs_open_index_dir(fs_volume fs, fs_cookie *_cookie)
+ramfs_open_index_dir(fs_volume* _volume, void** _cookie)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		// check whether an index directory exists
@@ -1764,17 +1841,19 @@ ramfs_open_index_dir(fs_volume fs, fs_cookie *_cookie)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_close_index_dir
 static status_t
-ramfs_close_index_dir(fs_volume /*fs*/, fs_cookie /*_cookie*/)
+ramfs_close_index_dir(fs_volume* /*fs*/, void* /*_cookie*/)
 {
 	FUNCTION_START();
 	return B_OK;
 }
 
+
 // ramfs_free_index_dir_cookie
 static status_t
-ramfs_free_index_dir_cookie(fs_volume /*fs*/, fs_cookie _cookie)
+ramfs_free_index_dir_cookie(fs_volume* /*fs*/, void* _cookie)
 {
 	FUNCTION_START();
 	IndexDirCookie *cookie = (IndexDirCookie*)_cookie;
@@ -1782,15 +1861,17 @@ ramfs_free_index_dir_cookie(fs_volume /*fs*/, fs_cookie _cookie)
 	return B_OK;
 }
 
+
 // ramfs_read_index_dir
 static status_t
-ramfs_read_index_dir(fs_volume fs, fs_cookie _cookie, struct dirent *buffer,
-	size_t bufferSize, uint32 *count)
+ramfs_read_index_dir(fs_volume* _volume, void* _cookie,
+	struct dirent *buffer, size_t bufferSize, uint32 *count)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 	IndexDirCookie *cookie = (IndexDirCookie*)_cookie;
 	status_t error = B_OK;
+
 	if (VolumeReadLocker locker = volume) {
 		// get the next index
 		Index *index = volume->GetIndexDirectory()->IndexAt(
@@ -1815,12 +1896,14 @@ ramfs_read_index_dir(fs_volume fs, fs_cookie _cookie, struct dirent *buffer,
 			*count = 0;
 	} else
 		SET_ERROR(error, B_ERROR);
+
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_rewind_index_dir
 static status_t
-ramfs_rewind_index_dir(fs_volume /*fs*/, fs_cookie _cookie)
+ramfs_rewind_index_dir(fs_volume* /*fs*/, void* _cookie)
 {
 	FUNCTION_START();
 	IndexDirCookie *cookie = (IndexDirCookie*)_cookie;
@@ -1828,14 +1911,16 @@ ramfs_rewind_index_dir(fs_volume /*fs*/, fs_cookie _cookie)
 	return B_OK;
 }
 
+
 // ramfs_create_index
 static status_t
-ramfs_create_index(fs_volume fs, const char *name, uint32 type,
+ramfs_create_index(fs_volume* _volume, const char *name, uint32 type,
 	uint32 /*flags*/)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 	status_t error = B_OK;
+
 	// only root is allowed to manipulate the indices
 	if (geteuid() != 0) {
 		SET_ERROR(error, B_NOT_ALLOWED);
@@ -1854,15 +1939,17 @@ ramfs_create_index(fs_volume fs, const char *name, uint32 type,
 			SET_ERROR(error, B_ENTRY_NOT_FOUND);
 	} else
 		SET_ERROR(error, B_ERROR);
+
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_remove_index
 static status_t
-ramfs_remove_index(fs_volume fs, const char *name)
+ramfs_remove_index(fs_volume* _volume, const char *name)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 	status_t error = B_OK;
 	// only root is allowed to manipulate the indices
 	if (geteuid() != 0) {
@@ -1886,12 +1973,13 @@ ramfs_remove_index(fs_volume fs, const char *name)
 	RETURN_ERROR(error);
 }
 
+
 // ramfs_read_index_stat
 static status_t
-ramfs_read_index_stat(fs_volume fs, const char *name, struct stat *st)
+ramfs_read_index_stat(fs_volume* _volume, const char *name, struct stat *st)
 {
 	FUNCTION_START();
-	Volume *volume = (Volume*)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 	status_t error = B_OK;
 	if (VolumeReadLocker locker = volume) {
 		// get the index directory
@@ -1925,13 +2013,14 @@ ramfs_read_index_stat(fs_volume fs, const char *name, struct stat *st)
 
 // ramfs_open_query
 static status_t
-ramfs_open_query(fs_volume fs, const char *queryString, uint32 flags,
-	port_id port, uint32 token, fs_cookie *cookie)
+ramfs_open_query(fs_volume* _volume, const char *queryString, uint32 flags,
+	port_id port, uint32 token, void** _cookie)
 {
 	FUNCTION_START();
-	PRINT(("query = \"%s\", flags = %lu, port_id = %ld, token = %ld\n", queryString, flags, port, token));
+	PRINT(("query = \"%s\", flags = %lu, port_id = %ld, token = %ld\n",
+		queryString, flags, port, token));
 
-	Volume *volume = (Volume *)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 
 	// lock the volume
 	VolumeReadLocker locker(volume);
@@ -1961,33 +2050,35 @@ ramfs_open_query(fs_volume fs, const char *queryString, uint32 flags,
 	if (flags & B_LIVE_QUERY)
 		query->SetLiveMode(port, token);
 
-	*cookie = (void *)query;
+	*_cookie = (void *)query;
 
 	return B_OK;
 }
+
 
 // ramfs_close_query
 static status_t
-ramfs_close_query(fs_volume /*fs*/, fs_cookie /*cookie*/)
+ramfs_close_query(fs_volume* /*fs*/, void* /*cookie*/)
 {
 	FUNCTION_START();
 	return B_OK;
 }
 
+
 // ramfs_free_query_cookie
 static status_t
-ramfs_free_query_cookie(fs_volume fs, fs_cookie cookie)
+ramfs_free_query_cookie(fs_volume* _volume, void* _cookie)
 {
 	FUNCTION_START();
 
-	Volume *volume = (Volume *)fs;
+	Volume* volume = (Volume*)_volume->private_volume;
 
 	// lock the volume
 	VolumeReadLocker locker(volume);
 	if (!locker.IsLocked())
 		RETURN_ERROR(B_ERROR);
 
-	Query *query = (Query *)cookie;
+	Query *query = (Query *)_cookie;
 	Expression *expression = query->GetExpression();
 	delete query;
 	delete expression;
@@ -1995,14 +2086,15 @@ ramfs_free_query_cookie(fs_volume fs, fs_cookie cookie)
 	return B_OK;
 }
 
+
 // ramfs_read_query
 static status_t
-ramfs_read_query(fs_volume fs, fs_cookie cookie, struct dirent *buffer,
+ramfs_read_query(fs_volume* _volume, void* _cookie, struct dirent *buffer,
 	size_t bufferSize, uint32 *count)
 {
 	FUNCTION_START();
-	Query *query = (Query *)cookie;
-	Volume *volume = (Volume *)fs;
+	Query *query = (Query *)_cookie;
+	Volume* volume = (Volume*)_volume->private_volume;
 
 	// lock the volume
 	VolumeReadLocker locker(volume);
@@ -2020,7 +2112,8 @@ ramfs_read_query(fs_volume fs, fs_cookie cookie, struct dirent *buffer,
 	return B_OK;
 }
 
-// TODO: status_t (*rewind_query)(fs_volume fs, fs_cookie cookie);
+
+// TODO: status_t (*rewind_query)(fs_volume fs, void** _cookie);
 
 
 // #pragma mark - Module Interface
@@ -2047,47 +2140,55 @@ ramfs_std_ops(int32 op, ...)
 	}
 }
 
-static file_system_module_info sRamFSModuleInfo = {
-	{
-		"file_systems/ramfs" B_CURRENT_FS_API_VERSION,
-		0,
-		ramfs_std_ops,
-	},
 
-	"ramfs",				// short_name
-	"RAM File System",		// pretty_name
-	B_DISK_SYSTEM_SUPPORTS_WRITING, // DDM flags
-
-	// scanning
-	NULL,	// identify_partition()
-	NULL,	// scan_partition()
-	NULL,	// free_identify_partition_cookie()
-	NULL,	// free_partition_content_cookie()
-
-	&ramfs_mount,
+fs_volume_ops gRamFSVolumeOps = {
 	&ramfs_unmount,
 	&ramfs_read_fs_info,
 	&ramfs_write_fs_info,
 	&ramfs_sync,
-
-	/* vnode operations */
-	&ramfs_lookup,
-	NULL,	// &ramfs_get_vnode_name,
 	&ramfs_read_vnode,
-	&ramfs_write_vnode,
-	&ramfs_remove_vnode,
+
+	/* index directory & index operations */
+	&ramfs_open_index_dir,
+	&ramfs_close_index_dir,
+	&ramfs_free_index_dir_cookie,
+	&ramfs_read_index_dir,
+	&ramfs_rewind_index_dir,
+
+	&ramfs_create_index,
+	&ramfs_remove_index,
+	&ramfs_read_index_stat,
+
+	/* query operations */
+	&ramfs_open_query,
+	&ramfs_close_query,
+	&ramfs_free_query_cookie,
+	&ramfs_read_query,
+	NULL	// rewind_query
+};
+
+
+fs_vnode_ops gRamFSVnodeOps = {
+	/* vnode operations */
+	&ramfs_lookup,			// lookup
+	NULL,					// get name
+	&ramfs_write_vnode,		// write
+	&ramfs_remove_vnode,	// remove
 
 	/* VM file access */
-	NULL,	// &ramfs_can_page,
-	NULL,	// &ramfs_read_pages,
-	NULL,	// &ramfs_write_pages,
+	NULL,					// can_page
+	NULL,					// read pages
+	NULL,					// write pages
 
-	NULL,	// &ramfs_get_file_map,
+	NULL,					// io?
+	NULL,					// cancel io
+
+	NULL,					// get file map
 
 	&ramfs_ioctl,
 	&ramfs_set_flags,
-	NULL,	// &ramfs_select,
-	NULL,	// &ramfs_deselect,
+	NULL,   // &ramfs_select,
+	NULL,   // &ramfs_deselect,
 	&ramfs_fsync,
 
 	&ramfs_read_symlink,
@@ -2100,7 +2201,7 @@ static file_system_module_info sRamFSModuleInfo = {
 	&ramfs_access,
 	&ramfs_read_stat,
 	&ramfs_write_stat,
-	NULL,	// &ramfs_preallocate,
+	NULL,   // &ramfs_preallocate,
 
 	/* file operations */
 	&ramfs_create,
@@ -2135,30 +2236,57 @@ static file_system_module_info sRamFSModuleInfo = {
 	&ramfs_write_attr,
 
 	&ramfs_read_attr_stat,
-	NULL,	// &ramfs_write_attr_stat,
+	NULL,   // &ramfs_write_attr_stat,
 	&ramfs_rename_attr,
 	&ramfs_remove_attr,
 
-	/* index directory & index operations */
-	&ramfs_open_index_dir,
-	&ramfs_close_index_dir,
-	&ramfs_free_index_dir_cookie,
-	&ramfs_read_index_dir,
-	&ramfs_rewind_index_dir,
+	/* special nodes */
+	NULL	// create_special_node
+};
 
-	&ramfs_create_index,
-	&ramfs_remove_index,
-	&ramfs_read_index_stat,
+static file_system_module_info sRamFSModuleInfo = {
+	{
+		"file_systems/ramfs" B_CURRENT_FS_API_VERSION,
+		0,
+		ramfs_std_ops,
+	},
 
-	/* query operations */
-	&ramfs_open_query,
-	&ramfs_close_query,
-	&ramfs_free_query_cookie,
-	&ramfs_read_query,
-	NULL,	// &ramfs_rewind_query,
+	"ramfs",				// short_name
+	"RAM File System",		// pretty_name
+	0						// DDM flags
+	| B_DISK_SYSTEM_SUPPORTS_WRITING,
+
+	// scanning
+	NULL,	// identify_partition()
+	NULL,	// scan_partition()
+	NULL,	// free_identify_partition_cookie()
+	NULL,	// free_partition_content_cookie()
+
+	&ramfs_mount,
+
+	NULL,	// TODO : &ramfs_get_supported_operations
+
+	NULL,   // validate_resize
+	NULL,   // validate_move
+	NULL,   // validate_set_content_name
+	NULL,   // validate_set_content_parameters
+	NULL,   // validate_initialize,
+
+	/* shadow partition modification */
+	NULL,   // shadow_changed
+
+	/* writing */
+	NULL,   // defragment
+	NULL,   // repair
+	NULL,   // resize
+	NULL,   // move
+	NULL,   // set_content_name
+	NULL,   // set_content_parameters
+	NULL	// bfs_initialize
 };
 
 module_info *modules[] = {
 	(module_info *)&sRamFSModuleInfo,
 	NULL,
 };
+

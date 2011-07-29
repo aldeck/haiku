@@ -244,7 +244,7 @@ DesktopObservable::NotifyWindowMinimized(Window* window, bool minimize)
 
 void
 DesktopObservable::NotifyWindowTabLocationChanged(Window* window,
-	float location)
+	float location, bool isShifting)
 {
 	if (fWeAreInvoking)
 		return;
@@ -252,7 +252,7 @@ DesktopObservable::NotifyWindowTabLocationChanged(Window* window,
 
 	for (DesktopListener* listener = fDesktopListenerList.First();
 		listener != NULL; listener = fDesktopListenerList.GetNext(listener))
-		listener->WindowTabLocationChanged(window, location);
+		listener->WindowTabLocationChanged(window, location, isShifting);
 }
 
 
@@ -281,6 +281,19 @@ DesktopObservable::NotifyWindowLookChanged(Window* window, window_look look)
 	for (DesktopListener* listener = fDesktopListenerList.First();
 		listener != NULL; listener = fDesktopListenerList.GetNext(listener))
 		listener->WindowLookChanged(window, look);
+}
+
+
+void
+DesktopObservable::NotifyWindowFeelChanged(Window* window, window_feel feel)
+{
+	if (fWeAreInvoking)
+		return;
+	InvokeGuard invokeGuard(fWeAreInvoking);
+
+	for (DesktopListener* listener = fDesktopListenerList.First();
+		listener != NULL; listener = fDesktopListenerList.GetNext(listener))
+		listener->WindowFeelChanged(window, feel);
 }
 
 

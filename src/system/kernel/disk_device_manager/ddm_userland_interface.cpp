@@ -1,9 +1,9 @@
 /*
- * Copyright 2003-2009, Haiku, Inc. All Rights Reserved.
+ * Copyright 2003-2011, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
- *		Ingo Weinhold, bonefish@cs.tu-berlin.de
+ *		Ingo Weinhold, ingo_weinhold@gmx.de
  *		Axel Dörfler, axeld@pinc-software.de
  */
 
@@ -1156,7 +1156,6 @@ _user_initialize_partition(partition_id partitionID, int32* _changeCounter,
 		return error;
 	}
 
-dprintf("_parameters");
 	// get the partition
 	KDiskDeviceManager* manager = KDiskDeviceManager::Default();
 	KPartition* partition = manager->WriteLockPartition(partitionID);
@@ -1198,7 +1197,16 @@ dprintf("_parameters");
 	if (error != B_OK)
 		return error;
 
-	partition->SetDiskSystem(diskSystem);
+	// Set the disk system. Re-check whether a disk system is already set on the
+	// partition. Some disk systems just write the on-disk structures and let
+	// the DDM rescan the partition, in which case the disk system will already
+	// be set. In very unfortunate cases the on-disk structure of the previous
+	// disk system has not been destroyed and the previous disk system has a
+	// higher priority than the new one. The old disk system will thus prevail.
+	// Not setting the new disk system will at least prevent that the partition
+	// object gets into an inconsistent state.
+	if (partition->DiskSystem() == NULL)
+		partition->SetDiskSystem(diskSystem);
 
 	// return change counter
 	error = copy_to_user_value(_changeCounter, partition->ChangeCounter());
@@ -1243,7 +1251,18 @@ _user_uninitialize_partition(partition_id partitionID, int32* _changeCounter)
 
 	// TODO: We should also check, if any partition is mounted!
 
-	// uninitialize
+	KDiskSystem* diskSystem = partition->DiskSystem();
+
+	locker.Unlock();
+
+	// Let the disk system uninitialize the partition. This operation is not
+	// mandatory. If implemented, it will destroy the on-disk structures, so
+	// that the disk system cannot accidentally identify the partition later on.
+	if (diskSystem != NULL)
+		diskSystem->Uninitialize(partition, DUMMY_JOB_ID);
+
+	// re-lock and uninitialize the partition object
+	locker.Lock();
 	error = partition->UninitializeContents(true);
 
 	partition->UnmarkBusy(true);

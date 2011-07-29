@@ -7,19 +7,21 @@
 
 
 #include "mmu.h"
-#include "bios.h"
 
+#include <string.h>
+
+#include <OS.h>
+
+#include <arch/cpu.h>
+#include <arch_kernel.h>
 #include <boot/platform.h>
 #include <boot/stdio.h>
 #include <boot/kernel_args.h>
 #include <boot/stage2.h>
-#include <arch/cpu.h>
-#include <arch_kernel.h>
 #include <kernel.h>
 
-#include <OS.h>
-
-#include <string.h>
+#include "bios.h"
+#include "interrupts.h"
 
 
 /*!	The (physical) memory layout of the boot loader is currently as follows:
@@ -57,11 +59,6 @@
 	// You also need to define ENABLE_SERIAL in serial.cpp
 	// for output to work.
 
-
-struct gdt_idt_descr {
-	uint16 limit;
-	uint32 *base;
-} _PACKED;
 
 // memory structure returned by int 0x15, ax 0xe820
 struct extended_memory {
@@ -437,8 +434,8 @@ mmu_allocate_physical(addr_t base, size_t size)
 	// check whether the physical range is still free
 	phys_addr_t foundBase;
 	if (!get_free_physical_address_range(gKernelArgs.physical_allocated_range,
-			gKernelArgs.num_physical_allocated_ranges, sNextPhysicalAddress,
-			size, &foundBase) || foundBase != base) {
+			gKernelArgs.num_physical_allocated_ranges, base, size, &foundBase)
+		|| foundBase != base) {
 		return false;
 	}
 
@@ -491,7 +488,6 @@ mmu_init_for_kernel(void)
 	TRACE("mmu_init_for_kernel\n");
 	// set up a new idt
 	{
-		struct gdt_idt_descr idtDescriptor;
 		uint32 *idt;
 
 		// find a new idt
@@ -504,18 +500,9 @@ mmu_init_for_kernel(void)
 		gKernelArgs.arch_args.vir_idt = (uint32)get_next_virtual_page();
 		map_page(gKernelArgs.arch_args.vir_idt, (uint32)idt, kDefaultPageFlags);
 
-		// clear it out
-		uint32* virtualIDT = (uint32*)gKernelArgs.arch_args.vir_idt;
-		for (int32 i = 0; i < IDT_LIMIT / 4; i++) {
-			virtualIDT[i] = 0;
-		}
-
-		// load the idt
-		idtDescriptor.limit = IDT_LIMIT - 1;
-		idtDescriptor.base = (uint32 *)gKernelArgs.arch_args.vir_idt;
-
-		asm("lidt	%0;"
-			: : "m" (idtDescriptor));
+		// initialize it
+		interrupts_init_kernel_idt((void*)gKernelArgs.arch_args.vir_idt,
+			IDT_LIMIT);
 
 		TRACE("idt at virtual address 0x%lx\n", gKernelArgs.arch_args.vir_idt);
 	}
@@ -561,7 +548,7 @@ mmu_init_for_kernel(void)
 
 		// load the GDT
 		gdtDescriptor.limit = GDT_LIMIT - 1;
-		gdtDescriptor.base = (uint32 *)gKernelArgs.arch_args.vir_gdt;
+		gdtDescriptor.base = (void*)gKernelArgs.arch_args.vir_gdt;
 
 		asm("lgdt	%0;"
 			: : "m" (gdtDescriptor));
@@ -591,17 +578,24 @@ mmu_init_for_kernel(void)
 
 		dprintf("phys memory ranges:\n");
 		for (i = 0; i < gKernelArgs.num_physical_memory_ranges; i++) {
-			dprintf("    base 0x%08lx, length 0x%08lx\n", gKernelArgs.physical_memory_range[i].start, gKernelArgs.physical_memory_range[i].size);
+			dprintf("    base %#018" B_PRIxPHYSADDR ", length %#018"
+				B_PRIxPHYSADDR "\n", gKernelArgs.physical_memory_range[i].start,
+				gKernelArgs.physical_memory_range[i].size);
 		}
 
 		dprintf("allocated phys memory ranges:\n");
 		for (i = 0; i < gKernelArgs.num_physical_allocated_ranges; i++) {
-			dprintf("    base 0x%08lx, length 0x%08lx\n", gKernelArgs.physical_allocated_range[i].start, gKernelArgs.physical_allocated_range[i].size);
+			dprintf("    base %#018" B_PRIxPHYSADDR ", length %#018"
+				B_PRIxPHYSADDR "\n",
+				gKernelArgs.physical_allocated_range[i].start,
+				gKernelArgs.physical_allocated_range[i].size);
 		}
 
 		dprintf("allocated virt memory ranges:\n");
 		for (i = 0; i < gKernelArgs.num_virtual_allocated_ranges; i++) {
-			dprintf("    base 0x%08lx, length 0x%08lx\n", gKernelArgs.virtual_allocated_range[i].start, gKernelArgs.virtual_allocated_range[i].size);
+			dprintf("    base %#018" B_PRIxADDR ", length %#018" B_PRIxSIZE
+			"\n", gKernelArgs.virtual_allocated_range[i].start,
+			gKernelArgs.virtual_allocated_range[i].size);
 		}
 	}
 #endif

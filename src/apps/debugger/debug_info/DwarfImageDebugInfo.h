@@ -19,6 +19,7 @@
 
 class Architecture;
 class CompilationUnit;
+class DIEType;
 class DwarfStackFrameDebugInfo;
 class DwarfFile;
 class ElfSegment;
@@ -51,7 +52,9 @@ public:
 	virtual	status_t			GetFunctions(
 									BObjectList<FunctionDebugInfo>& functions);
 	virtual	status_t			GetType(GlobalTypeCache* cache,
-									const BString& name, Type*& _type);
+									const BString& name,
+									const TypeLookupConstraints& constraints,
+									Type*& _type);
 
 	virtual AddressSectionType	GetAddressSectionType(target_addr_t address);
 
@@ -96,6 +99,9 @@ private:
 									target_addr_t lowPC,
 									const EntryListWrapper& variableEntries,
 									const EntryListWrapper& blockEntries);
+
+			bool				_EvaluateBaseTypeConstraints(DIEType* type,
+									const TypeLookupConstraints& constraints);
 
 private:
 			BLocker				fLock;

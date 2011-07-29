@@ -334,31 +334,10 @@ rule CopySetHaikuRevision target : source
 actions CopySetHaikuRevision1
 {
 	$(HOST_ADD_BUILD_COMPATIBILITY_LIB_DIR)
-	# Try svn or git-svn
-	# Extract from "Revision: 12345" line
-	revision=`(LC_ALL=C LANG=C svn info $(HAIKU_TOP) ||
-		(cd $(HAIKU_TOP) && [ -d .git/svn ] && LC_ALL=C LANG=C git svn info)) 2> /dev/null |
-			grep Revision | awk '{printf $2}'`
-	if [ "$revision" = 0 -o "$revision" = "" ]; then
-		# git-svn not present or not configured for this repository
-		# Try searching git logs for last git-svn commit
-		# Extract from " git-svn-id: .../haiku/trunk@12345 ..." line
-		revision=`cd $(HAIKU_TOP) &&
-			git log --max-count=1 --grep="git-svn-id:" 2> /dev/null |
-				grep "git-svn-id:" | cut -d '@' -f 2 |
-					awk '{printf $1}'`
-	fi
-	if [ "$revision" = 0 -o "$revision" = "" ]; then
-		# Try searching hg log for last svn commit
-		# Extract from "(svn r12345) ..." line
-		revision=`(cd $(HAIKU_TOP) &&
-			hg log --no-merges --template "{desc|firstline}\n") 2> /dev/null |
-			grep --max-count=1 "(svn r" |
-			sed -n -e 's,(svn r\(.*\)).*,\1,p'`
-	fi
-	if [ "$revision" = "" ]; then
-		revision=0
-	fi
+
+	. $(HAIKU_TOP)/build/scripts/determine_haiku_revision
+	determineHaikuRevision $(HAIKU_TOP) $(HAIKU_BUILD_OUTPUT_DIR)
+
 	$(2[1]) --data $(2[3]) $(1) &&
 	$(2[2]) $(1) ${revision}
 }
@@ -393,7 +372,7 @@ rule DownloadLocatedFile target : url
 
 actions DownloadLocatedFile1
 {
-	wget -O $(1) $(URL)
+	wget -O "$(1)" $(URL)
 }
 
 rule DownloadFile file : url

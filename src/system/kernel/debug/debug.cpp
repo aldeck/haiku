@@ -90,7 +90,6 @@ static bool sSyslogOutputEnabled = true;
 static bool sBlueScreenEnabled = false;
 	// must always be false on startup
 static bool sDebugScreenEnabled = false;
-static bool sSerialInputEnabled = false;
 static bool sBlueScreenOutput = true;
 static bool sEmergencyKeysEnabled = true;
 static spinlock sSpinlock = B_SPINLOCK_INITIALIZER;
@@ -474,7 +473,8 @@ read_line(char* buffer, int32 maxLength,
 				}
 				break;
 			}
-			case 8: // backspace
+			case 8:		// backspace (CTRL-H)
+			case 0x7f:	// backspace (xterm)
 				if (position > 0) {
 					kputs("\x1b[1D"); // move to the left one
 					position--;
@@ -681,22 +681,30 @@ read_line(char* buffer, int32 maxLength,
 char
 kgetc(void)
 {
-	if (sSerialInputEnabled)
-		return arch_debug_serial_getchar();
+	while (true) {
+		// check serial input
+		int c = arch_debug_serial_try_getchar();
+		if (c >= 0)
+			return (char)c;
 
-	// give the kernel debugger modules a chance first
-	for (uint32 i = 0; i < kMaxDebuggerModules; i++) {
-		if (sDebuggerModules[i] && sDebuggerModules[i]->debugger_getchar) {
-			int getChar = sDebuggerModules[i]->debugger_getchar();
-			if (getChar >= 0)
-				return (char)getChar;
+		// check blue screen input
+		if (sBlueScreenOutput) {
+			c = blue_screen_try_getchar();
+			if (c >= 0)
+				return (char)c;
 		}
+
+		// give the kernel debugger modules a chance
+		for (uint32 i = 0; i < kMaxDebuggerModules; i++) {
+			if (sDebuggerModules[i] && sDebuggerModules[i]->debugger_getchar) {
+				int getChar = sDebuggerModules[i]->debugger_getchar();
+				if (getChar >= 0)
+					return (char)getChar;
+			}
+		}
+
+		PAUSE();
 	}
-
-	if (sBlueScreenOutput)
-		return blue_screen_getchar();
-
-	return arch_debug_serial_getchar();
 }
 
 
@@ -797,9 +805,6 @@ static void
 kernel_debugger_loop(const char* messagePrefix, const char* message,
 	va_list args, int32 cpu)
 {
-	int32 previousCPU = sDebuggerOnCPU;
-	sDebuggerOnCPU = cpu;
-
 	DebugAllocPool* allocPool = create_debug_alloc_pool();
 
 	sCurrentKernelDebuggerMessagePrefix = messagePrefix;
@@ -928,8 +933,6 @@ kernel_debugger_loop(const char* messagePrefix, const char* message,
 		va_end(sCurrentKernelDebuggerMessageArgs);
 
 	delete_debug_alloc_pool(allocPool);
-
-	sDebuggerOnCPU = previousCPU;
 }
 
 
@@ -937,6 +940,8 @@ static void
 enter_kernel_debugger(int32 cpu)
 {
 	while (atomic_add(&sInDebugger, 1) > 0) {
+		atomic_add(&sInDebugger, -1);
+
 		// The debugger is already running, find out where...
 		if (sDebuggerOnCPU == cpu) {
 			// We are re-entering the debugger on the same CPU.
@@ -947,7 +952,6 @@ enter_kernel_debugger(int32 cpu)
 		// us. Process ICIs to ensure we get the halt request. Then we are
 		// blocking there until everyone leaves the debugger and we can
 		// try to enter it again.
-		atomic_add(&sInDebugger, -1);
 		smp_intercpu_int_handler(cpu);
 	}
 
@@ -1019,12 +1023,22 @@ kernel_debugger_internal(const char* messagePrefix, const char* message,
 		} else
 			enter_kernel_debugger(cpu);
 
+		// If we're called recursively sDebuggerOnCPU will be != -1.
+		int32 previousCPU = sDebuggerOnCPU;
+		sDebuggerOnCPU = cpu;
+
 		kernel_debugger_loop(messagePrefix, message, args, cpu);
 
-		if (sHandOverKDLToCPU < 0) {
+		if (sHandOverKDLToCPU < 0 && previousCPU == -1) {
+			// We're not handing over to a different CPU and we weren't
+			// called recursively, so we'll exit the debugger.
 			exit_kernel_debugger();
-			break;
 		}
+
+		sDebuggerOnCPU = previousCPU;
+
+		if (sHandOverKDLToCPU < 0)
+			break;
 
 		hand_over_kernel_debugger();
 
@@ -1132,16 +1146,6 @@ cmd_dump_syslog(int argc, char** argv)
 	if (buffer != stackBuffer)
 		debug_free(buffer);
 
-	return 0;
-}
-
-
-static int
-cmd_serial_input(int argc, char** argv)
-{
-	sSerialInputEnabled = !sSerialInputEnabled;
-	kprintf("Serial input is turned %s now.\n",
-		sSerialInputEnabled ? "on" : "off");
 	return 0;
 }
 
@@ -1412,9 +1416,6 @@ syslog_init_post_vm(struct kernel_args* args)
 		"[ \"-n\" ] [ \"-k\" ]\n"
 		"Dumps the whole syslog buffer, or, if -k is specified, only "
 		"the part that hasn't been sent yet.\n", 0);
-
-	add_debugger_command("serial_input", &cmd_serial_input,
-		"Enable or disable serial input");
 
 	return B_OK;
 

@@ -39,15 +39,19 @@ KernelMergeObject kernel_arch_x86.o :
 	apm.cpp
 	bios.cpp
 	cpuid.S
+	ioapic.cpp
 	irq_routing_table.cpp
 	msi.cpp
+	pic.cpp
 	syscall.S
 	vm86.cpp
+	x86_signals.cpp
+	x86_signals_asm.S
+	x86_syscalls.cpp
 
 	# paging
 	x86_physical_page_mapper.cpp
 	x86_physical_page_mapper_large_memory.cpp
-	x86_syscalls.cpp
 	X86PagingMethod.cpp
 	X86PagingStructures.cpp
 	X86VMTranslationMap.cpp

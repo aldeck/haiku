@@ -181,7 +181,7 @@ MediaWindow::~MediaWindow()
 	char buffer[512];
 	BRect rect = Frame();
 	PRINT_OBJECT(rect);
-	sprintf(buffer, "# MediaPrefs Settings\n rect = %i,%i,%i,%i\n",
+	snprintf(buffer, 512, "# MediaPrefs Settings\n rect = %i,%i,%i,%i\n",
 		int(rect.left), int(rect.top), int(rect.right), int(rect.bottom));
 
 	BPath path;
@@ -403,10 +403,11 @@ MediaWindow::InitWindow()
 
 	// Layout all views
 	BLayoutBuilder::Group<>(this, B_HORIZONTAL)
-		.SetInsets(14, 14, 14, 14)
+		.SetInsets(B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING,
+			B_USE_DEFAULT_SPACING, B_USE_DEFAULT_SPACING)
 		.Add(scrollView)
 		.AddGroup(B_VERTICAL)
-			.SetInsets(14, 0, 0, 0)
+			.SetInsets(0, 0, 0, 0)
 			.Add(fTitleView)
 			.Add(fContentLayout);
 

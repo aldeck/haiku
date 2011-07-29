@@ -89,7 +89,7 @@ UINT32
 CailReadATIRegister(VOID* CAIL, UINT32 idx)
 {
 	TRACE("AtomBios callback %s, idx (0x%X)\n", __func__, idx << 2);
-	return read32(idx << 2);
+	return Read32(OUT, idx << 2);
 }
 
 
@@ -100,7 +100,7 @@ CailWriteATIRegister(VOID *CAIL, UINT32 idx, UINT32 data)
 
 	// TODO : save MMIO via atomSaveRegisters in CailWriteATIRegister
 	// atomSaveRegisters((atomBiosHandlePtr)CAIL, atomRegisterMMIO, idx << 2);
-	write32(idx << 2, data);
+	Write32(OUT, idx << 2, data);
 }
 
 
@@ -128,74 +128,65 @@ CailWritePCIConfigData(VOID *CAIL, VOID *src, UINT32 idx, UINT16 size)
 
 
 ULONG
-CailReadPLL(VOID *CAIL, ULONG Address)
+CailReadPLL(VOID *CAIL, ULONG address)
 {
-	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, Address);
-	// TODO : Assumed screen index 0
-	return ReadPLL(0, Address);
+	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, address);
+	return Read32(PLL, address);
 }
 
 
 VOID
-CailWritePLL(VOID *CAIL, ULONG Address, ULONG Data)
+CailWritePLL(VOID *CAIL, ULONG address, ULONG data)
 {
-	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, Address);
+	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, address);
 
 	// TODO : save PLL registers
-	// atomSaveRegisters((atomBiosHandlePtr)CAIL, atomRegisterPLL, Address);
+	// atomSaveRegisters((atomBiosHandlePtr)CAIL, atomRegisterPLL, address);
 	// TODO : Assumed screen index 0
-	WritePLL(0, Address, Data);
+	Write32(PLL, address, data);
 }
 
 
 ULONG
-CailReadMC(VOID *CAIL, ULONG Address)
+CailReadMC(VOID *CAIL, ULONG address)
 {
-	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, Address);
-	// TODO : CailReadMC
+	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, address);
 
-	ULONG ret = 0;
-
-	// ret = RHDReadMC(((atomBiosHandlePtr)CAIL), Address | MC_IND_ALL);
-	return ret;
+	return Read32(MC, address | MC_IND_ALL);
 }
 
 
 VOID
-CailWriteMC(VOID *CAIL, ULONG Address, ULONG data)
+CailWriteMC(VOID *CAIL, ULONG address, ULONG data)
 {
-	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, Address);
-	// TODO : CailWriteMC
+	TRACE("AtomBios callback %s, addr (0x%X)\n", __func__, address);
 
-	// atomSaveRegisters((atomBiosHandlePtr)CAIL, atomRegisterMC, Address);
-	// RHDWriteMC(((atomBiosHandlePtr)CAIL),
-	//	Address | MC_IND_ALL | MC_IND_WR_EN, data);
+	// atomSaveRegisters((atomBiosHandlePtr)CAIL, atomRegisterMC, address);
+	Write32(MC, address | MC_IND_ALL | MC_IND_WR_EN, data);
 }
 
 
 UINT32
 CailReadFBData(VOID* CAIL, UINT32 idx)
 {
+	// TODO : This should work only in theory and needs tested
+
 	TRACE("AtomBios callback %s, idx (0x%X)\n", __func__, idx);
-	// TODO : CailReadFBData
 
 	UINT32 ret = 0;
-	/*
-	if (((atomBiosHandlePtr)CAIL)->fbBase) {
-		CARD8 *FBBase = (CARD8*)
-			RHDPTRI((atomBiosHandlePtr)CAIL)->FbBase;
-		ret = *((CARD32*)(FBBase + (((atomBiosHandlePtr)CAIL)->fbBase)
-			+ idx));
-		TRACE(("%s(%x) = %x\n", __func__, idx, ret));
-	} else if (((atomBiosHandlePtr)CAIL)->scratchBase) {
-		ret = *(CARD32*)((CARD8*)(((atomBiosHandlePtr)CAIL)->scratchBase)
-			+ idx);
-		TRACE(("%s(%x) = %x\n", __func__, idx, ret));
-	} else {
-		TRACE(("%s: no fbbase set\n", __func__));
+
+	uint32_t fbLocation
+		= gInfo->shared_info->frame_buffer_phys & 0xffffffff;
+
+	// If we have a physical offset for our frame buffer, use it
+	if (fbLocation > 0)
+		ret = Read32(PLL, fbLocation + idx);
+	else {
+		TRACE("%s: ERROR: Frame Buffer offset not defined\n",
+			__func__);
 		return 0;
 	}
-	*/
+
 	return ret;
 }
 
@@ -203,19 +194,19 @@ CailReadFBData(VOID* CAIL, UINT32 idx)
 VOID
 CailWriteFBData(VOID *CAIL, UINT32 idx, UINT32 data)
 {
-	TRACE("AtomBios callback %s, idx (0x%X)\n", __func__, idx);
-	// TODO : CailReadFBData
+	// TODO : This should work only in theory and needs tested
 
-	/*
-	if (((atomBiosHandlePtr)CAIL)->fbBase) {
-		CARD8 *FBBase = (CARD8*)
-			RHDPTRI((atomBiosHandlePtr)CAIL)->FbBase;
-		*((CARD32*)(FBBase + (((atomBiosHandlePtr)CAIL)->fbBase) + idx)) = data;
-	} else if (((atomBiosHandlePtr)CAIL)->scratchBase) {
-		*(CARD32*)((CARD8*)(((atomBiosHandlePtr)CAIL)->scratchBase) + idx) = data;
-	} else
-		TRACE(("%s: no fbbase set\n", __func__));
-	*/
+	TRACE("AtomBios callback %s, idx (0x%X)\n", __func__, idx);
+
+	uint32_t fbLocation
+		= gInfo->shared_info->frame_buffer_phys & 0xffffffff;
+
+	// If we have a physical offset for our frame buffer, use it
+	if (fbLocation > 0)
+		Write32(OUT, fbLocation + idx, data);
+	else
+		TRACE("%s: ERROR: Frame Buffer offset not defined\n",
+			__func__);
 }
 
 

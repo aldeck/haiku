@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2009 Michael Lotz <mmlr@mlotz.ch>
+ * Copyright 2008-2011, Michael Lotz <mmlr@mlotz.ch>
  * Distributed under the terms of the MIT license.
  */
 
@@ -10,6 +10,7 @@
 #include "Driver.h"
 #include "HIDDevice.h"
 #include "HIDReport.h"
+#include "HIDWriter.h"
 #include "ProtocolHandler.h"
 #include "QuirkyDevices.h"
 
@@ -23,7 +24,7 @@
 
 
 HIDDevice::HIDDevice(usb_device device, const usb_configuration_info *config,
-	size_t interfaceIndex)
+	size_t interfaceIndex, int32 quirkyIndex)
 	:	fStatus(B_NO_INIT),
 		fDevice(device),
 		fInterfaceIndex(interfaceIndex),
@@ -35,53 +36,79 @@ HIDDevice::HIDDevice(usb_device device, const usb_configuration_info *config,
 		fRemoved(false),
 		fParser(this),
 		fProtocolHandlerCount(0),
-		fProtocolHandlers(NULL)
+		fProtocolHandlerList(NULL)
 {
 	uint8 *reportDescriptor = NULL;
 	size_t descriptorLength = 0;
-	bool isQuirky = false;
 
 	const usb_device_descriptor *deviceDescriptor
 		= gUSBModule->get_device_descriptor(device);
 
-	// check for quirky devices first and don't bother in that case
-	for (int32 i = 0; i < sQuirkyDeviceCount; i++) {
-		usb_hid_quirky_device &quirky = sQuirkyDevices[i];
-		if (deviceDescriptor->vendor_id == quirky.vendor_id
-			&& deviceDescriptor->product_id == quirky.product_id) {
-			reportDescriptor = (uint8 *)quirky.fixed_descriptor;
-			descriptorLength = quirky.descriptor_length;
-			isQuirky = true;
-			break;
+	HIDWriter descriptorWriter;
+	bool hasFixedDescriptor = false;
+	if (quirkyIndex >= 0) {
+		quirky_build_descriptor quirkyBuildDescriptor
+			= gQuirkyDevices[quirkyIndex].build_descriptor;
+
+		if (quirkyBuildDescriptor != NULL
+			&& quirkyBuildDescriptor(descriptorWriter) == B_OK) {
+
+			reportDescriptor = (uint8 *)descriptorWriter.Buffer();
+			descriptorLength = descriptorWriter.BufferLength();
+			hasFixedDescriptor = true;
 		}
 	}
 
-	if (!isQuirky) {
-		// conforming device, read HID and report descriptors
-		descriptorLength = sizeof(usb_hid_descriptor);
-		usb_hid_descriptor *hidDescriptor
-			= (usb_hid_descriptor *)malloc(descriptorLength);
-		if (hidDescriptor == NULL) {
-			TRACE_ALWAYS("failed to allocate buffer for hid descriptor\n");
-			fStatus = B_NO_MEMORY;
-			return;
+	if (!hasFixedDescriptor) {
+		// Conforming device, find the HID descriptor and get the report
+		// descriptor from the device.
+		usb_hid_descriptor *hidDescriptor = NULL;
+
+		const usb_interface_info *interfaceInfo
+			= config->interface[interfaceIndex].active;
+		for (size_t i = 0; i < interfaceInfo->generic_count; i++) {
+			const usb_generic_descriptor &generic
+				= interfaceInfo->generic[i]->generic;
+			if (generic.descriptor_type == B_USB_HID_DESCRIPTOR_HID) {
+				hidDescriptor = (usb_hid_descriptor *)&generic;
+				descriptorLength
+					= hidDescriptor->descriptor_info[0].descriptor_length;
+				break;
+			}
 		}
 
-		status_t result = gUSBModule->send_request(device,
-			USB_REQTYPE_INTERFACE_IN | USB_REQTYPE_STANDARD,
-			USB_REQUEST_GET_DESCRIPTOR,
-			B_USB_HID_DESCRIPTOR_HID << 8, interfaceIndex, descriptorLength,
-			hidDescriptor, &descriptorLength);
+		if (hidDescriptor == NULL) {
+			TRACE_ALWAYS("didn't find a HID descriptor in the configuration, "
+				"trying to retrieve manually\n");
 
-		TRACE("get hid descriptor: result: 0x%08lx; length: %lu\n", result,
-			descriptorLength);
-		if (result == B_OK) {
-			descriptorLength
-				= hidDescriptor->descriptor_info[0].descriptor_length;
-		} else
-			descriptorLength = 256; /* XXX */
+			descriptorLength = sizeof(usb_hid_descriptor);
+			hidDescriptor = (usb_hid_descriptor *)malloc(descriptorLength);
+			if (hidDescriptor == NULL) {
+				TRACE_ALWAYS("failed to allocate buffer for hid descriptor\n");
+				fStatus = B_NO_MEMORY;
+				return;
+			}
 
-		free(hidDescriptor);
+			status_t result = gUSBModule->send_request(device,
+				USB_REQTYPE_INTERFACE_IN | USB_REQTYPE_STANDARD,
+				USB_REQUEST_GET_DESCRIPTOR,
+				B_USB_HID_DESCRIPTOR_HID << 8, interfaceIndex, descriptorLength,
+				hidDescriptor, &descriptorLength);
+
+			TRACE("get hid descriptor: result: 0x%08lx; length: %lu\n", result,
+				descriptorLength);
+			if (result == B_OK) {
+				descriptorLength
+					= hidDescriptor->descriptor_info[0].descriptor_length;
+			} else {
+				descriptorLength = 256; /* XXX */
+				TRACE_ALWAYS("failed to get HID descriptor, trying with a "
+					"fallback report descriptor length of %lu\n",
+					descriptorLength);
+			}
+
+			free(hidDescriptor);
+		}
 
 		reportDescriptor = (uint8 *)malloc(descriptorLength);
 		if (reportDescriptor == NULL) {
@@ -90,7 +117,7 @@ HIDDevice::HIDDevice(usb_device device, const usb_configuration_info *config,
 			return;
 		}
 
-		result = gUSBModule->send_request(device,
+		status_t result = gUSBModule->send_request(device,
 			USB_REQTYPE_INTERFACE_IN | USB_REQTYPE_STANDARD,
 			USB_REQUEST_GET_DESCRIPTOR,
 			B_USB_HID_DESCRIPTOR_REPORT << 8, interfaceIndex, descriptorLength,
@@ -122,7 +149,7 @@ HIDDevice::HIDDevice(usb_device device, const usb_configuration_info *config,
 
 	status_t result = fParser.ParseReportDescriptor(reportDescriptor,
 		descriptorLength);
-	if (!isQuirky)
+	if (!hasFixedDescriptor)
 		free(reportDescriptor);
 
 	if (result != B_OK) {
@@ -166,18 +193,32 @@ HIDDevice::HIDDevice(usb_device device, const usb_configuration_info *config,
 		return;
 	}
 
-	ProtocolHandler::AddHandlers(this, &fProtocolHandlers,
-		&fProtocolHandlerCount);
+	if (quirkyIndex >= 0) {
+		quirky_init_function quirkyInit
+			= gQuirkyDevices[quirkyIndex].init_function;
+
+		if (quirkyInit != NULL) {
+			fStatus = quirkyInit(device, config, interfaceIndex);
+			if (fStatus != B_OK)
+				return;
+		}
+	}
+
+	ProtocolHandler::AddHandlers(*this, fProtocolHandlerList,
+		fProtocolHandlerCount);
 	fStatus = B_OK;
 }
 
 
 HIDDevice::~HIDDevice()
 {
-	for (uint32 i = 0; i < fProtocolHandlerCount; i++)
-		delete fProtocolHandlers[i];
+	ProtocolHandler *handler = fProtocolHandlerList;
+	while (handler != NULL) {
+		ProtocolHandler *next = handler->NextHandler();
+		delete handler;
+		handler = next;
+	}
 
-	free(fProtocolHandlers);
 	free(fTransferBuffer);
 }
 
@@ -250,9 +291,16 @@ HIDDevice::SendReport(HIDReport *report)
 ProtocolHandler *
 HIDDevice::ProtocolHandlerAt(uint32 index) const
 {
-	if (index >= fProtocolHandlerCount)
-		return NULL;
-	return fProtocolHandlers[index];
+	ProtocolHandler *handler = fProtocolHandlerList;
+	while (handler != NULL) {
+		if (index == 0)
+			return handler;
+
+		handler = handler->NextHandler();
+		index--;
+	}
+
+	return NULL;
 }
 
 

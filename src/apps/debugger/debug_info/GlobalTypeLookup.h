@@ -15,6 +15,7 @@
 
 class BString;
 class Type;
+class TypeLookupConstraints;
 
 
 enum global_type_cache_scope {
@@ -34,7 +35,9 @@ public:
 	inline	void				Unlock();
 
 			// cache must be locked
-			Type*				GetType(const BString& name) const;
+			Type*				GetType(const BString& name,
+									const TypeLookupConstraints &constraints
+									) const;
 			Type*				GetTypeByID(const BString& id) const;
 			status_t			AddType(Type* type);
 			void				RemoveType(Type* type);
@@ -62,7 +65,9 @@ public:
 	virtual						~GlobalTypeLookup();
 
 	virtual	status_t			GetType(GlobalTypeCache* cache,
-									const BString& name, Type*& _type) = 0;
+									const BString& name,
+									const TypeLookupConstraints& constraints,
+									Type*& _type) = 0;
 									// returns a reference
 };
 

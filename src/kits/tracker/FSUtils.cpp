@@ -881,9 +881,12 @@ MoveTask(BObjectList<entry_ref> *srcList, BEntry *destEntry, BList *pointList,
 		volume.SetTo(destVolumeDevice);
 
 		needPreflightNameCheck = true;
-	} else if (moveMode == kDuplicateSelection)
+	} else if (moveMode == kDuplicateSelection) {
+		BEntry entry;
+		entry.SetTo(srcList->FirstItem());
+		entry.GetParent(&destDir);
 		volume.SetTo(srcVolumeDevice);
-	else {
+	} else {
 		// move is to trash
 		destIsTrash = true;
 
@@ -2337,8 +2340,8 @@ FSMakeOriginalName(char *name, BDirectory *destDir, const char *suffix)
 
 
 status_t
-FSRecursiveCalcSize(BInfoWindow *window, CopyLoopControl* loopControl,
-	BDirectory *dir, off_t *running_size, int32 *fileCount, int32 *dirCount)
+FSRecursiveCalcSize(BInfoWindow* window, CopyLoopControl* loopControl,
+	BDirectory* dir, off_t* _runningSize, int32* _fileCount, int32* _dirCount)
 {
 	dir->Rewind();
 	BEntry entry;
@@ -2351,21 +2354,21 @@ FSRecursiveCalcSize(BInfoWindow *window, CopyLoopControl* loopControl,
 			return kUserCanceled;
 
 		StatStruct statbuf;
-		entry.GetStat(&statbuf);
+		status_t status = entry.GetStat(&statbuf);
+		if (status != B_OK)
+			return status;
+
+		(*_runningSize) += statbuf.st_blocks * 512;
 
 		if (S_ISDIR(statbuf.st_mode)) {
 			BDirectory subdir(&entry);
-			(*dirCount)++;
-			(*running_size) += 1024;
-			status_t result = FSRecursiveCalcSize(window, loopControl, &subdir,
-				running_size, fileCount, dirCount);
-			if (result != B_OK)
-				return result;
-		} else {
-			(*fileCount)++;
-			(*running_size) += statbuf.st_size + 1024;
-				// Add to compensate for attributes.
-		}
+			(*_dirCount)++;
+			status = FSRecursiveCalcSize(window, loopControl, &subdir,
+				_runningSize, _fileCount, _dirCount);
+			if (status != B_OK)
+				return status;
+		} else
+			(*_fileCount)++;
 	}
 	return B_OK;
 }

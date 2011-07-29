@@ -31,6 +31,7 @@
 #include "Screen.h"
 #include "ScreenManager.h"
 #include "ServerCursor.h"
+#include "StackAndTile.h"
 #include "VirtualScreen.h"
 #include "WindowList.h"
 #include "Workspace.h"
@@ -39,6 +40,7 @@
 
 class BMessage;
 
+class DecorAddOn;
 class DrawingEngine;
 class HWInterface;
 class ServerApp;
@@ -171,7 +173,7 @@ public:
 			void				ResizeWindowBy(Window* window, float x,
 									float y);
 			bool				SetWindowTabLocation(Window* window,
-									float location);
+									float location, bool isShifting);
 			bool				SetWindowDecoratorSettings(Window* window,
 									const BMessage& settings);
 
@@ -221,7 +223,7 @@ public:
 			void				Redraw();
 			void				RedrawBackground();
 
-			void				ReloadDecor();
+			bool				ReloadDecor(DecorAddOn* oldDecor);
 
 			BRegion&			BackgroundRegion()
 									{ return fBackgroundRegion; }
@@ -245,6 +247,7 @@ public:
 
 			Window*				WindowForClientLooperPort(port_id port);
 
+			StackAndTile*		GetStackAndTile() { return &fStackAndTile; }
 private:
 			WindowList&			_Windows(int32 index);
 
@@ -349,6 +352,8 @@ private:
 			Window*				fFocus;
 			Window*				fFront;
 			Window*				fBack;
+
+			StackAndTile		fStackAndTile;
 };
 
 #endif	// DESKTOP_H

@@ -24,11 +24,13 @@ DebuggerImageDebugInfo::DebuggerImageDebugInfo(const ImageInfo& imageInfo,
 	fDebuggerInterface(debuggerInterface),
 	fArchitecture(architecture)
 {
+	fDebuggerInterface->AcquireReference();
 }
 
 
 DebuggerImageDebugInfo::~DebuggerImageDebugInfo()
 {
+	fDebuggerInterface->ReleaseReference();
 }
 
 
@@ -80,7 +82,8 @@ DebuggerImageDebugInfo::GetFunctions(BObjectList<FunctionDebugInfo>& functions)
 
 status_t
 DebuggerImageDebugInfo::GetType(GlobalTypeCache* cache,
-	const BString& name, Type*& _type)
+	const BString& name, const TypeLookupConstraints& constraints,
+	Type*& _type)
 {
 	return B_UNSUPPORTED;
 }

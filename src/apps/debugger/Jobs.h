@@ -1,5 +1,6 @@
 /*
  * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
+ * Copyright 2011, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 #ifndef JOBS_H
@@ -7,6 +8,7 @@
 
 
 #include "ImageDebugInfoProvider.h"
+#include "Types.h"
 #include "Worker.h"
 
 
@@ -20,6 +22,9 @@ class Image;
 class StackFrame;
 class StackFrameValues;
 class Team;
+class TeamMemory;
+class TeamMemoryBlock;
+class TeamTypeInformation;
 class Thread;
 class Type;
 class TypeComponentPath;
@@ -38,7 +43,8 @@ enum {
 	JOB_TYPE_LOAD_IMAGE_DEBUG_INFO,
 	JOB_TYPE_LOAD_SOURCE_CODE,
 	JOB_TYPE_GET_STACK_FRAME_VALUE,
-	JOB_TYPE_RESOLVE_VALUE_NODE_VALUE
+	JOB_TYPE_RESOLVE_VALUE_NODE_VALUE,
+	JOB_TYPE_GET_MEMORY_BLOCK
 };
 
 
@@ -153,6 +159,7 @@ public:
 									DebuggerInterface* debuggerInterface,
 									Architecture* architecture,
 									CpuState* cpuState,
+									TeamTypeInformation* typeInformation,
 									ValueNodeContainer*	container,
 									ValueNode* valueNode);
 	virtual						~ResolveValueNodeValueJob();
@@ -172,8 +179,28 @@ private:
 			DebuggerInterface*	fDebuggerInterface;
 			Architecture*		fArchitecture;
 			CpuState*			fCpuState;
+			TeamTypeInformation*
+								fTypeInformation;
 			ValueNodeContainer*	fContainer;
 			ValueNode*			fValueNode;
+};
+
+
+class RetrieveMemoryBlockJob : public Job {
+public:
+								RetrieveMemoryBlockJob(Team* team,
+									TeamMemory* teamMemory,
+									TeamMemoryBlock* memoryBlock);
+	virtual						~RetrieveMemoryBlockJob();
+
+	virtual const JobKey&		Key() const;
+	virtual status_t			Do();
+
+private:
+			SimpleJobKey		fKey;
+			Team*				fTeam;
+			TeamMemory*			fTeamMemory;
+			TeamMemoryBlock*	fMemoryBlock;
 };
 
 

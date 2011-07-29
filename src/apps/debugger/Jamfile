@@ -3,7 +3,7 @@ SubDir HAIKU_TOP src apps debugger ;
 CCFLAGS +=  -Werror ;
 C++FLAGS += -Werror ;
 
-UsePrivateHeaders debug interface kernel shared ;
+UsePrivateHeaders app debug interface kernel shared libroot ;
 UsePrivateSystemHeaders ;
 
 SEARCH_SOURCE += [ FDirName $(SUBDIR) arch ] ;
@@ -20,6 +20,7 @@ SEARCH_SOURCE += [ FDirName $(SUBDIR) source_language ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) types ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui ] ;
+SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui inspector_window ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui model ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui team_window ] ;
 SEARCH_SOURCE += [ FDirName $(SUBDIR) user_interface gui teams_window ] ;
@@ -54,6 +55,7 @@ Application Debugger :
 	BreakpointManager.cpp
 	Debugger.cpp
 	Jobs.cpp
+	TeamMemoryBlockManager.cpp
 	TeamDebugger.cpp
 	ThreadHandler.cpp
 	Worker.cpp
@@ -127,10 +129,13 @@ Application Debugger :
 	UserBreakpoint.cpp
 	Team.cpp
 	TeamMemory.cpp
+	TeamMemoryBlock.cpp
+	TeamTypeInformation.cpp
 	Thread.cpp
 	ThreadInfo.cpp
 	Type.cpp
 	TypeComponentPath.cpp
+	TypeLookupConstraints.cpp
 	Variable.cpp
 
 	# settings
@@ -166,6 +171,10 @@ Application Debugger :
 	# user_interface/gui/model
 	VariablesViewState.cpp
 	VariablesViewStateHistory.cpp
+
+	# user_interface/gui/inspector_window
+	InspectorWindow.cpp
+	MemoryView.cpp
 
 	# user_interface/gui/teams_window
 	TeamsWindow.cpp
@@ -213,6 +222,7 @@ Application Debugger :
 	ValueNodeContainer.cpp
 
 	# value/type_handlers
+	BMessageTypeHandler.cpp
 	CStringTypeHandler.cpp
 
 	# value/value_handlers
@@ -226,6 +236,7 @@ Application Debugger :
 	# value/value_nodes
 	AddressValueNode.cpp
 	ArrayValueNode.cpp
+	BMessageValueNode.cpp
 	CompoundValueNode.cpp
 	CStringValueNode.cpp
 	EnumerationValueNode.cpp
@@ -253,7 +264,7 @@ Application Debugger :
 	libshared.a
 
 	$(TARGET_LIBSTDC++)
-	be tracker libdebug.so
+	be tracker libdebug.so libshared.a libexpression_parser.a libmapm.a
 
 	: Debugger.rdef
 ;

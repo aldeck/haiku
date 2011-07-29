@@ -1,14 +1,19 @@
 /*
  * Copyright 2001-2003 Dr. Zoidberg Enterprises. All rights reserved.
- * Copyright 2004-2009, Haiku Inc. All rights reserved.
+ * Copyright 2004-2011, Haiku Inc. All rights reserved.
  *
  * Distributed under the terms of the MIT License.
  */
+
 
 //!	The mail daemon's settings
 
 
 #include <MailSettings.h>
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include <Directory.h>
 #include <Entry.h>
@@ -20,26 +25,7 @@
 #include <String.h>
 #include <Window.h>
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-
-
-namespace MailInternal {
-	status_t WriteMessageFile(const BMessage& archive, const BPath& path,
-		const char* name);
-}
-
-
-BString
-default_sent_directory()
-{
-	BPath path;
-	if (find_directory(B_USER_DIRECTORY, &path) != B_OK)
-		path.SetTo("/boot/home");
-	path.Append("mail/sent");
-	return path.Path();
-}
+#include <MailPrivate.h>
 
 
 //	#pragma mark - BMailSettings
@@ -81,7 +67,8 @@ BMailSettings::Save(bigtime_t /*timeout*/)
 
 	path.Append("Mail");
 
-	status_t result = MailInternal::WriteMessageFile(fData,path,"new_mail_daemon");
+	status_t result = BPrivate::WriteMessageFile(fData, path,
+		"new_mail_daemon");
 	if (result < B_OK)
 		return result;
 
@@ -95,7 +82,7 @@ status_t
 BMailSettings::Reload()
 {
 	status_t ret;
-	
+
 	BPath path;
 	ret = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
 	if (ret != B_OK) {
@@ -103,9 +90,9 @@ BMailSettings::Reload()
 			strerror(ret));
 		return ret;
 	}
-	
+
 	path.Append("Mail/new_mail_daemon");
-	
+
 	// open
 	BFile settings(path.Path(),B_READ_ONLY);
 	ret = settings.InitCheck();
@@ -114,7 +101,7 @@ BMailSettings::Reload()
 			path.Path(), strerror(ret));
 		return ret;
 	}
-	
+
 	// read settings
 	BMessage tmp;
 	ret = tmp.Unflatten(&settings);
@@ -141,10 +128,10 @@ BMailSettings::WindowFollowsCorner()
 
 
 void
-BMailSettings::SetWindowFollowsCorner(int32 which_corner)
+BMailSettings::SetWindowFollowsCorner(int32 whichCorner)
 {
-	if (fData.ReplaceInt32("WindowFollowsCorner",which_corner))
-		fData.AddInt32("WindowFollowsCorner",which_corner);
+	if (fData.ReplaceInt32("WindowFollowsCorner", whichCorner) != B_OK)
+		fData.AddInt32("WindowFollowsCorner", whichCorner);
 }
 
 
@@ -164,8 +151,8 @@ BMailSettings::ShowStatusWindow()
 void
 BMailSettings::SetShowStatusWindow(uint32 mode)
 {
-	if (fData.ReplaceInt32("ShowStatusWindow",mode))
-		fData.AddInt32("ShowStatusWindow",mode);
+	if (fData.ReplaceInt32("ShowStatusWindow", mode) != B_OK)
+		fData.AddInt32("ShowStatusWindow", mode);
 }
 
 
@@ -177,10 +164,10 @@ BMailSettings::DaemonAutoStarts()
 
 
 void
-BMailSettings::SetDaemonAutoStarts(bool does_it)
+BMailSettings::SetDaemonAutoStarts(bool startIt)
 {
-	if (fData.ReplaceBool("DaemonAutoStarts",does_it))
-		fData.AddBool("DaemonAutoStarts",does_it);
+	if (fData.ReplaceBool("DaemonAutoStarts", startIt) != B_OK)
+		fData.AddBool("DaemonAutoStarts", startIt);
 }
 
 
@@ -194,8 +181,8 @@ BMailSettings::ConfigWindowFrame()
 void
 BMailSettings::SetConfigWindowFrame(BRect frame)
 {
-	if (fData.ReplaceRect("ConfigWindowFrame",frame))
-		fData.AddRect("ConfigWindowFrame",frame);
+	if (fData.ReplaceRect("ConfigWindowFrame", frame) != B_OK)
+		fData.AddRect("ConfigWindowFrame", frame);
 }
 
 
@@ -205,7 +192,7 @@ BMailSettings::StatusWindowFrame()
 	BRect frame;
 	if (fData.FindRect("StatusWindowFrame", &frame) != B_OK)
 		return BRect(100, 100, 200, 120);
-	
+
 	return frame;
 }
 
@@ -213,8 +200,8 @@ BMailSettings::StatusWindowFrame()
 void
 BMailSettings::SetStatusWindowFrame(BRect frame)
 {
-	if (fData.ReplaceRect("StatusWindowFrame",frame))
-		fData.AddRect("StatusWindowFrame",frame);
+	if (fData.ReplaceRect("StatusWindowFrame", frame) != B_OK)
+		fData.AddRect("StatusWindowFrame", frame);
 }
 
 
@@ -232,8 +219,8 @@ BMailSettings::StatusWindowWorkspaces()
 void
 BMailSettings::SetStatusWindowWorkspaces(int32 workspace)
 {
-	if (fData.ReplaceInt32("StatusWindowWorkSpace",workspace))
-		fData.AddInt32("StatusWindowWorkSpace",workspace);
+	if (fData.ReplaceInt32("StatusWindowWorkSpace", workspace) != B_OK)
+		fData.AddInt32("StatusWindowWorkSpace", workspace);
 
 	BMessage msg('wsch');
 	msg.AddInt32("StatusWindowWorkSpace",workspace);
@@ -251,11 +238,11 @@ BMailSettings::StatusWindowLook()
 void
 BMailSettings::SetStatusWindowLook(int32 look)
 {
-	if (fData.ReplaceInt32("StatusWindowLook",look))
-		fData.AddInt32("StatusWindowLook",look);
-		
+	if (fData.ReplaceInt32("StatusWindowLook", look) != B_OK)
+		fData.AddInt32("StatusWindowLook", look);
+
 	BMessage msg('lkch');
-	msg.AddInt32("StatusWindowLook",look);
+	msg.AddInt32("StatusWindowLook", look);
 	BMessenger("application/x-vnd.Be-POST").SendMessage(&msg);
 }
 
@@ -275,8 +262,8 @@ BMailSettings::AutoCheckInterval()
 void
 BMailSettings::SetAutoCheckInterval(bigtime_t interval)
 {
-	if (fData.ReplaceInt64("AutoCheckInterval",interval))
-		fData.AddInt64("AutoCheckInterval",interval);
+	if (fData.ReplaceInt64("AutoCheckInterval", interval) != B_OK)
+		fData.AddInt64("AutoCheckInterval", interval);
 }
 
 
@@ -290,8 +277,8 @@ BMailSettings::CheckOnlyIfPPPUp()
 void
 BMailSettings::SetCheckOnlyIfPPPUp(bool yes)
 {
-	if (fData.ReplaceBool("CheckOnlyIfPPPUp",yes))
-		fData.AddBool("CheckOnlyIfPPPUp",yes);
+	if (fData.ReplaceBool("CheckOnlyIfPPPUp", yes))
+		fData.AddBool("CheckOnlyIfPPPUp", yes);
 }
 
 
@@ -305,8 +292,8 @@ BMailSettings::SendOnlyIfPPPUp()
 void
 BMailSettings::SetSendOnlyIfPPPUp(bool yes)
 {
-	if (fData.ReplaceBool("SendOnlyIfPPPUp",yes))
-		fData.AddBool("SendOnlyIfPPPUp",yes);
+	if (fData.ReplaceBool("SendOnlyIfPPPUp", yes))
+		fData.AddBool("SendOnlyIfPPPUp", yes);
 }
 
 
@@ -320,9 +307,12 @@ BMailSettings::DefaultOutboundAccount()
 void
 BMailSettings::SetDefaultOutboundAccount(int32 to)
 {
-	if (fData.ReplaceInt32("DefaultOutboundAccount",to))
-		fData.AddInt32("DefaultOutboundAccount",to);
+	if (fData.ReplaceInt32("DefaultOutboundAccount", to) != B_OK)
+		fData.AddInt32("DefaultOutboundAccount", to);
 }
+
+
+// #pragma mark -
 
 
 BMailAccounts::BMailAccounts()
@@ -366,7 +356,6 @@ BMailAccounts::BMailAccounts()
 			creationTimeList.insert(creationTimeList.begin() + insertIndex,
 				creationTime);
 		}
-		
 	}
 }
 
@@ -426,14 +415,13 @@ BMailAccounts::AccountByName(const char* name)
 }
 
 
-using std::vector;
+// #pragma mark -
 
 
 AddonSettings::AddonSettings()
 	:
 	fModified(false)
 {
-
 }
 
 
@@ -441,12 +429,11 @@ bool
 AddonSettings::Load(const BMessage& message)
 {
 	const char* addonPath = NULL;
-	if (message.FindString("add-on path", &addonPath) != B_OK)
+	if (message.FindString("add-on path", &addonPath) != B_OK
+		|| get_ref_for_path(addonPath, &fAddonRef) != B_OK
+		|| message.FindMessage("settings", &fSettings) != B_OK)
 		return false;
-	if (get_ref_for_path(addonPath, &fAddonRef) != B_OK)
-		return false;
-	if (message.FindMessage("settings", &fSettings) != B_OK)
-		return false;
+
 	fModified = false;
 	return true;
 }
@@ -497,6 +484,9 @@ AddonSettings::HasBeenModified()
 {
 	return fModified;
 }
+
+
+// #pragma mark -
 
 
 bool
@@ -911,7 +901,7 @@ BMailAccountSettings::_CreateAccountFilePath()
 
 	BString fileName = fAccountName;
 	if (fileName == "")
-		fileName << fAccountID;	
+		fileName << fAccountID;
 	for (int i = 0; ; i++) {
 		BString testFileName = fileName;
 		if (i != 0) {
@@ -923,7 +913,7 @@ BMailAccountSettings::_CreateAccountFilePath()
 		BEntry testEntry(testPath.Path());
 		if (!testEntry.Exists()) {
 			fileName = testFileName;
-			break;	
+			break;
 		}
 	}
 

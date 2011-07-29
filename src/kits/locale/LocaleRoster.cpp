@@ -66,6 +66,80 @@ int32 BLocaleRoster::kEmbeddedCatResId = 0xCADA;
 	// this may live in an app- or add-on-file
 
 
+static status_t
+load_resources_if_needed(RosterData* rosterData)
+{
+	if (rosterData->fAreResourcesLoaded)
+		return B_OK;
+
+	status_t result = rosterData->fResources.SetToImage(
+		(const void*)&BLocaleRoster::Default);
+	if (result != B_OK)
+		return result;
+
+	result = rosterData->fResources.PreloadResourceType();
+	if (result != B_OK)
+		return result;
+
+	rosterData->fAreResourcesLoaded = true;
+	return B_OK;
+}
+
+
+static const char*
+country_code_for_language(const BLanguage& language)
+{
+	if (language.IsCountrySpecific())
+		return language.CountryCode();
+
+	// TODO: implement for real! For now, we just map some well known
+	// languages to countries to make ReadOnlyBootPrompt happy.
+	switch ((tolower(language.Code()[0]) << 8) | tolower(language.Code()[1])) {
+		case 'be':	// Belarus
+			return "BY";
+		case 'cs':	// Czech Republic
+			return "CZ";
+		case 'da':	// Denmark
+			return "DK";
+		case 'en':	// United Kingdom
+			return "GB";
+		case 'ja':	// Japan
+			return "JP";
+		case 'ko':	// South Korea
+			return "KR";
+		case 'nb':	// Norway
+			return "NO";
+		case 'sv':	// Sweden
+			return "SE";
+		case 'uk':	// Ukraine
+			return "UA";
+		case 'zh':	// China
+			return "CN";
+
+		// Languages with a matching country name
+		case 'de':	// Germany
+		case 'es':	// Spain
+		case 'fi':	// Finland
+		case 'fr':	// France
+		case 'hu':	// Hungary
+		case 'it':	// Italy
+		case 'lt':	// Lithuania
+		case 'nl':	// Netherlands
+		case 'pl':	// Poland
+		case 'pt':	// Portugal
+		case 'ro':	// Romania
+		case 'ru':	// Russia
+		case 'sk':	// Slovakia
+			return language.Code();
+	}
+
+	return NULL;
+}
+
+
+// #pragma mark -
+
+
 BLocaleRoster::BLocaleRoster()
 {
 }
@@ -242,38 +316,30 @@ status_t
 BLocaleRoster::GetFlagIconForCountry(BBitmap* flagIcon, const char* countryCode)
 {
 	if (countryCode == NULL)
-		return B_BAD_DATA;
+		return B_BAD_VALUE;
 
 	RosterData* rosterData = RosterData::Default();
 	BAutolock lock(rosterData->fLock);
 	if (!lock.IsLocked())
 		return B_ERROR;
 
-	if (!rosterData->fAreResourcesLoaded) {
-		status_t result = rosterData->fResources.SetToImage(
-			(const void*)&BLocaleRoster::Default);
-		if (result != B_OK)
-			return result;
+	status_t status = load_resources_if_needed(rosterData);
+	if (status != B_OK)
+		return status;
 
-		result = rosterData->fResources.PreloadResourceType();
-		if (result != B_OK)
-			return result;
-
-		rosterData->fAreResourcesLoaded = true;
-	}
-
-	size_t size;
-
-	// normalize the country code : 2 letters uparcase
-	// filter things out so that "pt_BR" gived the flag for brazil
-	char normalizedCode[3];
-	normalizedCode[2] = '\0';
+	// Normalize the country code: 2 letters uppercase
+	// filter things out so that "pt_BR" gives the flag for brazil
 
 	int codeLength = strlen(countryCode);
+	if (codeLength < 2)
+		return B_BAD_VALUE;
 
+	char normalizedCode[3];
 	normalizedCode[0] = toupper(countryCode[codeLength - 2]);
 	normalizedCode[1] = toupper(countryCode[codeLength - 1]);
+	normalizedCode[2] = '\0';
 
+	size_t size;
 	const void* buffer = rosterData->fResources.LoadResource(
 		B_VECTOR_ICON_TYPE, normalizedCode, &size);
 	if (buffer == NULL || size == 0)
@@ -281,6 +347,50 @@ BLocaleRoster::GetFlagIconForCountry(BBitmap* flagIcon, const char* countryCode)
 
 	return BIconUtils::GetVectorIcon(static_cast<const uint8*>(buffer), size,
 		flagIcon);
+}
+
+
+status_t
+BLocaleRoster::GetFlagIconForLanguage(BBitmap* flagIcon,
+	const char* languageCode)
+{
+	if (languageCode == NULL || languageCode[0] == '\0'
+		|| languageCode[1] == '\0')
+		return B_BAD_VALUE;
+
+	RosterData* rosterData = RosterData::Default();
+	BAutolock lock(rosterData->fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	status_t status = load_resources_if_needed(rosterData);
+	if (status != B_OK)
+		return status;
+
+	// Normalize the language code: first two letters, lowercase
+
+	char normalizedCode[3];
+	normalizedCode[0] = tolower(languageCode[0]);
+	normalizedCode[1] = tolower(languageCode[1]);
+	normalizedCode[2] = '\0';
+
+	size_t size;
+	const void* buffer = rosterData->fResources.LoadResource(
+		B_VECTOR_ICON_TYPE, normalizedCode, &size);
+	if (buffer != NULL && size != 0) {
+		return BIconUtils::GetVectorIcon(static_cast<const uint8*>(buffer),
+			size, flagIcon);
+	}
+
+	// There is no language flag, try to get the default country's flag for
+	// the language instead.
+
+	BLanguage language(languageCode);
+	const char* countryCode = country_code_for_language(language);
+	if (countryCode == NULL)
+		return B_NAME_NOT_FOUND;
+
+	return GetFlagIconForCountry(flagIcon, countryCode);
 }
 
 
@@ -308,6 +418,60 @@ BLocaleRoster::GetAvailableCatalogs(BMessage*  languageList,
 			fingerprint);
 	}
 
+	return B_OK;
+}
+
+
+bool
+BLocaleRoster::IsFilesystemTranslationPreferred() const
+{
+	RosterData* rosterData = RosterData::Default();
+	BAutolock lock(rosterData->fLock);
+	if (!lock.IsLocked())
+		return B_ERROR;
+
+	return rosterData->fIsFilesystemTranslationPreferred;
+}
+
+
+/*!	\brief Looks up a localized filename from a catalog.
+	\param localizedFileName A pre-allocated BString object for the result
+		of the lookup.
+	\param ref An entry_ref with an attribute holding data for catalog lookup.
+	\param traverse A boolean to decide if symlinks are to be traversed.
+	\return
+	- \c B_OK: success
+	- \c B_ENTRY_NOT_FOUND: failure. Attribute not found, entry not found
+		in catalog, etc
+	- other error codes: failure
+
+	Attribute format:  "signature:context:string"
+	(no colon in any of signature, context and string)
+
+	Lookup is done for the top preferred language, only.
+	Lookup fails if a comment is present in the catalog entry.
+*/
+status_t
+BLocaleRoster::GetLocalizedFileName(BString& localizedFileName,
+	const entry_ref& ref, bool traverse)
+{
+	BString signature;
+	BString context;
+	BString string;
+
+	status_t status = _PrepareCatalogEntry(ref, signature, context, string,
+		traverse);
+
+	if (status != B_OK)
+		return status;
+
+	BCatalog catalog(signature);
+	const char* temp = catalog.GetString(string, context);
+
+	if (temp == NULL)
+		return B_ENTRY_NOT_FOUND;
+
+	localizedFileName = temp;
 	return B_OK;
 }
 
@@ -366,60 +530,6 @@ BLocaleRoster::_GetCatalog(BCatalog* catalog, vint32* catalogInitStatus)
 	*catalogInitStatus = true;
 
 	return catalog;
-}
-
-
-bool
-BLocaleRoster::IsFilesystemTranslationPreferred() const
-{
-	RosterData* rosterData = RosterData::Default();
-	BAutolock lock(rosterData->fLock);
-	if (!lock.IsLocked())
-		return B_ERROR;
-
-	return rosterData->fIsFilesystemTranslationPreferred;
-}
-
-
-/*!	\brief Looks up a localized filename from a catalog.
-	\param localizedFileName A pre-allocated BString object for the result
-		of the lookup.
-	\param ref An entry_ref with an attribute holding data for catalog lookup.
-	\param traverse A boolean to decide if symlinks are to be traversed.
-	\return
-	- \c B_OK: success
-	- \c B_ENTRY_NOT_FOUND: failure. Attribute not found, entry not found
-		in catalog, etc
-	- other error codes: failure
-
-	Attribute format:  "signature:context:string"
-	(no colon in any of signature, context and string)
-
-	Lookup is done for the top preferred language, only.
-	Lookup fails if a comment is present in the catalog entry.
-*/
-status_t
-BLocaleRoster::GetLocalizedFileName(BString& localizedFileName,
-	const entry_ref& ref, bool traverse)
-{
-	BString signature;
-	BString context;
-	BString string;
-	
-	status_t status = _PrepareCatalogEntry(ref, signature, context, string,
-		traverse);
-
-	if (status != B_OK)
-		return status;
-
-	BCatalog catalog(signature);
-	const char* temp = catalog.GetString(string, context);
-
-	if (temp == NULL)
-		return B_ENTRY_NOT_FOUND;
-
-	localizedFileName = temp;
-	return B_OK;
 }
 
 

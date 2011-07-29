@@ -6,44 +6,50 @@
  * Distributed under the terms of the MIT License.
  */
 
-//!	implementation of the SMTP protocol
 
-#include <DataIO.h>
-#include <Message.h>
-#include <Alert.h>
-#include <TextControl.h>
-#include <Entry.h>
-#include <File.h>
-#include <Path.h>
-#include <MenuField.h>
+//!	Implementation of the SMTP protocol
 
-#include <cctype>
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <netdb.h>
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <sys/select.h>
 
-#include <ProtocolConfigView.h>
-#include <mail_encoding.h>
-#include <MailSettings.h>
-#include <NodeMessage.h>
-#include <crypt.h>
-#include <unistd.h>
+#include "smtp.h"
 
 #include <map>
 
-#include "smtp.h"
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <errno.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+#include <Alert.h>
+#include <Catalog.h>
+#include <DataIO.h>
+#include <Entry.h>
+#include <File.h>
+#include <MenuField.h>
+#include <Message.h>
+#include <Path.h>
+#include <TextControl.h>
+
+#include <crypt.h>
+#include <mail_encoding.h>
+#include <MailSettings.h>
+#include <NodeMessage.h>
+#include <ProtocolConfigView.h>
+
 #ifdef USE_SSL
 #	include <openssl/md5.h>
 #else
 #	include "md5.h"
 #endif
 
-#include <MDRLanguage.h>
+
+#undef B_TRANSLATE_CONTEXT
+#define B_TRANSLATE_CONTEXT "smtp"
 
 
 #define CRLF "\r\n"
@@ -65,18 +71,14 @@ using namespace std;
 ** written by Martin Schaaf <mascha@ma-scha.de>
 */
 void
-MD5Hmac(unsigned char *digest,
-	 const unsigned char* text, int text_len,
-	 const unsigned char* key, int key_len)
+MD5Hmac(unsigned char *digest, const unsigned char* text, int text_len,
+	const unsigned char* key, int key_len)
 {
 	MD5_CTX context;
-	unsigned char k_ipad[64];    /* inner padding -
-				      * key XORd with ipad
-				      */
-	unsigned char k_opad[64];    /* outer padding -
-				      * key XORd with opad
-				      */
-	/* unsigned char tk[16]; */
+	unsigned char k_ipad[64];
+		// inner padding - key XORd with ipad
+	unsigned char k_opad[64];
+		// outer padding - key XORd with opad
 	int i;
 
 	/* start out by storing key in pads */
@@ -106,7 +108,6 @@ MD5Hmac(unsigned char *digest,
 	 * and text is the data being protected
 	 */
 
-
 	/* XOR key with ipad and opad values */
 	for (i = 0; i < 64; i++) {
 		k_ipad[i] ^= 0x36;
@@ -134,9 +135,8 @@ MD5Hmac(unsigned char *digest,
 
 
 void
-MD5HexHmac(char *hexdigest,
-	     const unsigned char* text, int text_len,
-	     const unsigned char* key, int key_len)
+MD5HexHmac(char *hexdigest, const unsigned char* text, int text_len,
+	const unsigned char* key, int key_len)
 {
 	unsigned char digest[16];
 	int i;
@@ -271,7 +271,8 @@ SMTPProtocol::Connect()
 		// to the SMTP server first...
 		status_t status = _POP3Authentication();
 		if (status < B_OK) {
-			error_msg << MDR_DIALECT_CHOICE ("POP3 authentication failed. The server said:\n","POP3認証に失敗しました\n") << fLog;
+			error_msg << B_TRANSLATE("POP3 authentication failed. The server "
+				"said:\n") << fLog;
 			ShowError(error_msg.String());
 			return status;
 		}
@@ -280,16 +281,17 @@ SMTPProtocol::Connect()
 	status = Open(fSettingsMessage.FindString("server"),
 		fSettingsMessage.FindInt32("port"), authMethod == 1);
 	if (status < B_OK) {
-		error_msg << MDR_DIALECT_CHOICE ("Error while opening connection to ","接続中にエラーが発生しました") << fSettingsMessage.FindString("server");
+		error_msg << B_TRANSLATE("Error while opening connection to %serv");
+		error_msg.ReplaceFirst("%serv", fSettingsMessage.FindString("server"));
 
 		if (fSettingsMessage.FindInt32("port") > 0)
 			error_msg << ":" << fSettingsMessage.FindInt32("port");
 
 		// << strerror(err) - BNetEndpoint sucks, we can't use this;
 		if (fLog.Length() > 0)
-			error_msg << ". The server says:\n" << fLog;
+			error_msg << B_TRANSLATE(". The server says:\n") << fLog;
 		else
-			error_msg << MDR_DIALECT_CHOICE (": Connection refused or host not found.","；接続が拒否されたかサーバーが見つかりません");
+			error_msg << B_TRANSLATE(": Connection refused or host not found.");
 
 		ShowError(error_msg.String());
 
@@ -302,8 +304,11 @@ SMTPProtocol::Connect()
 
 	if (status != B_OK) {
 		//-----This is a really cool kind of error message. How can we make it work for POP3?
-		error_msg << MDR_DIALECT_CHOICE ("Error while logging in to ","ログイン中にエラーが発生しました\n") << fSettingsMessage.FindString("server")
-			<< MDR_DIALECT_CHOICE (". The server said:\n","サーバーエラー\n") << fLog;
+		error_msg << B_TRANSLATE("Error while logging in to %serv")
+			<< B_TRANSLATE(". The server said:\n") << fLog;
+
+		error_msg.ReplaceFirst("%serv", fSettingsMessage.FindString("server"));
+
 		ShowError(error_msg.String());
 	}
 	return B_OK;
@@ -317,9 +322,7 @@ SMTPProtocol::Disconnect()
 }
 
 
-// Process EMail to be sent
-
-
+//! Process EMail to be sent
 status_t
 SMTPProtocol::SendMessages(const std::vector<entry_ref>& mails,
 	size_t totalBytes)
@@ -351,12 +354,11 @@ SMTPProtocol::SendMessages(const std::vector<entry_ref>& mails,
 }
 
 
-// Opens connection to server
-
+//! Opens connection to server
 status_t
 SMTPProtocol::Open(const char *address, int port, bool esmtp)
 {
-	ReportProgress(0, 0, MDR_DIALECT_CHOICE ("Connecting to server...","接続中..."));
+	ReportProgress(0, 0, B_TRANSLATE("Connecting to server" B_UTF8_ELLIPSIS));
 
 	#ifdef USE_SSL
 		use_ssl = (fSettingsMessage.FindInt32("flavor") == 1);
@@ -381,28 +383,20 @@ SMTPProtocol::Open(const char *address, int port, bool esmtp)
 	if (hostIP == 0)
 		return EHOSTUNREACH;
 
-#ifndef HAIKU_TARGET_PLATFORM_BEOS
 	fSocket = socket(AF_INET, SOCK_STREAM, 0);
-#else
-	fSocket = socket(AF_INET, 2, 0);
-#endif
-	if (fSocket >= 0) {
-		struct sockaddr_in saAddr;
-		memset(&saAddr, 0, sizeof(saAddr));
-		saAddr.sin_family      = AF_INET;
-		saAddr.sin_port        = htons(port);
-		saAddr.sin_addr.s_addr = hostIP;
-		int result = connect(fSocket, (struct sockaddr *) &saAddr, sizeof(saAddr));
-		if (result < 0) {
-#ifndef HAIKU_TARGET_PLATFORM_BEOS
-			close(fSocket);
-#else
-			closesocket(fSocket);
-#endif
-			fSocket = -1;
-			return errno;
-		}
-	} else {
+	if (fSocket < 0)
+		return errno;
+
+	struct sockaddr_in saAddr;
+	memset(&saAddr, 0, sizeof(saAddr));
+	saAddr.sin_family = AF_INET;
+	saAddr.sin_port = htons(port);
+	saAddr.sin_addr.s_addr = hostIP;
+	int result = connect(fSocket, (struct sockaddr *)&saAddr,
+		sizeof(saAddr));
+	if (result < 0) {
+		close(fSocket);
+		fSocket = -1;
 		return errno;
 	}
 
@@ -422,23 +416,19 @@ SMTPProtocol::Open(const char *address, int port, bool esmtp)
 
     	if (SSL_connect(ssl) <= 0) {
     		BString error;
-			error << "Could not connect to SMTP server " << fSettingsMessage.FindString("server");
+			error << "Could not connect to SMTP server "
+				<< fSettingsMessage.FindString("server");
 			if (port != 465)
 				error << ":" << port;
 			error << ". (SSL connection error)";
 			ShowError(error.String());
 			SSL_CTX_free(ctx);
-			#ifndef HAIKU_TARGET_PLATFORM_BEOS
-				close(fSocket);
-			#else
-				closesocket(fSocket);
-			#endif
-                        fSocket = -1;
+			close(fSocket);
+			fSocket = -1;
 			return B_ERROR;
 		}
 	}
-
-    #endif
+#endif	// USE_SSL
 
 	BString line;
 	ReceiveResponse(line);
@@ -460,28 +450,23 @@ SMTPProtocol::Open(const char *address, int port, bool esmtp)
 		return B_ERROR;
 	}
 
-	
-	
-	#ifdef USE_SSL
+#ifdef USE_SSL
 	// Check for STARTTLS
-	if(use_STARTTLS)
-	{
+	if (use_STARTTLS) {
 		const char *res = fLog.String();
 		char *p;
-		
+
 		SSL_library_init();
 		RAND_seed(this,sizeof(SMTPProtocol));
 		::sprintf(cmd, "STARTTLS"CRLF);
-		
-		if ((p = ::strstr(res, "STARTTLS")) != NULL)
-		{
+
+		if ((p = ::strstr(res, "STARTTLS")) != NULL) {
 			// Server advertises STARTTLS support
-			if(SendCommand(cmd) != B_OK)
-			{
+			if (SendCommand(cmd) != B_OK) {
 				delete[] cmd;
 				return B_ERROR;
 			}
-			
+
 			// We should start TLS negotiation
 			use_ssl = true;
 			ctx = SSL_CTX_new(TLSv1_method());
@@ -492,25 +477,23 @@ SMTPProtocol::Open(const char *address, int port, bool esmtp)
     		SSL_set_connect_state(ssl);
     		if(SSL_do_handshake(ssl) != 1)
     			return B_ERROR;
-    		
+
     		// Should send EHLO command again
     		if(!esmtp)
     			::sprintf(cmd, "HELO %s"CRLF, localhost);
     		else
     			::sprintf(cmd, "EHLO %s"CRLF, localhost);
-    			
-    		if(SendCommand(cmd) != B_OK)
-    		{
+
+    		if (SendCommand(cmd) != B_OK) {
     			delete[] cmd;
     			return B_ERROR;
     		}
 		}
-
 	}
-	#endif
-	
+#endif	// USE_SSL
+
 	delete[] cmd;
-	
+
 	// Check auth type
 	if (esmtp) {
 		const char *res = fLog.String();
@@ -805,8 +788,6 @@ SMTPProtocol::Close()
 }
 
 
-/** Send mail */
-
 status_t
 SMTPProtocol::Send(const char* to, const char* from, BPositionIO *message)
 {
@@ -845,14 +826,14 @@ SMTPProtocol::Send(const char* to, const char* from, BPositionIO *message)
 	// SMTP server will remove the periods.  Of course, the POP server may then
 	// add some of its own, but the POP client should take care of them.
 
-	ssize_t		amountRead;
-	ssize_t		amountToRead;
-	ssize_t		amountUnread;
-	ssize_t		bufferLen = 0;
-	const int	bufferMax = 2000;
-	bool		foundCRLFPeriod;
-	int			i;
-	bool		messageEndedWithCRLF = false;
+	ssize_t amountRead;
+	ssize_t amountToRead;
+	ssize_t amountUnread;
+	ssize_t bufferLen = 0;
+	const int bufferMax = 2000;
+	bool foundCRLFPeriod;
+	int i;
+	bool messageEndedWithCRLF = false;
 
 	message->Seek(0, SEEK_END);
 	amountUnread = message->Position();
@@ -883,15 +864,15 @@ SMTPProtocol::Send(const char* to, const char* from, BPositionIO *message)
 			if (data[i] == '\r' && data[i+1] == '\n' && data[i+2] == '.') {
 				foundCRLFPeriod = true;
 				// Send data up to the CRLF, and include the period too.
-                        #ifdef USE_SSL
-                                if (use_ssl) {
-                                        if (SSL_write(ssl,data,i + 3) < 0) {
-                                            amountUnread = 0; // Stop when an error happens.
-                                            bufferLen = 0;
-                                            break;
-                                        }
-                                } else
-                        #endif
+#ifdef USE_SSL
+				if (use_ssl) {
+					if (SSL_write(ssl,data,i + 3) < 0) {
+						amountUnread = 0; // Stop when an error happens.
+						bufferLen = 0;
+						break;
+					}
+				} else
+#endif
 				if (send (fSocket,data, i + 3,0) < 0) {
 					amountUnread = 0; // Stop when an error happens.
 					bufferLen = 0;
@@ -954,8 +935,7 @@ SMTPProtocol::Send(const char* to, const char* from, BPositionIO *message)
 }
 
 
-// Receives response from server.
-
+//! Receives response from server.
 int32
 SMTPProtocol::ReceiveResponse(BString &out)
 {
@@ -1064,7 +1044,9 @@ SMTPProtocol::SendCommand(const char *cmd)
 }
 
 
-// Instantiate hook
+// #pragma mark -
+
+
 OutboundProtocol*
 instantiate_outbound_protocol(BMailAccountSettings* settings)
 {

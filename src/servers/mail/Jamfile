@@ -22,9 +22,9 @@ Server mail_daemon :
 	main.cpp
 	Notifier.cpp
 	StatusWindow.cpp
+	: be libmail.so tracker $(HAIKU_LOCALE_LIBS) $(TARGET_LIBSTDC++)
+		$(TARGET_NETWORK_LIBS)
 ;
-
-LinkAgainst mail_daemon : be libmail.so tracker $(TARGET_LIBSTDC++) $(TARGET_NETWORK_LIBS) ;
 
 Package haiku-maildaemon-cvs :
 	mail_daemon :
@@ -32,3 +32,12 @@ Package haiku-maildaemon-cvs :
 
 Packages haiku-maildaemon-cvs :
 	README LICENSE HISTORY install.sh ;
+
+DoCatalogs mail_daemon :
+	x-vnd.Be-POST
+	:
+	DeskbarView.cpp
+	MailDaemon.cpp
+	Notifier.cpp
+	StatusWindow.cpp
+;

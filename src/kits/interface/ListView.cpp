@@ -1801,7 +1801,7 @@ BListView::_RescanSelection(int32 from, int32 to)
 
 	from = max_c(0, from);
 	to = min_c(to, CountItems() - 1);
-	
+
 	if (fAnchorIndex != -1) {
 		if (fAnchorIndex == from)
 			fAnchorIndex = to;
@@ -1818,7 +1818,7 @@ BListView::_RescanSelection(int32 from, int32 to)
 
 	if (fFirstSelected > from)
 		from = fFirstSelected;
-		
+
 	fLastSelected = fFirstSelected;
 	for (int32 i = from; i <= to; i++) {
 		if (ItemAt(i)->IsSelected())

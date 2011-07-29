@@ -1,16 +1,20 @@
 /*
- * Copyright 2006-2009, Haiku, Inc. All Rights Reserved.
+ * Copyright 2006-2011, Haiku, Inc. All Rights Reserved.
  * Distributed under the terms of the MIT License.
  *
  * Authors:
  *		Axel Dörfler, axeld@pinc-software.de
+ *		Alexander von Gluck, kallisti5@unixzen.com
  */
 
 
 #include "accelerant_protos.h"
 #include "accelerant.h"
 
+#include "display.h"
 #include "utility.h"
+#include "pll.h"
+#include "mc.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -24,13 +28,14 @@
 #define TRACE_ACCELERANT
 #ifdef TRACE_ACCELERANT
 extern "C" void _sPrintf(const char *format, ...);
-#	define TRACE(x) _sPrintf x
+#	define TRACE(x...) _sPrintf("radeon_hd: " x)
 #else
-#	define TRACE(x) ;
+#	define TRACE(x...) ;
 #endif
 
 
 struct accelerant_info *gInfo;
+display_info *gDisplay[MAX_DISPLAY];
 
 
 class AreaCloner {
@@ -92,10 +97,23 @@ init_common(int device, bool isClone)
 	// initialize global accelerant info structure
 
 	gInfo = (accelerant_info *)malloc(sizeof(accelerant_info));
+
 	if (gInfo == NULL)
 		return B_NO_MEMORY;
 
 	memset(gInfo, 0, sizeof(accelerant_info));
+
+	for (uint32 id = 0; id < MAX_DISPLAY; id++) {
+		gDisplay[id] = (display_info *)malloc(sizeof(display_info));
+		if (gDisplay[id] == NULL)
+			return B_NO_MEMORY;
+		memset(gDisplay[id], 0, sizeof(display_info));
+
+		gDisplay[id]->regs = (register_info *)malloc(sizeof(register_info));
+		if (gDisplay[id]->regs == NULL)
+			return B_NO_MEMORY;
+		memset(gDisplay[id]->regs, 0, sizeof(register_info));
+	}
 
 	gInfo->is_clone = isClone;
 	gInfo->device = device;
@@ -118,8 +136,8 @@ init_common(int device, bool isClone)
 	status_t status = sharedCloner.InitCheck();
 	if (status < B_OK) {
 		free(gInfo);
-		TRACE(("radeon_init_accelerant() failed shared area%i, %i\n",
-			data.shared_info_area, gInfo->shared_info_area));
+		TRACE("%s, failed shared area%i, %i\n",
+			__func__, data.shared_info_area, gInfo->shared_info_area);
 		return status;
 	}
 
@@ -136,6 +154,12 @@ init_common(int device, bool isClone)
 	sharedCloner.Keep();
 	regsCloner.Keep();
 
+	// Define Radeon PLL default ranges
+	gInfo->shared_info->pll_info.reference_frequency
+		= RHD_PLL_REFERENCE_DEFAULT;
+	gInfo->shared_info->pll_info.min_frequency = RHD_PLL_MIN_DEFAULT;
+	gInfo->shared_info->pll_info.max_frequency = RHD_PLL_MAX_DEFAULT;
+
 	return B_OK;
 }
 
@@ -144,16 +168,25 @@ init_common(int device, bool isClone)
 static void
 uninit_common(void)
 {
-	delete_area(gInfo->regs_area);
-	delete_area(gInfo->shared_info_area);
+	if (gInfo != NULL) {
+		delete_area(gInfo->regs_area);
+		delete_area(gInfo->shared_info_area);
 
-	gInfo->regs_area = gInfo->shared_info_area = -1;
+		gInfo->regs_area = gInfo->shared_info_area = -1;
 
-	// close the file handle ONLY if we're the clone
-	if (gInfo->is_clone)
-		close(gInfo->device);
+		// close the file handle ONLY if we're the clone
+		if (gInfo->is_clone)
+			close(gInfo->device);
 
-	free(gInfo);
+		free(gInfo);
+	}
+
+	for (uint32 id = 0; id < MAX_DISPLAY; id++) {
+		if (gDisplay[id] != NULL) {
+			free(gDisplay[id]->regs);
+			free(gDisplay[id]);
+		}
+	}
 }
 
 
@@ -164,7 +197,7 @@ uninit_common(void)
 status_t
 radeon_init_accelerant(int device)
 {
-	TRACE(("radeon_init_accelerant()\n"));
+	TRACE("%s enter\n", __func__);
 
 	status_t status = init_common(device, false);
 	if (status != B_OK)
@@ -175,14 +208,19 @@ radeon_init_accelerant(int device)
 	init_lock(&info.accelerant_lock, "radeon hd accelerant");
 	init_lock(&info.engine_lock, "radeon hd engine");
 
+	status = detect_displays();
+	//if (status != B_OK)
+	//	return status;
+
+	debug_displays();
 
 	status = create_mode_list();
-	if (status != B_OK) {
-		uninit_common();
-		return status;
-	}
+	//if (status != B_OK) {
+	//	radeon_uninit_accelerant();
+	//	return status;
+	//}
 
-	TRACE(("radeon_init_accelerant() done\n"));
+	TRACE("%s done\n", __func__);
 	return B_OK;
 }
 
@@ -193,7 +231,7 @@ radeon_init_accelerant(int device)
 void
 radeon_uninit_accelerant(void)
 {
-	TRACE(("radeon_uninit_accelerant()\n"));
+	TRACE("%s enter\n", __func__);
 
 	gInfo->mode_list = NULL;
 
@@ -203,5 +241,6 @@ radeon_uninit_accelerant(void)
 	uninit_lock(&info.engine_lock);
 
 	uninit_common();
+	TRACE("%s done\n", __func__);
 }
 

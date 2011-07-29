@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <ByteOrder.h>
 #include <TypeConstants.h>
 
 #include <cpu.h>
@@ -387,7 +388,7 @@ setup_for_thread(char *arg, Thread **_thread, uint32 *_ebp,
 
 	if (arg != NULL) {
 		thread_id id = strtoul(arg, NULL, 0);
-		thread = thread_get_thread_struct_locked(id);
+		thread = Thread::GetDebug(id);
 		if (thread == NULL) {
 			kprintf("could not find thread %ld\n", id);
 			return false;
@@ -854,7 +855,7 @@ dump_iframes(int argc, char **argv)
 		thread = thread_get_current_thread();
 	} else if (argc == 2) {
 		thread_id id = strtoul(argv[1], NULL, 0);
-		thread = thread_get_thread_struct_locked(id);
+		thread = Thread::GetDebug(id);
 		if (thread == NULL) {
 			kprintf("could not find thread %ld\n", id);
 			return 0;
@@ -924,7 +925,7 @@ cmd_in_context(int argc, char** argv)
 		return 0;
 
 	// get the thread
-	Thread* thread = thread_get_thread_struct_locked(threadID);
+	Thread* thread = Thread::GetDebug(threadID);
 	if (thread == NULL) {
 		kprintf("Could not find thread with ID \"%s\".\n", threadIDString);
 		return 0;
@@ -1165,6 +1166,58 @@ arch_get_debug_variable(const char* variableName, uint64* value)
 
 	*value = *variable;
 	return B_OK;
+}
+
+
+/*!	Writes the contents of the CPU registers at some fixed outer stack frame or
+	iframe into the given buffer in the format expected by gdb.
+
+	This function is called in response to gdb's 'g' command.
+
+	\param buffer The buffer to write the registers to.
+	\param bufferSize The size of \a buffer in bytes.
+	\return When successful, the number of bytes written to \a buffer, or a
+		negative error code on error.
+*/
+ssize_t
+arch_debug_gdb_get_registers(char* buffer, size_t bufferSize)
+{
+	struct iframe* frame = get_current_iframe(debug_get_debugged_thread());
+	if (frame == NULL)
+		return B_NOT_SUPPORTED;
+
+	// For x86 the register order is:
+	//
+	//    eax, ebx, ecx, edx,
+	//    esp, ebp, esi, edi,
+	//    eip, eflags,
+	//    cs, ss, ds, es
+	//
+	// Note that even though the segment descriptors are actually 16 bits wide,
+	// gdb requires them as 32 bit integers. Note also that for some reason
+	// gdb wants the register dump in *big endian* format.
+	static const int32 kRegisterCount = 14;
+	uint32 registers[kRegisterCount] = {
+		frame->eax, frame->ebx, frame->ecx, frame->edx,
+		frame->esp, frame->ebp, frame->esi, frame->edi,
+		frame->eip, frame->flags,
+		frame->cs, frame->ds, frame->ds, frame->es
+			// assume ss == ds
+	};
+
+	const char* const bufferStart = buffer;
+
+	for (int32 i = 0; i < kRegisterCount; i++) {
+		int result = snprintf(buffer, bufferSize, "%08" B_PRIx32,
+			B_HOST_TO_BENDIAN_INT32(registers[i]));
+		if (result >= (int)bufferSize)
+			return B_BUFFER_OVERFLOW;
+
+		buffer += result;
+		bufferSize -= result;
+	}
+
+	return buffer - bufferStart;
 }
 
 

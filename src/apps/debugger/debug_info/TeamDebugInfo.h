@@ -14,6 +14,7 @@
 
 #include "GlobalTypeLookup.h"
 #include "ImageInfo.h"
+#include "TeamTypeInformation.h"
 
 
 class Architecture;
@@ -32,7 +33,7 @@ class SourceLocation;
 class SpecificTeamDebugInfo;
 
 
-class TeamDebugInfo : public BReferenceable, public GlobalTypeLookup {
+class TeamDebugInfo : public GlobalTypeLookup, public TeamTypeInformation {
 public:
 								TeamDebugInfo(
 									DebuggerInterface* debuggerInterface,
@@ -43,7 +44,13 @@ public:
 			status_t			Init();
 
 	virtual	status_t			GetType(GlobalTypeCache* cache,
-									const BString& name, Type*& _type);
+									const BString& name,
+									const TypeLookupConstraints& constraints,
+									Type*& _type);
+
+	virtual status_t			LookupTypeByName(const BString& name,
+									const TypeLookupConstraints& constraints,
+									Type*& _type);
 
 			status_t			LoadImageDebugInfo(const ImageInfo& imageInfo,
 									LocatableFile* imageFile,

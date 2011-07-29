@@ -428,7 +428,7 @@ BString::SetToFormat(const char* format, ...)
 {
 	int32 bufferSize = 1024;
 	char buffer[bufferSize];
-	
+
 	va_list arg;
 	va_start(arg, format);
 	int32 bytes = vsnprintf(buffer, bufferSize, format, arg);
@@ -1983,7 +1983,7 @@ BString::Trim()
 	// We actually need to trim
 
 	ssize_t length = endIndex + 1 - startCount;
-	ASSERT(length >= 0);	
+	ASSERT(length >= 0);
 	if (startCount == 0 || length == 0) {
 		_MakeWritable(length, true);
 	} else if (_MakeWritable() == B_OK) {
@@ -2029,6 +2029,18 @@ BString::operator<<(char c)
 
 
 BString&
+BString::operator<<(bool value)
+{
+	if (value)
+		_DoAppend("true", 4);
+	else
+		_DoAppend("false", 5);
+
+	return *this;
+}
+
+
+BString&
 BString::operator<<(int i)
 {
 	char num[32];
@@ -2051,7 +2063,7 @@ BString::operator<<(unsigned int i)
 
 
 BString&
-BString::operator<<(uint32 i)
+BString::operator<<(unsigned long i)
 {
 	char num[32];
 	int32 length = snprintf(num, sizeof(num), "%lu", i);
@@ -2062,7 +2074,7 @@ BString::operator<<(uint32 i)
 
 
 BString&
-BString::operator<<(int32 i)
+BString::operator<<(long i)
 {
 	char num[32];
 	int32 length = snprintf(num, sizeof(num), "%ld", i);
@@ -2073,7 +2085,7 @@ BString::operator<<(int32 i)
 
 
 BString&
-BString::operator<<(uint64 i)
+BString::operator<<(unsigned long long i)
 {
 	char num[64];
 	int32 length = snprintf(num, sizeof(num), "%llu", i);
@@ -2084,7 +2096,7 @@ BString::operator<<(uint64 i)
 
 
 BString&
-BString::operator<<(int64 i)
+BString::operator<<(long long i)
 {
 	char num[64];
 	int32 length = snprintf(num, sizeof(num), "%lld", i);
@@ -2099,6 +2111,17 @@ BString::operator<<(float f)
 {
 	char num[64];
 	int32 length = snprintf(num, sizeof(num), "%.2f", f);
+
+	_DoAppend(num, length);
+	return *this;
+}
+
+
+BString&
+BString::operator<<(double value)
+{
+	char num[64];
+	int32 length = snprintf(num, sizeof(num), "%.2f", value);
 
 	_DoAppend(num, length);
 	return *this;

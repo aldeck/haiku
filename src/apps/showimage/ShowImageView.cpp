@@ -28,6 +28,7 @@
 #include <BitmapStream.h>
 #include <Catalog.h>
 #include <Clipboard.h>
+#include <Cursor.h>
 #include <Debug.h>
 #include <Directory.h>
 #include <Entry.h>
@@ -70,6 +71,7 @@ class PopUpMenu : public BPopUpMenu {
 
 // the delay time for hiding the cursor in 1/10 seconds (the pulse rate)
 #define HIDE_CURSOR_DELAY_TIME 20
+#define STICKY_ZOOM_DELAY_TIME 5
 #define SHOW_IMAGE_ORIENTATION_ATTRIBUTE "ShowImage:orientation"
 
 
@@ -195,7 +197,10 @@ ShowImageView::ShowImageView(BRect rect, const char *name, uint32 resizingMode,
 	fShowCaption(false),
 	fShowingPopUpMenu(false),
 	fHideCursorCountDown(HIDE_CURSOR_DELAY_TIME),
-	fIsActiveWin(true)
+	fStickyZoomCountDown(0),
+	fIsActiveWin(true),
+	fDefaultCursor(NULL),
+	fGrabCursor(NULL)
 {
 	ShowImageSettings* settings = my_app->Settings();
 	if (settings->Lock()) {
@@ -204,6 +209,9 @@ ShowImageView::ShowImageView(BRect rect, const char *name, uint32 resizingMode,
 		fScaleBilinear = settings->GetBool("ScaleBilinear", fScaleBilinear);
 		settings->Unlock();
 	}
+
+	fDefaultCursor = new BCursor(B_CURSOR_ID_SYSTEM_DEFAULT);
+	fGrabCursor = new BCursor(B_CURSOR_ID_GRABBING);
 
 	SetViewColor(B_TRANSPARENT_COLOR);
 	SetHighColor(kBorderColor);
@@ -214,6 +222,9 @@ ShowImageView::ShowImageView(BRect rect, const char *name, uint32 resizingMode,
 ShowImageView::~ShowImageView()
 {
 	_DeleteBitmap();
+
+	delete fDefaultCursor;
+	delete fGrabCursor;
 }
 
 
@@ -240,11 +251,14 @@ ShowImageView::Pulse()
 			GetMouse(&mousePos, &buttons, false);
 			if (Bounds().Contains(mousePos)) {
 				be_app->ObscureCursor();
-				_ShowToolBarIfEnabled(false);
 			}
 		} else
 			fHideCursorCountDown--;
 	}
+
+	if (fStickyZoomCountDown > 0)
+		fStickyZoomCountDown--;
+
 }
 
 
@@ -491,7 +505,6 @@ void
 ShowImageView::SetHideIdlingCursor(bool hide)
 {
 	fHideCursor = hide;
-	FitToBounds();
 }
 
 
@@ -1084,7 +1097,10 @@ ShowImageView::MouseDown(BPoint position)
 		buttons = Window()->CurrentMessage()->FindInt32("buttons");
 	}
 
-	if (buttons == B_PRIMARY_MOUSE_BUTTON && clickCount == 2) {
+	// Using clickCount >= 2 and the modulo 2 accounts for quickly repeated
+	// double-clicks
+	if (buttons == B_PRIMARY_MOUSE_BUTTON && clickCount >= 2 && 
+			clickCount % 2 == 0) {
 		Window()->PostMessage(MSG_FULL_SCREEN);
 		return;
 	}
@@ -1116,6 +1132,7 @@ ShowImageView::MouseDown(BPoint position)
 		SetMouseEventMask(B_POINTER_EVENTS, B_NO_POINTER_HISTORY);
 		fScrollingBitmap = true;
 		fFirstPoint = ConvertToScreen(position);
+		be_app->SetCursor(fGrabCursor);
 	}
 }
 
@@ -1153,7 +1170,10 @@ void
 ShowImageView::MouseMoved(BPoint point, uint32 state, const BMessage* message)
 {
 	fHideCursorCountDown = HIDE_CURSOR_DELAY_TIME;
-	_ShowToolBarIfEnabled(true);
+	if (fHideCursor) {
+		// Show toolbar when mouse hits top 15 pixels, hide otherwise
+		_ShowToolBarIfEnabled(point.y <= 15);
+	}
 	if (fCreatingSelection)
 		_UpdateSelectionRect(point, false);
 	else if (fScrollingBitmap)
@@ -1170,6 +1190,7 @@ ShowImageView::MouseUp(BPoint point)
 	} else if (fScrollingBitmap) {
 		_ScrollBitmap(point);
 		fScrollingBitmap = false;
+		be_app->SetCursor(fDefaultCursor);
 	}
 	_AnimateSelection(true);
 }
@@ -1285,7 +1306,10 @@ ShowImageView::KeyDown(const char* bytes, int32 numBytes)
 			ClearSelection();
 			break;
 		case B_DELETE:
-			_SendMessageToWindow(kMsgDeleteCurrentFile);
+			if (fHasSelection)
+				ClearSelection();
+			else
+				_SendMessageToWindow(kMsgDeleteCurrentFile);
 			break;
 		case '0':
 			FitToBounds();
@@ -1337,10 +1361,16 @@ ShowImageView::_MouseWheelChanged(BMessage *msg)
 		uint32 buttons;
 		GetMouse(&where, &buttons);
 
-		if (dy < 0)
-			ZoomIn(where);
-		else if (dy > 0)
-			ZoomOut(where);
+		if (fStickyZoomCountDown <= 0) {
+			if (dy < 0)
+				ZoomIn(where);
+			else if (dy > 0)
+				ZoomOut(where);
+
+			if (fZoom == 1.0)
+				fStickyZoomCountDown = STICKY_ZOOM_DELAY_TIME;
+		}
+
 	}
 }
 
@@ -1485,10 +1515,10 @@ ShowImageView::Undo()
 void
 ShowImageView::SelectAll()
 {
-	_SetHasSelection(true);
 	fCopyFromRect.Set(0, 0, fBitmap->Bounds().Width(),
 		fBitmap->Bounds().Height());
 	fSelectionBox.SetBounds(this, fCopyFromRect);
+	_SetHasSelection(true);
 	Invalidate();
 }
 

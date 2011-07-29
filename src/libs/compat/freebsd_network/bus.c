@@ -455,6 +455,22 @@ bus_generic_shutdown(device_t dev)
 
 
 int
+bus_print_child_header(device_t dev, device_t child)
+{
+	UNIMPLEMENTED();
+	return B_ERROR;
+}
+
+
+int
+bus_print_child_footer(device_t dev, device_t child)
+{
+	UNIMPLEMENTED();
+	return B_ERROR;
+}
+
+
+int
 bus_generic_print_child(device_t dev, device_t child)
 {
 	UNIMPLEMENTED();
@@ -584,6 +600,25 @@ pci_get_domain(device_t dev)
 	return 0;
 }
 
+uint32_t 
+pci_get_devid(device_t dev)
+{
+	return pci_read_config(dev, PCI_device_id, 2) << 16 |
+		pci_read_config(dev, PCI_vendor_id, 2);
+}
+
+uint8_t 
+pci_get_cachelnsz(device_t dev)
+{
+	return pci_read_config(dev, PCI_line_size, 1);
+}
+
+uint8_t *
+pci_get_ether(device_t dev)
+{
+	/* used in if_dc to get the MAC from CardBus CIS for Xircom card */
+	return NULL; /* NULL is handled in the caller correctly */
+}
 
 uint8_t
 pci_get_bus(device_t dev)

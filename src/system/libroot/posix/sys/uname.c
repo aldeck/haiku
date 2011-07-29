@@ -13,11 +13,7 @@
 
 #include <OS.h>
 
-
-// Haiku SVN revision. Will be set when copying libroot.so to the image.
-// Lives in a separate section so that it can easily be found.
-static char sHaikuRevision[_SYS_NAMELEN]
-	__attribute__((section("_haiku_revision")));
+#include <system_revision.h>
 
 
 int
@@ -25,6 +21,7 @@ uname(struct utsname *info)
 {
 	system_info systemInfo;
 	const char *platform;
+	const char *haikuRevision;
 
 	if (!info) {
 		errno = B_BAD_VALUE;
@@ -35,8 +32,9 @@ uname(struct utsname *info)
 
 	strlcpy(info->sysname, "Haiku", sizeof(info->sysname));
 
-	if (sHaikuRevision[0] != '\0')
-		snprintf(info->version, sizeof(info->version), "r%s ", sHaikuRevision);
+	haikuRevision = __get_haiku_revision();
+	if (haikuRevision[0] != '\0')
+		snprintf(info->version, sizeof(info->version), "%s ", haikuRevision);
 	else
 		info->version[0] = '\0';
 	strlcat(info->version, systemInfo.kernel_build_date, sizeof(info->version));

@@ -14,6 +14,7 @@
 
 #include "rhd_regs.h"
 #include "r600_reg.h"
+#include "r800_reg.h"
 
 #include <Accelerant.h>
 #include <Drivers.h>
@@ -22,11 +23,6 @@
 
 
 #define VENDOR_ID_ATI			0x1002
-
-// TODO : Remove masks as they don't apply to radeon
-#define RADEON_TYPE_FAMILY_MASK	0xf000
-#define RADEON_TYPE_GROUP_MASK	0xfff0
-#define RADEON_TYPE_MODEL_MASK	0xffff
 
 #define RADEON_R600	0x0600
 #define RADEON_R700	0x0700
@@ -41,36 +37,10 @@
 #define EDID_BOOT_INFO "vesa_edid/v1"
 #define MODES_BOOT_INFO "vesa_modes/v1"
 
-
-struct DeviceType {
-	uint32			type;
-
-	DeviceType(int t)
-	{
-		type = t;
-	}
-
-	DeviceType& operator=(int t)
-	{
-		type = t;
-		return *this;
-	}
-
-	bool InFamily(uint32 family) const
-	{
-		return (type & RADEON_TYPE_FAMILY_MASK) == family;
-	}
-
-	bool InGroup(uint32 group) const
-	{
-		return (type & RADEON_TYPE_GROUP_MASK) == group;
-	}
-
-	bool IsModel(uint32 model) const
-	{
-		return (type & RADEON_TYPE_MODEL_MASK) == model;
-	}
-};
+#define RHD_POWER_ON       0
+#define RHD_POWER_RESET    1   /* off temporarily */
+#define RHD_POWER_SHUTDOWN 2   /* long term shutdown */
+#define RHD_POWER_UNKNOWN  3   /* initial state */
 
 
 // info about PLL on graphics card
@@ -97,6 +67,7 @@ struct overlay_registers;
 
 
 struct radeon_shared_info {
+	uint32			device_id;			// device pciid
 	area_id			mode_list_area;		// area containing display mode list
 	uint32			mode_count;
 
@@ -108,15 +79,16 @@ struct radeon_shared_info {
 	area_id			registers_area;			// area of memory mapped registers
 	uint8*			status_page;
 	addr_t			physical_status_page;
-	uint8*			graphics_memory;
-	addr_t			physical_graphics_memory;
 	uint32			graphics_memory_size;
+
+	addr_t			frame_buffer_phys;		// card PCI BAR address of FB
+	area_id			frame_buffer_area;		// area of memory mapped FB
+	uint32			frame_buffer_int;		// card internal FB location
+	uint32			frame_buffer_size;		// card internal FB aperture size
+	uint8*			frame_buffer;			// virtual memory mapped FB
 
 	bool			has_edid;
 	edid1_info		edid_info;
-
-	addr_t			frame_buffer;
-	uint32			frame_buffer_offset;
 
 	struct lock		accelerant_lock;
 	struct lock		engine_lock;
@@ -140,7 +112,7 @@ struct radeon_shared_info {
 	uint16			cursor_hot_x;
 	uint16			cursor_hot_y;
 
-	DeviceType		device_type;
+	uint16			device_chipset;
 	char			device_identifier[32];
 	struct pll_info	pll_info;
 };
@@ -180,6 +152,14 @@ struct radeon_free_graphics_memory {
 	uint32	buffer_base;
 };
 
+// registers
+#define R6XX_CONFIG_APER_SIZE			0x5430	// r600>
+#define OLD_CONFIG_APER_SIZE			0x0108	// <r600
+
+#define R700_D1GRPH_PRIMARY_SURFACE_ADDRESS_HIGH	0x6914
+#define R700_D1GRPH_SECONDARY_SURFACE_ADDRESS_HIGH	0x691c
+#define R700_D2GRPH_PRIMARY_SURFACE_ADDRESS_HIGH	0x6114
+#define R700_D2GRPH_SECONDARY_SURFACE_ADDRESS_HIGH	0x611c
 
 // cursor
 #define RADEON_CURSOR_CONTROL			0x70080
