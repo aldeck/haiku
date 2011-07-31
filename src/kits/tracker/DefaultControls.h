@@ -32,15 +32,15 @@ class Model;
 class PoseViewController;
 
 
-class DefaultFileContextMenu : public BPopUpMenu {
+class FileContextMenu : public BPopUpMenu {
 public:
-								DefaultFileContextMenu(PoseViewController* controller);
+								FileContextMenu(PoseViewController* controller);
 };
 
 
-class DefaultFileMenu : public BMenu, public PoseViewListener {
+class FileMenu : public BMenu, public PoseViewListener {
 public:
-								DefaultFileMenu(PoseViewController* controller);
+								FileMenu(PoseViewController* controller);
 	virtual	void				AttachedToWindow();
 	virtual	void				TargetModelChanged();
 	virtual	void				SelectionChanged();
@@ -52,9 +52,9 @@ protected:
 };
 
 
-class DefaultWindowMenu : public BMenu, public PoseViewListener {
+class WindowMenu : public BMenu, public PoseViewListener {
 public:
-								DefaultWindowMenu(PoseViewController* controller);
+								WindowMenu(PoseViewController* controller);
 	virtual	void				TargetModelChanged() {}; // TODO
 	virtual	void				SelectionChanged() {};
 	virtual	void				MimeTypesChanged() {};
@@ -62,9 +62,9 @@ public:
 };
 
 
-class DefaultMoveMenu : public BNavMenu, public PoseViewListener {
+class MoveMenu : public BNavMenu, public PoseViewListener {
 public:
-								DefaultMoveMenu(const char* itemName,
+								MoveMenu(const char* itemName,
 									uint32 messageWhat,
 									PoseViewController* controller);
 

@@ -37,10 +37,10 @@
 const float kMaxMenuWidth = 150; // OpenWithMenu
 
 
-//	#pragma mark - DefaultFileContextMenu
+//	#pragma mark - FileContextMenu
 
 
-DefaultFileContextMenu::DefaultFileContextMenu(PoseViewController* controller)
+FileContextMenu::FileContextMenu(PoseViewController* controller)
 	:
 	BPopUpMenu("FileContext", false, false)
 {
@@ -104,10 +104,10 @@ DefaultFileContextMenu::DefaultFileContextMenu(PoseViewController* controller)
 }
 
 
-//	#pragma mark - DefaultFileMenu
+//	#pragma mark - FileMenu
 
 
-DefaultFileMenu::DefaultFileMenu(PoseViewController* controller)
+FileMenu::FileMenu(PoseViewController* controller)
 	:
 	BMenu(B_TRANSLATE("File")),
 	fController(controller)
@@ -118,7 +118,7 @@ DefaultFileMenu::DefaultFileMenu(PoseViewController* controller)
 
 
 void
-DefaultFileMenu::AttachedToWindow()
+FileMenu::AttachedToWindow()
 {
 	// This method is called just before showing the menu
 	Model* model = fController->PoseView()->TargetModel();
@@ -158,7 +158,7 @@ DefaultFileMenu::AttachedToWindow()
 
 
 void
-DefaultFileMenu::TargetModelChanged()
+FileMenu::TargetModelChanged()
 {
 	Model* model = fController->PoseView()->TargetModel();
 
@@ -286,7 +286,7 @@ DefaultFileMenu::TargetModelChanged()
 
 
 void
-DefaultFileMenu::SelectionChanged()
+FileMenu::SelectionChanged()
 {
 	PoseList* selection = fController->PoseView()->SelectionList();
 	Model* model = fController->PoseView()->TargetModel();
@@ -322,10 +322,10 @@ DefaultFileMenu::SelectionChanged()
 }
 
 
-//	#pragma mark - DefaultMoveMenu
+//	#pragma mark - MoveMenu
 
 
-DefaultMoveMenu::DefaultMoveMenu(const char* itemName, uint32 messageWhat,
+MoveMenu::MoveMenu(const char* itemName, uint32 messageWhat,
 	PoseViewController* controller)
 	:
 	BNavMenu(itemName, messageWhat, controller->PoseView()->ContainerWindow()),
@@ -338,13 +338,13 @@ DefaultMoveMenu::DefaultMoveMenu(const char* itemName, uint32 messageWhat,
 
 
 void
-DefaultMoveMenu::TargetModelChanged()
+MoveMenu::TargetModelChanged()
 {
 }
 
 
 void
-DefaultMoveMenu::SelectionChanged()
+MoveMenu::SelectionChanged()
 {
 	const entry_ref* firstRef
 		= fController->PoseView()->SelectionList()->CountItems() > 0
@@ -356,7 +356,7 @@ DefaultMoveMenu::SelectionChanged()
 
 
 void
-DefaultMoveMenu::_Populate(const entry_ref *ref, bool addLocalOnly)
+MoveMenu::_Populate(const entry_ref *ref, bool addLocalOnly)
 {
 	if (ref == NULL) {
 		SetEnabled(false);
@@ -474,10 +474,10 @@ DefaultMoveMenu::_Populate(const entry_ref *ref, bool addLocalOnly)
 }
 
 
-//	#pragma mark - DefaultWindowMenu
+//	#pragma mark - WindowMenu
 
 
-DefaultWindowMenu::DefaultWindowMenu(PoseViewController* controller)
+WindowMenu::WindowMenu(PoseViewController* controller)
 	:
 	BMenu(B_TRANSLATE("Window"))
 {

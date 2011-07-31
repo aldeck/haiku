@@ -68,7 +68,7 @@ public:
 			// TODO: Not sure we need to expose everything, there's no use for it
 			// anymore with the listener mechanism
 			BMenuBar*	 		MenuBar()		{ return fMenuBar; };
-			BMenu*				FileMenu()		{ return fFileMenu; };
+			BMenu*				GetFileMenu()	{ return fFileMenu; };
 				// still needed by containerwindow to dynamically change the
 				// kMoveToTrash item's label
 			BNavigator* 		Navigator()		{ return fNavigator; };

@@ -106,11 +106,11 @@ PoseViewController::CreateControls(Model *model)
 void
 PoseViewController::CreateMenus()
 {
-	DefaultFileMenu* fileMenu = new DefaultFileMenu(this);
+	FileMenu* fileMenu = new FileMenu(this);
 	fPoseView->AddListener(fileMenu);
 	fFileMenu = fileMenu;
 
-	fWindowMenu = new DefaultWindowMenu(this);
+	fWindowMenu = new WindowMenu(this);
 
 	AttributesMenu<BMenu>* attributesMenu = new AttributesMenu<BMenu>(this);
 	fPoseView->AddListener(attributesMenu);
@@ -125,16 +125,16 @@ PoseViewController::CreateMenus()
 void
 PoseViewController::CreateMoveCopyMenus()
 {
-	DefaultMoveMenu* menu
-		= new DefaultMoveMenu(B_TRANSLATE("Move to"), kMoveSelectionTo, this);
+	MoveMenu* menu
+		= new MoveMenu(B_TRANSLATE("Move to"), kMoveSelectionTo, this);
 	fPoseView->AddListener(menu);
 	fMoveToMenu = menu;
 
-	menu = new DefaultMoveMenu(B_TRANSLATE("Copy to"), kCopySelectionTo, this);
+	menu = new MoveMenu(B_TRANSLATE("Copy to"), kCopySelectionTo, this);
 	fPoseView->AddListener(menu);
 	fCopyToMenu = menu;
 
-	menu = new DefaultMoveMenu(B_TRANSLATE("Create link"), kCreateLink, this);
+	menu = new MoveMenu(B_TRANSLATE("Create link"), kCreateLink, this);
 	fPoseView->AddListener(menu);
 	fCreateLinkMenu = menu;
 

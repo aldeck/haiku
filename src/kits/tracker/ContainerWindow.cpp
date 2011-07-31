@@ -1495,8 +1495,8 @@ BContainerWindow::MessageReceived(BMessage *message)
 									: B_TRANSLATE("Move to Trash"));
 							}
 							// Deskbar doesn't have a menu bar, so check if there is Controller()->MenuBar()
-							if (Controller()->MenuBar() && Controller()->FileMenu()) {
-								item = Controller()->FileMenu()->FindItem(kMoveToTrash);
+							if (Controller()->MenuBar() && Controller()->GetFileMenu() != NULL) {
+								item = Controller()->GetFileMenu()->FindItem(kMoveToTrash);
 								if (item) {
 									item->SetLabel(dontMoveToTrash
 										? B_TRANSLATE("Delete")
