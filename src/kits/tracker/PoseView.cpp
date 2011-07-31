@@ -2812,11 +2812,11 @@ BPoseView::SetViewMode(uint32 newMode)
 			ClearFilter();
 
 		Controller()->TitleView()->Hide();
-		Controller()->HideAttributeMenu();
+		Controller()->HideAttributesMenu();
 
 	} else if (newMode == kListMode) {
 
-		Controller()->ShowAttributeMenu();
+		Controller()->ShowAttributesMenu();
 		Controller()->TitleView()->Show();
 	}
 
@@ -7728,11 +7728,11 @@ BPoseView::SwitchDir(const entry_ref *newDirRef, AttributeStreamNode *node)
 
 	if (viewStateRestored) {
 		if (ViewMode() == kListMode && oldMode != kListMode) {
-			Controller()->ShowAttributeMenu();
+			Controller()->ShowAttributesMenu();
 			Controller()->SetControlVisible(Controller()->TitleView(), true);
 		} else if (ViewMode() != kListMode && oldMode == kListMode) {
 			Controller()->SetControlVisible(Controller()->TitleView(), false);
-			Controller()->HideAttributeMenu();
+			Controller()->HideAttributesMenu();
 		} else if (ViewMode() == kListMode && oldMode == kListMode)
 			Controller()->TitleView()->Invalidate();
 

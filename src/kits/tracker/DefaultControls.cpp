@@ -593,14 +593,14 @@ DefaultWindowMenu::DefaultWindowMenu(PoseViewController* controller)
 }
 
 
-//	#pragma mark - DefaultAttributeMenu
+//	#pragma mark - AttributesMenu
 
 // We use templates since we need two versions of the same code, one regular BMenu based for the
 // main menu bar, and one BPopUpMenu based for the context menu on column headers. Only the
 // inherited class and constructor changes depending on the template<class MenuType>.
 
 template<>
-DefaultAttributeMenu<BPopUpMenu>::DefaultAttributeMenu(PoseViewController* controller)
+AttributesMenu<BPopUpMenu>::AttributesMenu(PoseViewController* controller)
 	:
 	BPopUpMenu(B_TRANSLATE("Attributes"), false, false),
 	fController(controller)
@@ -610,7 +610,7 @@ DefaultAttributeMenu<BPopUpMenu>::DefaultAttributeMenu(PoseViewController* contr
 
 
 template<>
-DefaultAttributeMenu<BMenu>::DefaultAttributeMenu(PoseViewController* controller)
+AttributesMenu<BMenu>::AttributesMenu(PoseViewController* controller)
 	:
 	BMenu(B_TRANSLATE("Attributes")),
 	fController(controller)
@@ -621,7 +621,7 @@ DefaultAttributeMenu<BMenu>::DefaultAttributeMenu(PoseViewController* controller
 
 template<class MenuType>
 void
-DefaultAttributeMenu<MenuType>::_Init()
+AttributesMenu<MenuType>::_Init()
 {
 	BPoseView* poseView = fController->PoseView();
 
@@ -678,7 +678,7 @@ DefaultAttributeMenu<MenuType>::_Init()
 
 template<class MenuType>
 void
-DefaultAttributeMenu<MenuType>::MimeTypesChanged()
+AttributesMenu<MenuType>::MimeTypesChanged()
 {
 	BPoseView* poseView = fController->PoseView();
 
@@ -773,7 +773,7 @@ DefaultAttributeMenu<MenuType>::MimeTypesChanged()
 
 template<class MenuType>
 void
-DefaultAttributeMenu<MenuType>::ColumnsChanged()
+AttributesMenu<MenuType>::ColumnsChanged()
 {
 	_MarkItems();
 }
@@ -781,7 +781,7 @@ DefaultAttributeMenu<MenuType>::ColumnsChanged()
 
 template<class MenuType>
 void
-DefaultAttributeMenu<MenuType>::_MarkItems()
+AttributesMenu<MenuType>::_MarkItems()
 {
 	int32 count = CountItems();
 	for (int32 index = 0; index < count; index++) {
@@ -815,7 +815,7 @@ DefaultAttributeMenu<MenuType>::_MarkItems()
 
 template<class MenuType>
 BMenuItem *
-DefaultAttributeMenu<MenuType>::_NewItem(const char *label, const char *name,
+AttributesMenu<MenuType>::_NewItem(const char *label, const char *name,
 	int32 type, float width, int32 align, bool editable, bool statField)
 {
 	return _NewItem(label, name, type, NULL, width, align,
@@ -825,7 +825,7 @@ DefaultAttributeMenu<MenuType>::_NewItem(const char *label, const char *name,
 
 template<class MenuType>
 BMenuItem *
-DefaultAttributeMenu<MenuType>::_NewItem(const char *label, const char *name,
+AttributesMenu<MenuType>::_NewItem(const char *label, const char *name,
 	int32 type, const char* displayAs, float width, int32 align,
 	bool editable, bool statField)
 {
@@ -852,7 +852,7 @@ DefaultAttributeMenu<MenuType>::_NewItem(const char *label, const char *name,
 */
 template<class MenuType>
 BMenu*
-DefaultAttributeMenu<MenuType>::_AddMimeMenu(const BMimeType& mimeType,
+AttributesMenu<MenuType>::_AddMimeMenu(const BMimeType& mimeType,
 	bool isSuperType, BMenu* menu, int32 start)
 {
 	AutoLock<BLooper> _(menu->Looper());

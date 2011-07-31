@@ -49,8 +49,8 @@ public:
 			void				ReparentSharedMenus(BMenu* newParent);
 
 	virtual	void				SetControlVisible(BView* control, bool visible);
-			void				ShowAttributeMenu();
-			void				HideAttributeMenu();
+			void				ShowAttributesMenu();
+			void				HideAttributesMenu();
 
 			// Scrollbar management
 			// TODO: to be simplified, make it "event" based just like countview and
@@ -68,9 +68,9 @@ public:
 			// TODO: Not sure we need to expose everything, there's no use for it
 			// anymore with the listener mechanism
 			BMenuBar*	 		MenuBar()		{ return fMenuBar; };
-			BMenu*				FileMenu()		{ return fFileMenu; }; 
+			BMenu*				FileMenu()		{ return fFileMenu; };
 				// still needed by containerwindow to dynamically change the
-				// kMoveToTrash item's label 
+				// kMoveToTrash item's label
 			BNavigator* 		Navigator()		{ return fNavigator; };
 			BTitleView* 		TitleView()		{ return fTitleView; };
 			BPoseView*	 		PoseView()		{ return fPoseView; };

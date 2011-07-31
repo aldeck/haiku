@@ -831,7 +831,7 @@ BContainerWindow::_Init(const BMessage *message)
 	// TODO: this kind of call could come from a ViewMode object hook that
 	// customizes the ui
 	if (PoseView()->ViewMode() == kListMode)
-		Controller()->ShowAttributeMenu();
+		Controller()->ShowAttributesMenu();
 
 	TrackerSettings settings;
 	bool showNavigator =

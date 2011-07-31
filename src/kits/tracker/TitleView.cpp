@@ -315,8 +315,8 @@ BTitleView::MouseDown(BPoint where)
 	// if so, display the attribute menu:
 
 	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
-		DefaultAttributeMenu<BPopUpMenu>* menu =
-			new DefaultAttributeMenu<BPopUpMenu>(fPoseView->Controller());
+		AttributesMenu<BPopUpMenu>* menu =
+			new AttributesMenu<BPopUpMenu>(fPoseView->Controller());
 		menu->MimeTypesChanged();
 		menu->Go(ConvertToScreen(where), true, false);
 		return;

@@ -82,9 +82,9 @@ protected:
 
 
 template <class MenuType>
-class DefaultAttributeMenu : public MenuType, public PoseViewListener {
+class AttributesMenu : public MenuType, public PoseViewListener {
 public:
-								DefaultAttributeMenu(PoseViewController* controller);
+								AttributesMenu(PoseViewController* controller);
 
 	virtual	void				TargetModelChanged() {};
 	virtual	void				SelectionChanged() {};

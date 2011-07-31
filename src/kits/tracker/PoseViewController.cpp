@@ -112,7 +112,7 @@ PoseViewController::CreateMenus()
 
 	fWindowMenu = new DefaultWindowMenu(this);
 
-	DefaultAttributeMenu<BMenu>* attributesMenu = new DefaultAttributeMenu<BMenu>(this);
+	AttributesMenu<BMenu>* attributesMenu = new AttributesMenu<BMenu>(this);
 	fPoseView->AddListener(attributesMenu);
 	fAttributesMenu = attributesMenu;
 
@@ -414,7 +414,7 @@ PoseViewController::UpdateScrollRange()
 
 
 void
-PoseViewController::ShowAttributeMenu()
+PoseViewController::ShowAttributesMenu()
 {
 	ASSERT(fAttributesMenu);
 	fMenuBar->AddItem(fAttributesMenu);
@@ -422,7 +422,7 @@ PoseViewController::ShowAttributeMenu()
 
 
 void
-PoseViewController::HideAttributeMenu()
+PoseViewController::HideAttributesMenu()
 {
 	ASSERT(fAttributesMenu);
 	fMenuBar->RemoveItem(fAttributesMenu);
