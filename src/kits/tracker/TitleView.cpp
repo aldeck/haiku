@@ -99,7 +99,7 @@ _DrawOutline(BView *view, BRect where)
 
 
 BTitleView::BTitleView(BPoseView *poseView)
-	: 
+	:
 	BView("TitleView", B_WILL_DRAW),
 	fPoseView(poseView),
 	fTitleList(10, true),
@@ -109,7 +109,7 @@ BTitleView::BTitleView(BPoseView *poseView)
 {
 	SetExplicitMaxSize(BSize(B_SIZE_UNSET, 16));
 	SetExplicitMinSize(BSize(0, 16));
-	
+
 	sTitleBackground = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.88f); // 216 -> 220
 	sDarkTitleBackground = tint_color(sTitleBackground, B_DARKEN_1_TINT);
 	sShineColor = tint_color(sTitleBackground, B_LIGHTEN_MAX_TINT);
@@ -199,7 +199,7 @@ BTitleView::Draw(BRect rect)
 }
 
 
-void 
+void
 BTitleView::Draw(BRect /*updateRect*/, bool useOffscreen, bool updateOnly,
 	const BColumnTitle *pressedColumn,
 	void (*trackRectBlitter)(BView *, BRect), BRect passThru)
@@ -236,7 +236,7 @@ BTitleView::Draw(BRect /*updateRect*/, bool useOffscreen, bool updateOnly,
 		// fill background with light gray background
 		if (!updateOnly)
 			view->FillRect(bounds, B_SOLID_LOW);
-	
+
 		view->BeginLineArray(4);
 		view->AddLine(bounds.LeftTop(), bounds.RightTop(), sShadowColor);
 		view->AddLine(bounds.LeftBottom(), bounds.RightBottom(), sShadowColor);
@@ -315,8 +315,8 @@ BTitleView::MouseDown(BPoint where)
 	// if so, display the attribute menu:
 
 	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
-		DefaultAttributeMenu* menu =
-			new DefaultAttributeMenu(fPoseView->Controller());
+		DefaultAttributeMenu<BPopUpMenu>* menu =
+			new DefaultAttributeMenu<BPopUpMenu>(fPoseView->Controller());
 		menu->MimeTypesChanged();
 		menu->Go(ConvertToScreen(where), true, false);
 		return;
@@ -386,7 +386,7 @@ BTitleView::MouseMoved(BPoint where, uint32 code, const BMessage *message)
 			else
 				SetViewCursor(B_CURSOR_SYSTEM_DEFAULT);
 			break;
-			
+
 		case B_EXITED_VIEW:
 			SetViewCursor(B_CURSOR_SYSTEM_DEFAULT);
 			break;
@@ -448,7 +448,7 @@ BColumnTitle::BColumnTitle(BTitleView *view, BColumn *column)
 }
 
 
-bool 
+bool
 BColumnTitle::InColumnResizeArea(BPoint where) const
 {
 	BRect edge(Bounds());
@@ -529,10 +529,10 @@ BColumnTitle::Draw(BView *view, bool pressed)
 			triangle[1] = center + BPoint(3.5, -1.5);
 			triangle[2] = center + BPoint(0.0, 2.0);
 		}
-	
+
 		uint32 flags = view->Flags();
 		view->SetFlags(flags | B_SUBPIXEL_PRECISE);
-	
+
 		if (secondary) {
 			view->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 1.3));
 			view->FillTriangle(triangle[0], triangle[1], triangle[2]);
@@ -540,7 +540,7 @@ BColumnTitle::Draw(BView *view, bool pressed)
 			view->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 1.6));
 			view->FillTriangle(triangle[0], triangle[1], triangle[2]);
 		}
-	
+
 		view->SetFlags(flags);
 	}
 
@@ -555,12 +555,12 @@ BColumnTitle::Draw(BView *view, bool pressed)
 
 		view->BeginLineArray(4);
 		// draw lighter gray and white inset lines
-		rect.InsetBy(1, 1);	
+		rect.InsetBy(1, 1);
 		view->AddLine(rect.LeftBottom(), rect.RightBottom(),
 			pressed ? sLightShadowColor : sLightShadowColor);
 		view->AddLine(rect.LeftTop(), rect.RightTop(),
 			pressed ? sDarkShadowColor : sShineColor);
-	
+
 		view->AddLine(rect.LeftTop(), rect.LeftBottom(),
 			pressed ? sDarkShadowColor : sShineColor);
 		view->AddLine(rect.RightTop(), rect.RightBottom(),
@@ -589,9 +589,9 @@ ColumnTrackState::ColumnTrackState(BTitleView *view, BColumnTitle *title,
 void
 ColumnTrackState::MouseUp(BPoint where)
 {
-	// if it is pressed shortly and not moved, it is a click 
+	// if it is pressed shortly and not moved, it is a click
 	// all else is a track
-	if (system_time() <= fPastClickTime && !fHasMoved) 
+	if (system_time() <= fPastClickTime && !fHasMoved)
 		Clicked(where);
 	else
 		Done(where);
@@ -644,12 +644,12 @@ ColumnResizeState::Moved(BPoint where, uint32)
 	float newWidth = where.x + fInitialTrackOffset - fTitle->fColumn->Offset();
 	if (newWidth < kMinColumnWidth)
 		newWidth = kMinColumnWidth;
-	
+
 	BPoseView *poseView = fTitleView->PoseView();
 
 //	bool shrink = (newWidth < fTitle->fColumn->Width());
 
-	// resize the column 
+	// resize the column
 	poseView->ResizeColumn(fTitle->fColumn, newWidth, &fLastLineDrawPos,
 		_DrawLine, _UndrawLine);
 
@@ -657,7 +657,7 @@ ColumnResizeState::Moved(BPoint where, uint32)
 	bounds.left = fTitle->fColumn->Offset();
 
 	// force title redraw
-	fTitleView->Draw(bounds, true, false); 
+	fTitleView->Draw(bounds, true, false);
 }
 
 
@@ -749,7 +749,7 @@ ColumnDragState::Moved(BPoint where, uint32)
 			BColumn *column = BColumn::InstantiateFromStream(&fColumnArchive);
 			ASSERT(column);
 			const BColumn *after = NULL;
-			if (overTitle) 
+			if (overTitle)
 				after = overTitle->Column();
 			fTitleView->PoseView()->AddColumn(column, after);
 			fTrackingRemovedColumn = false;
@@ -761,7 +761,7 @@ ColumnDragState::Moved(BPoint where, uint32)
 		if (!inMarginRect) {
 			// dragged a title out of the hysteresis margin around the
 			// title bar - remove it and start dragging it as a dotted outline
-			
+
 			BRect rect(fTitle->Bounds());
 			rect.OffsetBy(where.x - fInitialMouseTrackOffset, where.y - 5);
 			fColumnArchive.Seek(0, SEEK_SET);
@@ -779,7 +779,7 @@ ColumnDragState::Moved(BPoint where, uint32)
 						// over the one to the right
 					|| where.x < overTitle->Bounds().left + fTitle->Bounds().Width())){
 						// over the one to the left, far enough to not snap right back
-						
+
 			BColumn *column = fTitle->Column();
 			fInitialMouseTrackOffset -= fTitle->Bounds().left;
 			// swap the columns
@@ -792,7 +792,7 @@ ColumnDragState::Moved(BPoint where, uint32)
 		} else
 			drawOutline = true;
 	}
-	
+
 	if (drawOutline)
 		DrawOutline(where.x - fInitialMouseTrackOffset);
 	else if (undrawOutline)
@@ -817,7 +817,7 @@ ColumnDragState::Clicked(BPoint /*where*/)
 	uint32 primarySort = poseView->PrimarySort();
 	uint32 secondarySort = poseView->SecondarySort();
 	bool shift = (modifiers() & B_SHIFT_KEY) != 0;
-	
+
 	// For now:
 	// if we hit the primary sort field again
 	// then if shift key was down, switch primary and secondary
@@ -871,7 +871,7 @@ ColumnDragState::DrawOutline(float pos)
 }
 
 
-void 
+void
 ColumnDragState::UndrawOutline()
 {
 	fTitleView->Draw(fTitleView->Bounds(), true, false);

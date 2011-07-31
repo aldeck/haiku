@@ -112,7 +112,7 @@ PoseViewController::CreateMenus()
 
 	fWindowMenu = new DefaultWindowMenu(this);
 
-	DefaultAttributeMenu* attributesMenu = new DefaultAttributeMenu(this);
+	DefaultAttributeMenu<BMenu>* attributesMenu = new DefaultAttributeMenu<BMenu>(this);
 	fPoseView->AddListener(attributesMenu);
 	fAttributesMenu = attributesMenu;
 
@@ -137,9 +137,9 @@ PoseViewController::CreateMoveCopyMenus()
 	menu = new DefaultMoveMenu(B_TRANSLATE("Create link"), kCreateLink, this);
 	fPoseView->AddListener(menu);
 	fCreateLinkMenu = menu;
-	
+
 	OpenWithMenu* openWithMenu = new OpenWithMenu(
-		B_TRANSLATE("Open with" B_UTF8_ELLIPSIS), this);	
+		B_TRANSLATE("Open with" B_UTF8_ELLIPSIS), this);
 	fPoseView->AddListener(openWithMenu);
 	fOpenWithMenu = openWithMenu;
 }
@@ -172,7 +172,7 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 {
 	// Insert the 'Move to' 'Copy to' and 'Create link' menus
 	// just below the 'Move to trash' item
-	
+
 	int32 index = 0;
  	if (newParent != NULL) {
 	 	BMenuItem* trash = newParent->FindItem(kMoveToTrash);
@@ -183,7 +183,7 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 	 		newParent = NULL; // will detach the menu
 	 	}
  	}
- 	
+
 
 	if (!ReparentMenu(fMoveToMenu, newParent, index++)
 		|| !ReparentMenu(fCopyToMenu, newParent, index++)
@@ -199,9 +199,9 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 		fCopyToMenu->Superitem()->SetMessage(new BMessage(kCopySelectionTo));
 	if (fCreateLinkMenu != NULL && fCreateLinkMenu->Superitem() != NULL)
 		fCreateLinkMenu->Superitem()->SetMessage(new BMessage(kCreateLink));
-		
+
 	// Insert 'Open With...' menu just below the 'Open' item.
-	
+
 	index = 0;
  	if (newParent != NULL) {
 	 	BMenuItem* openItem = newParent->FindItem(kOpenSelection);
@@ -212,7 +212,7 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 	 		newParent = NULL; // will detach the menu
 	 	}
  	}
- 	
+
  	if (!ReparentMenu(fOpenWithMenu, newParent, index))
 		printf("PoseViewController::ReparentSharedMenus Error reparenting 'Open with' menu!\n");
 	else if (fOpenWithMenu != NULL && fOpenWithMenu->Superitem() != NULL) {

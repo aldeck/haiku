@@ -81,15 +81,18 @@ protected:
 };
 
 
-class DefaultAttributeMenu : public BPopUpMenu, public PoseViewListener {
+template <class MenuType>
+class DefaultAttributeMenu : public MenuType, public PoseViewListener {
 public:
 								DefaultAttributeMenu(PoseViewController* controller);
+
 	virtual	void				TargetModelChanged() {};
 	virtual	void				SelectionChanged() {};
 	virtual	void				MimeTypesChanged();
 	virtual	void				ColumnsChanged();
 
 protected:
+			void				_Init();
 			void				_MarkItems();
 
 			BMenuItem*			_NewItem(const char *label,
@@ -111,7 +114,7 @@ class OpenWithMenu : public BSlowMenu, public PoseViewListener {
 public:
 								OpenWithMenu(const char* label,
 									PoseViewController* controller);
-			
+
 	virtual	void				AttachedToWindow();
 	virtual	void				TargetModelChanged();
 	virtual	void				SelectionChanged();

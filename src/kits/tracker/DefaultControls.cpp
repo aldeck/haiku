@@ -595,13 +595,35 @@ DefaultWindowMenu::DefaultWindowMenu(PoseViewController* controller)
 
 //	#pragma mark - DefaultAttributeMenu
 
+// We use templates since we need two versions of the same code, one regular BMenu based for the
+// main menu bar, and one BPopUpMenu based for the context menu on column headers. Only the
+// inherited class and constructor changes depending on the template<class MenuType>.
 
-DefaultAttributeMenu::DefaultAttributeMenu(PoseViewController* controller)
+template<>
+DefaultAttributeMenu<BPopUpMenu>::DefaultAttributeMenu(PoseViewController* controller)
 	:
 	BPopUpMenu(B_TRANSLATE("Attributes"), false, false),
 	fController(controller)
 {
-	BPoseView* poseView = controller->PoseView();
+	_Init();
+}
+
+
+template<>
+DefaultAttributeMenu<BMenu>::DefaultAttributeMenu(PoseViewController* controller)
+	:
+	BMenu(B_TRANSLATE("Attributes")),
+	fController(controller)
+{
+	_Init();
+}
+
+
+template<class MenuType>
+void
+DefaultAttributeMenu<MenuType>::_Init()
+{
+	BPoseView* poseView = fController->PoseView();
 
 	BMenuItem *item;
 	AddItem(item = new BMenuItem(B_TRANSLATE("Copy layout"),
@@ -654,8 +676,9 @@ DefaultAttributeMenu::DefaultAttributeMenu(PoseViewController* controller)
 }
 
 
+template<class MenuType>
 void
-DefaultAttributeMenu::MimeTypesChanged()
+DefaultAttributeMenu<MenuType>::MimeTypesChanged()
 {
 	BPoseView* poseView = fController->PoseView();
 
@@ -748,15 +771,17 @@ DefaultAttributeMenu::MimeTypesChanged()
 }
 
 
+template<class MenuType>
 void
-DefaultAttributeMenu::ColumnsChanged()
+DefaultAttributeMenu<MenuType>::ColumnsChanged()
 {
 	_MarkItems();
 }
 
 
+template<class MenuType>
 void
-DefaultAttributeMenu::_MarkItems()
+DefaultAttributeMenu<MenuType>::_MarkItems()
 {
 	int32 count = CountItems();
 	for (int32 index = 0; index < count; index++) {
@@ -788,8 +813,9 @@ DefaultAttributeMenu::_MarkItems()
 }
 
 
+template<class MenuType>
 BMenuItem *
-DefaultAttributeMenu::_NewItem(const char *label, const char *name,
+DefaultAttributeMenu<MenuType>::_NewItem(const char *label, const char *name,
 	int32 type, float width, int32 align, bool editable, bool statField)
 {
 	return _NewItem(label, name, type, NULL, width, align,
@@ -797,8 +823,9 @@ DefaultAttributeMenu::_NewItem(const char *label, const char *name,
 }
 
 
+template<class MenuType>
 BMenuItem *
-DefaultAttributeMenu::_NewItem(const char *label, const char *name,
+DefaultAttributeMenu<MenuType>::_NewItem(const char *label, const char *name,
 	int32 type, const char* displayAs, float width, int32 align,
 	bool editable, bool statField)
 {
@@ -823,12 +850,13 @@ DefaultAttributeMenu::_NewItem(const char *label, const char *name,
 /*!	Adds a menu for a specific MIME type if it doesn't exist already.
 	Returns the menu, if it existed or not.
 */
+template<class MenuType>
 BMenu*
-DefaultAttributeMenu::_AddMimeMenu(const BMimeType& mimeType, bool isSuperType,
-	BMenu* menu, int32 start)
+DefaultAttributeMenu<MenuType>::_AddMimeMenu(const BMimeType& mimeType,
+	bool isSuperType, BMenu* menu, int32 start)
 {
 	AutoLock<BLooper> _(menu->Looper());
-	
+
 	if (!mimeType.IsValid())
 		return NULL;
 
@@ -921,7 +949,7 @@ DefaultAttributeMenu::_AddMimeMenu(const BMimeType& mimeType, bool isSuperType,
 
 
 OpenWithMenu::OpenWithMenu(const char *label, PoseViewController* controller)
-	: 
+	:
 	BSlowMenu(label),
 	fIterator(NULL),
 	fSupportingAppList(NULL),
@@ -975,7 +1003,7 @@ OpenWithMenu::AttachedToWindow()
 	// check if only item in selection list is the root
 	// and do not add if true
 
-	// build a list of all refs to open	
+	// build a list of all refs to open
 	BMessage message(B_REFS_RECEIVED);
 	message.AddMessenger("TrackerViewToken", BMessenger(fController->PoseView()));
 	for (int32 index = 0; index < count; index++) {
@@ -999,7 +1027,7 @@ void
 OpenWithMenu::SelectionChanged()
 {
 	// TODO asynchronous rebuild
-		
+
 	if (Superitem() != NULL) {
 		int32 count = fController->PoseView()->SelectionList()->CountItems();
 		Superitem()->SetEnabled(count > 0);
