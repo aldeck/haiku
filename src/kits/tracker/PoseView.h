@@ -56,7 +56,6 @@ All rights reserved.
 #include <FilePanel.h>
 #include <MessageRunner.h>
 #include <String.h>
-#include <ScrollBar.h>
 #include <View.h>
 #include <hash_set>
 #include <set>
@@ -590,9 +589,9 @@ class BPoseView : public BView {
 		// view drawing
 		void SynchronousUpdate(BRect, bool clip = false);
 
-		// scrolling
-		//void HandleAutoScroll();
-		//bool CheckAutoScroll(BPoint mouseLoc, bool shouldScroll);
+		// auto scrolling
+		void HandleAutoScroll();
+		bool CheckAutoScroll(BPoint mouseLoc, bool shouldScroll);
 
 		// view extent handling
 		void RecalcExtent();

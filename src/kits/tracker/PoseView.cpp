@@ -869,8 +869,8 @@ BPoseView::Pulse()
 	// update item count view in window if necessary
 	Controller()->ItemCountChanged(CountItems());
 
-	//if (fAutoScrollState != kAutoScrollOff)
-	//	HandleAutoScroll();
+	if (fAutoScrollState != kAutoScrollOff)
+		HandleAutoScroll();
 
 	// do we need to update scrollbars?
 	// TODO: send a ExtentChanged "event" to the controllerView instead of polling
@@ -9131,8 +9131,7 @@ BPoseView::HiliteDropTarget(bool hiliteState)
 }
 
 
-// TODO
-/*bool
+bool
 BPoseView::CheckAutoScroll(BPoint mouseLoc, bool shouldScroll)
 {
 	if (!fShouldAutoScroll)
@@ -9172,13 +9171,8 @@ BPoseView::CheckAutoScroll(BPoint mouseLoc, bool shouldScroll)
 
 		if (keepGoing) {
 			wouldScroll = true;
-			if (shouldScroll) {
-				if (fVScrollBar != NULL) {
-					fVScrollBar->SetValue(
-						fVScrollBar->Value() - scrollIncrement);
-				} else
-					ScrollBy(0, -scrollIncrement);
-			}
+			if (shouldScroll)
+				ScrollBy(0, -scrollIncrement);
 		}
 	}
 
@@ -9199,13 +9193,8 @@ BPoseView::CheckAutoScroll(BPoint mouseLoc, bool shouldScroll)
 
 		if (keepGoing) {
 			wouldScroll = true;
-			if (shouldScroll) {
-				if (fVScrollBar != NULL) {
-					fVScrollBar->SetValue(
-						fVScrollBar->Value() + scrollIncrement);
-				} else
-					ScrollBy(0, scrollIncrement);
-			}
+			if (shouldScroll)
+				ScrollBy(0, scrollIncrement);
 		}
 	}
 
@@ -9226,13 +9215,8 @@ BPoseView::CheckAutoScroll(BPoint mouseLoc, bool shouldScroll)
 
 		if (keepGoing) {
 			wouldScroll = true;
-			if (shouldScroll) {
-				if (fHScrollBar != NULL) {
-					fHScrollBar->SetValue(
-						fHScrollBar->Value() - scrollIncrement);
-				} else
-					ScrollBy(-scrollIncrement, 0);
-			}
+			if (shouldScroll)
+				ScrollBy(-scrollIncrement, 0);
 		}
 	}
 
@@ -9253,13 +9237,8 @@ BPoseView::CheckAutoScroll(BPoint mouseLoc, bool shouldScroll)
 
 		if (keepGoing) {
 			wouldScroll = true;
-			if (shouldScroll) {
-				if (fHScrollBar != NULL) {
-					fHScrollBar->SetValue(
-						fHScrollBar->Value() + scrollIncrement);
- 				} else
- 					ScrollBy(scrollIncrement, 0);
-			}
+			if (shouldScroll)
+				ScrollBy(scrollIncrement, 0);
 		}
 	}
 
@@ -9307,7 +9286,7 @@ BPoseView::HandleAutoScroll()
 			CheckAutoScroll(mouseLoc, true);
 			break;
 	}
-}*/
+}
 
 
 BRect
