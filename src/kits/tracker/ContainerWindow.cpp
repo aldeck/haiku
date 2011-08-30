@@ -765,15 +765,6 @@ BContainerWindow::RepopulateMenus()
 	fWindowContextMenu = new BPopUpMenu("WindowContext", false, false);
 	fWindowContextMenu->SetFont(be_plain_font);
 	AddWindowContextMenus(fWindowContextMenu);
-
-	// TODO: disabled until menu system rework
-	/*
-	Controller()->MenuBar()->RemoveItem(Controller()->WindowMenu());
-	delete Controller()->WindowMenu();
-	//Controller()->WindowMenu() = new BMenu(B_TRANSLATE("Window"));
-	Controller()->MenuBar()->AddItem(Controller()->WindowMenu());
-	Controller()->AddWindowMenu(Controller()->WindowMenu());
-	*/
 }
 
 

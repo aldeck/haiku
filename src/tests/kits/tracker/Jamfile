@@ -1,0 +1,13 @@
+SubDir HAIKU_TOP src tests kits tracker ;
+
+UsePrivateHeaders tracker shared ;
+
+SubDirHdrs $(HAIKU_TOP) src kits tracker ;
+
+#SEARCH_SOURCE += [ FDirName $(TOP) src kits tracker ] ;
+
+SimpleTest PoseViewTest :
+	PoseViewTest.cpp
+	: be tracker $(TARGET_LIBSUPC++)
+	;
+

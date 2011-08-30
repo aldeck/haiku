@@ -249,6 +249,7 @@ FileMenu::TargetModelChanged()
 
 			AddSeparatorItem();
 
+			// TODO: check and clean old comments
 			// The "Move To", "Copy To", "Create Link" menus are inserted
 			// at this place, have a look at:
 			// BContainerWindow::SetupMoveCopyMenus()
@@ -328,7 +329,7 @@ FileMenu::SelectionChanged()
 MoveMenu::MoveMenu(const char* itemName, uint32 messageWhat,
 	PoseViewController* controller)
 	:
-	BNavMenu(itemName, messageWhat, controller->PoseView()->ContainerWindow()),
+	BNavMenu(itemName, messageWhat, controller->PoseView()->Window()),
 	fController(controller),
 	fMessageWhat(messageWhat)
 {
@@ -369,7 +370,7 @@ MoveMenu::_Populate(const entry_ref *ref, bool addLocalOnly)
 
 	// TODO check if the entry has changed since the last _Populate?
 
-	BHandler* target = fController->PoseView()->ContainerWindow();
+	BHandler* target = fController->PoseView()->Window();
 
 	BVolume volume;
 	BVolumeRoster volumeRoster;
@@ -545,7 +546,7 @@ WindowMenu::WindowMenu(PoseViewController* controller)
 
 	item = new BMenuItem(B_TRANSLATE("Resize to fit"),
 		new BMessage(kResizeToFit), 'Y');
-	item->SetTarget(poseView->ContainerWindow());
+	item->SetTarget(poseView->Window());
 	AddItem(item);
 
 	item = new BMenuItem(B_TRANSLATE("Clean up"), new BMessage(kCleanup), 'K');

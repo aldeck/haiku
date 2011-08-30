@@ -37,8 +37,9 @@
 #define B_TRANSLATE_CONTEXT "libtracker"
 
 
-// Note: actually, PoseviewController is the user interface manager, it should be renamed
-// accordingly, PoseviewControlManager or Poseview(default)UserInterface
+// Note: actually, PoseviewController is the user interface manager,
+// it should be renamed accordingly, PoseviewControlManager
+// or Poseview(default)UserInterface
 
 PoseViewController::PoseViewController()
 	:
@@ -97,7 +98,7 @@ PoseViewController::CreateControls(Model *model)
 			new BScrollBar("VScrollBar", fPoseView, 0, 100, B_VERTICAL);
 	} else {
 		printf("Error! PoseViewController::CreateControls you must set a "
-			"poseview before calling this method!");
+			"poseview before calling this method!\n");
 	}
 }
 
@@ -179,7 +180,8 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 	 	if (trash)
 	 		index = newParent->IndexOf(trash) + 2;
 	 	else {
-	 		printf("PoseViewController::ReparentSharedMenus cant find 'Move to trash' item!\n");
+	 		printf("PoseViewController::ReparentSharedMenus "
+	 			"cant find 'Move to trash' item!\n");
 	 		newParent = NULL; // will detach the menu
 	 	}
  	}
@@ -188,7 +190,8 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 	if (!ReparentMenu(fMoveToMenu, newParent, index++)
 		|| !ReparentMenu(fCopyToMenu, newParent, index++)
 		|| !ReparentMenu(fCreateLinkMenu, newParent, index)) {
-		printf("PoseViewController::ReparentSharedMenus Error reparenting 'Move To/Copy To' menus!\n");
+		printf("PoseViewController::ReparentSharedMenus "
+			"Error reparenting 'Move To/Copy To' menus!\n");
 	}
 
 	// This is needed because we want to FindItem by command later
@@ -208,20 +211,24 @@ PoseViewController::ReparentSharedMenus(BMenu* newParent)
 	 	if (openItem)
 	 		index = newParent->IndexOf(openItem) + 1;
 	 	else {
-	 		printf("PoseViewController::ReparentSharedMenus cant find 'Open' item!\n");
+	 		printf("PoseViewController::ReparentSharedMenus "
+	 			"cant find 'Open' item!\n");
 	 		newParent = NULL; // will detach the menu
 	 	}
  	}
 
- 	if (!ReparentMenu(fOpenWithMenu, newParent, index))
-		printf("PoseViewController::ReparentSharedMenus Error reparenting 'Open with' menu!\n");
-	else if (fOpenWithMenu != NULL && fOpenWithMenu->Superitem() != NULL) {
+ 	if (!ReparentMenu(fOpenWithMenu, newParent, index)) {
+		printf("PoseViewController::ReparentSharedMenus "
+			"Error reparenting 'Open with' menu!\n");
+ 	} else if (fOpenWithMenu != NULL && fOpenWithMenu->Superitem() != NULL) {
 		// TODO put the code below in a JustInstalled hook
 		fOpenWithMenu->Superitem()->SetTarget(fPoseView);
-		fOpenWithMenu->Superitem()->SetShortcut('O', B_COMMAND_KEY | B_CONTROL_KEY);
+		fOpenWithMenu->Superitem()->SetShortcut('O',
+			B_COMMAND_KEY | B_CONTROL_KEY);
 		int32 count = PoseView()->SelectionList()->CountItems();
 		fOpenWithMenu->Superitem()->SetEnabled(count > 0);
-		fOpenWithMenu->Superitem()->SetMessage(new BMessage(kOpenSelectionWith));
+		fOpenWithMenu->Superitem()->SetMessage(
+			new BMessage(kOpenSelectionWith));
 	}
 }
 
@@ -401,7 +408,7 @@ PoseViewController::UpdateScrollRange()
 
 	// TODO: autohiding scrollbars doesn't play well with the window"s
 	//	 sizelimits
-	/*if (fHorizontalScrollBar) {
+	if (fHorizontalScrollBar) {
 		SetControlVisible(fHorizontalScrollBar,
 			fHorizontalScrollBar->Proportion() < 1.0);
 	}
@@ -409,7 +416,7 @@ PoseViewController::UpdateScrollRange()
 	if (fVerticalScrollBar) {
 		SetControlVisible(fVerticalScrollBar,
 			fVerticalScrollBar->Proportion() < 1.0);
-	}*/
+	}
 }
 
 

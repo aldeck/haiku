@@ -320,7 +320,7 @@ BPoseView::RemoveListener(PoseViewListener* listener)
 void
 BPoseView::_InitCommon()
 {
-	printf("(%p) BPoseView::_InitCommon() model=%p\n", this, TargetModel());
+	printf("(%p) BPoseView::_InitCommon() model=%p '%s'\n", this, TargetModel(), TargetModel()->Name());
 	BPoint origin;
 	if (ViewMode() == kListMode)
 		origin = fViewState->ListOrigin();
@@ -1128,7 +1128,7 @@ BPoseView::IsValidAddPosesThread(thread_id currentThread) const
 void
 BPoseView::AddPoses(Model *model)
 {
-	printf("BPoseView::AddPoses model = %p\n", model);
+	printf("BPoseView::AddPoses model = %p (%s)\n", model, model->Name());
 	// if model is zero, PoseView has other means of iterating through all
 	// the entries that it adds
 	// TODO: move up in Init()
@@ -6607,6 +6607,8 @@ BPoseView::_EndSelectionRect()
 		fSelectionPivotPose = NULL;
 	if (fRealPivotPose && !fSelectionList->HasItem(fRealPivotPose))
 		fRealPivotPose = NULL;
+
+	_NotifySelectionChanged();
 }
 
 
@@ -7795,7 +7797,9 @@ BPoseView::_NotifyTargetModelChanged()
 void
 BPoseView::_NotifySelectionChanged()
 {
-	ContainerWindow()->SelectionChanged();
+	// TODO remove back reference and make BContainerWindow a PoseViewListener
+	// when needed
+	//ContainerWindow()->SelectionChanged();
 
 	ListenerList::iterator it = fListeners.begin();
 	for (; it != fListeners.end(); it++) {
