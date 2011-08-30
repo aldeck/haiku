@@ -6717,9 +6717,6 @@ BPoseView::MouseDown(BPoint where)
 {
 	// handle disposing of drag data lazily
 	DragStop();
-	BContainerWindow *window = ContainerWindow();
-	if (!window)
-		return;
 
 	if (IsDesktopWindow()) {
 		BScreen	screen(Window());
@@ -6730,7 +6727,7 @@ BPoseView::MouseDown(BPoint where)
 
 	MakeFocus();
 
-	uint32 buttons = (uint32)window->CurrentMessage()->FindInt32("buttons");
+	uint32 buttons = (uint32)Window()->CurrentMessage()->FindInt32("buttons");
 	uint32 modifs = modifiers();
 
 	if (buttons == B_SECONDARY_MOUSE_BUTTON)
@@ -6754,8 +6751,8 @@ BPoseView::MouseDown(BPoint where)
 		// click was not in any pose
 		fLastClickedPose = NULL;
 
-		window->Activate();
-		window->UpdateIfNeeded();
+		Window()->Activate();
+		Window()->UpdateIfNeeded();
 
 		// only clear selection if we are not extending it
 		if (!extendSelection || !fSelectionRectEnabled || !fMultipleSelection)

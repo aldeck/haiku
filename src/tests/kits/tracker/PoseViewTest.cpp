@@ -28,10 +28,12 @@ class Window : public BWindow {
 
 
 Window::Window()
-	: BWindow(BRect(100, 100, 520, 430), "PoseViewTest /boot/home",
+	: BWindow(BRect(100, 100, 520, 430), "",
 			B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
 {
-	BEntry entry("/boot/home/");
+	const char* path = "/boot/home/Desktop";
+	SetTitle(BString("PoseViewTest ").Append(path).String());
+	BEntry entry(path);
 	entry_ref ref;
    	entry.GetRef(&ref);
 	Model* model = new Model(&ref, true);
