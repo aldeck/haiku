@@ -5,6 +5,7 @@
  * Author:
  *		DarkWyrm <bpmagic@columbus.rr.com>
  *		Clemens Zeidler <haiku@clemens-zeidler.de>
+ *		Joseph Groover <looncraz@satx.rr.com>
  */
 #ifndef DECOR_MANAGER_H
 #define DECOR_MANAGER_H
@@ -52,7 +53,7 @@ public:
 
 protected:
 	virtual Decorator*			_AllocateDecorator(DesktopSettings& settings,
-									BRect rect, window_look look, uint32 flags);
+									BRect rect);
 
 			DesktopListenerList	fDesktopListeners;
 

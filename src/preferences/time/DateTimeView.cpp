@@ -46,7 +46,7 @@ using BPrivate::B_LOCAL_TIME;
 
 
 DateTimeView::DateTimeView(const char* name)
-	: 
+	:
 	BGroupView(name, B_HORIZONTAL, 5),
 	fGmtTime(NULL),
 	fUseGmtTime(false),
@@ -78,30 +78,8 @@ DateTimeView::AttachedToWindow()
 
 		fCalendarView->SetTarget(this);
 	}
-}
 
-
-void
-DateTimeView::Draw(BRect /*updateRect*/)
-{
-	rgb_color viewcolor = ViewColor();
-	rgb_color dark = tint_color(viewcolor, B_DARKEN_4_TINT);
-	rgb_color light = tint_color(viewcolor, B_LIGHTEN_MAX_TINT);
-
-	// draw a separator line
-	BRect bounds(Bounds());
-	BPoint start(bounds.Width() / 2.0f, bounds.top + 5.0f);
-	BPoint end(bounds.Width() / 2.0, bounds.bottom - 5.0f);
-
-	BeginLineArray(2);
-		AddLine(start, end, dark);
-		start.x++;
-		end.x++;
-		AddLine(start, end, light);
-	EndLineArray();
-
-	fTimeEdit->Draw(bounds);
-	fDateEdit->Draw(bounds);
+	_NotifyClockSettingChanged();
 }
 
 
@@ -219,7 +197,7 @@ DateTimeView::_InitView()
 	fDateEdit = new TDateEdit("dateEdit", 3);
 	fTimeEdit = new TTimeEdit("timeEdit", 4);
 	fClock = new TAnalogClock("analogClock");
-	
+
 	BTime time(BTime::CurrentTime(B_LOCAL_TIME));
 	fClock->SetTime(time.Hour(), time.Minute(), time.Second());
 
@@ -314,6 +292,8 @@ DateTimeView::_UpdateGmtSettings()
 {
 	_WriteRTCSettings();
 
+	_NotifyClockSettingChanged();
+
 	_kern_set_real_time_clock_is_gmt(fUseGmtTime);
 }
 
@@ -327,8 +307,16 @@ DateTimeView::_UpdateDateTime(BMessage* message)
 	if (message->FindInt32("month", &month) == B_OK
 		&& message->FindInt32("day", &day) == B_OK
 		&& message->FindInt32("year", &year) == B_OK) {
-		fDateEdit->SetDate(year, month, day);
-		fCalendarView->SetDate(year, month, day);
+		static int32 lastDay;
+		static int32 lastMonth;
+		static int32 lastYear;
+		if (day != lastDay || month != lastMonth || year != lastYear) {
+			fDateEdit->SetDate(year, month, day);
+			fCalendarView->SetDate(year, month, day);
+			lastDay = day;
+			lastMonth = month;
+			lastYear = year;
+		}
 	}
 
 	int32 hour;
@@ -341,3 +329,13 @@ DateTimeView::_UpdateDateTime(BMessage* message)
 		fTimeEdit->SetTime(hour, minute, second);
 	}
 }
+
+
+void
+DateTimeView::_NotifyClockSettingChanged()
+{
+	BMessage msg(kMsgClockSettingChanged);
+	msg.AddBool("UseGMT", fUseGmtTime);
+	Window()->PostMessage(&msg);
+}
+

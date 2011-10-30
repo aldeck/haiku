@@ -1,5 +1,5 @@
 /*
- * Copyright 2010, Haiku, Inc. All Rights Reserved.
+ * Copyright 2010-2011, Haiku, Inc. All Rights Reserved.
  * Copyright 2008-2009, Pier Luigi Fiorini. All Rights Reserved.
  * Copyright 2004-2008, Michael Davidson. All Rights Reserved.
  * Copyright 2004-2007, Mikael Eiman. All Rights Reserved.
@@ -10,10 +10,12 @@
  *		Mikael Eiman, mikael@eiman.tv
  *		Pier Luigi Fiorini, pierluigi.fiorini@gmail.com
  *		Stephan Aßmus <superstippi@gmx.de>
+ *		Adrien Destugues <pulkomandy@pulkomandy.ath.cx>
  */
 
 #include <stdlib.h>
 
+#include <ControlLook.h>
 #include <Font.h>
 #include <IconUtils.h>
 #include <Messenger.h>
@@ -22,6 +24,7 @@
 #include <Region.h>
 #include <Resources.h>
 #include <Roster.h>
+#include <StatusBar.h>
 #include <StringView.h>
 #include <TranslationUtils.h>
 
@@ -31,6 +34,8 @@
 const char* kSmallIconAttribute	= "BEOS:M:STD_ICON";
 const char* kLargeIconAttribute	= "BEOS:L:STD_ICON";
 const char* kIconAttribute		= "BEOS:ICON";
+
+static const int kIconStripeWidth = 32;
 
 property_info message_prop_list[] = {
 	{ "type", {B_GET_PROPERTY, B_SET_PROPERTY, 0},
@@ -98,6 +103,21 @@ NotificationView::NotificationView(NotificationWindow* win,
 			SetViewColor(ui_color(B_FAILURE_COLOR));
 			SetLowColor(ui_color(B_FAILURE_COLOR));
 			break;
+		case B_PROGRESS_NOTIFICATION:
+		{
+			BRect frame(kIconStripeWidth + 8, Bounds().bottom - 36,
+				Bounds().right - 8, Bounds().bottom - 8);
+			BStatusBar* progress = new BStatusBar(frame, "progress");
+			progress->SetBarHeight(12.0f);
+			progress->SetMaxValue(1.0f);
+			progress->Update(fProgress);
+			
+			BString label = "";
+			label << (int)(fProgress * 100) << " %";
+			progress->SetTrailingText(label);
+			
+			AddChild(progress);
+		}
 		default:
 			SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 			SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -239,15 +259,12 @@ NotificationView::MessageReceived(BMessage* msg)
 void
 NotificationView::GetPreferredSize(float* w, float* h)
 {
-	// Parent width, minus the edge padding, minus the pensize
-	*w = fParent->ViewWidth() - (kEdgePadding * 2) - (kPenSize * 2);
+	*w = fParent->ViewWidth();
 	*h = fHeight;
 
 	if (fType == B_PROGRESS_NOTIFICATION) {
-		font_height fh;
-		be_plain_font->GetHeight(&fh);
-		float fontHeight = fh.ascent + fh.descent + fh.leading;
-		*h += (kSmallPadding * 2) + (kEdgePadding * 1) + fontHeight;
+		*h += 16 + kEdgePadding;
+			// 16 is progress bar default size as stated in the BeBook
 	}
 }
 
@@ -257,69 +274,32 @@ NotificationView::Draw(BRect updateRect)
 {
 	BRect progRect;
 
-	// Draw progress background
-	if (fType == B_PROGRESS_NOTIFICATION) {
-		PushState();
-
-		font_height fh;
-		be_plain_font->GetHeight(&fh);
-		float fontHeight = fh.ascent + fh.descent + fh.leading;
-
-		progRect = Bounds();
-		progRect.InsetBy(kEdgePadding, kEdgePadding);
-		progRect.top = progRect.bottom - (kSmallPadding * 2) - fontHeight;
-		StrokeRect(progRect);
-
-		BRect barRect = progRect;
-		barRect.InsetBy(1.0, 1.0);
-		barRect.right *= fProgress;
-		SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
-		FillRect(barRect);
-
-		SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
-
-		BString label = "";
-		label << (int)(fProgress * 100) << " %";
-
-		float labelWidth = be_plain_font->StringWidth(label.String());
-		float labelX = progRect.left + (progRect.IntegerWidth() / 2) - (labelWidth / 2);
-
-		SetLowColor(B_TRANSPARENT_COLOR);
-		SetDrawingMode(B_OP_ALPHA);
-		DrawString(label.String(), label.Length(),
-			BPoint(labelX, progRect.top + fh.ascent + fh.leading + kSmallPadding));
-
-		PopState();
-	}
-
 	SetDrawingMode(B_OP_ALPHA);
 	SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
 
 	// Icon size
 	float iconSize = (float)fParent->IconSize();
-
+	
+	BRect stripeRect = Bounds();
+	stripeRect.right = kIconStripeWidth;
+	SetHighColor(tint_color(ViewColor(), B_DARKEN_1_TINT));
+	FillRect(stripeRect);
+	
+	SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
 	// Rectangle for icon and overlay icon
 	BRect iconRect(0, 0, 0, 0);
 
 	// Draw icon
 	if (fBitmap) {
-		LineInfo* appLine = fLines.back();
-		font_height fh;
-		appLine->font.GetHeight(&fh);
-
-		float title_bottom = appLine->location.y + fh.descent;
-
-		float ix = kEdgePadding;
-		float iy = 0;
-		if (fParent->Layout() == TitleAboveIcon)
-			iy = title_bottom + kEdgePadding + (Bounds().Height() - title_bottom
-				- kEdgePadding * 2 - iconSize) / 2;
-		else
-			iy = (Bounds().Height() - iconSize) / 2.0;
+		float ix = 18;
+		float iy = (Bounds().Height() - iconSize) / 4.0;
+			// Icon is vertically centered in view
 
 		if (fType == B_PROGRESS_NOTIFICATION)
+		{
 			// Move icon up by half progress bar height if it's present
-			iy -= (progRect.Height() + kEdgePadding) / 2.0;
+			iy -= (progRect.Height() + kEdgePadding);
+		}
 
 		iconRect.Set(ix, iy, ix + iconSize - 1.0, iy + iconSize - 1.0);
 		DrawBitmapAsync(fBitmap, fBitmap->Bounds(), iconRect);
@@ -339,7 +319,7 @@ NotificationView::Draw(BRect updateRect)
 
 	// Draw the close widget
 	BRect closeRect = Bounds();
-	closeRect.InsetBy(kEdgePadding, kEdgePadding);
+	closeRect.InsetBy(2 * kEdgePadding, 2 * kEdgePadding);
 	closeRect.left = closeRect.right - kCloseSize;
 	closeRect.bottom = closeRect.top + kCloseSize;
 
@@ -350,6 +330,11 @@ NotificationView::Draw(BRect updateRect)
 		StrokeLine(closeCross.LeftTop(), closeCross.RightBottom());
 		StrokeLine(closeCross.LeftBottom(), closeCross.RightTop());
 	PopState();
+
+	SetHighColor(tint_color(ViewColor(), B_DARKEN_1_TINT));
+	BPoint left(Bounds().left, Bounds().bottom - 1);
+	BPoint right(Bounds().right, Bounds().bottom - 1);
+	StrokeLine(left, right);
 
 	Sync();
 }
@@ -500,25 +485,24 @@ NotificationView::SetText(const char* app, const char* title, const char* text,
 	fTitle = title;
 	fText = text;
 
-	float iconRight = kEdgePadding + kEdgePadding;
+	float iconRight = kIconStripeWidth;
 	if (fBitmap != NULL)
 		iconRight += fParent->IconSize();
+	else
+		iconRight += 32;
 
 	font_height fh;
 	be_bold_font->GetHeight(&fh);
 	float fontHeight = ceilf(fh.leading) + ceilf(fh.descent)
 		+ ceilf(fh.ascent);
-	float y = fontHeight;
+	float y = 2 * fontHeight;
 
 	// Title
 	LineInfo* titleLine = new LineInfo;
 	titleLine->text = fTitle;
 	titleLine->font = *be_bold_font;
 
-	if (fParent->Layout() == AllTextRightOfIcon)
-		titleLine->location = BPoint(iconRight, y);
-	else
-		titleLine->location = BPoint(kEdgePadding, y);
+	titleLine->location = BPoint(iconRight, y);
 
 	fLines.push_front(titleLine);
 	y += fontHeight;

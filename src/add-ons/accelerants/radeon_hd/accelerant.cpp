@@ -11,13 +11,17 @@
 #include "accelerant_protos.h"
 #include "accelerant.h"
 
+#include "bios.h"
 #include "display.h"
-#include "utility.h"
+#include "gpu.h"
 #include "pll.h"
-#include "mc.h"
+#include "utility.h"
+
+#include <Debug.h>
 
 #include <errno.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <syslog.h>
@@ -25,9 +29,10 @@
 #include <AGP.h>
 
 
+#undef TRACE
+
 #define TRACE_ACCELERANT
 #ifdef TRACE_ACCELERANT
-extern "C" void _sPrintf(const char *format, ...);
 #	define TRACE(x...) _sPrintf("radeon_hd: " x)
 #else
 #	define TRACE(x...) ;
@@ -36,6 +41,8 @@ extern "C" void _sPrintf(const char *format, ...);
 
 struct accelerant_info *gInfo;
 display_info *gDisplay[MAX_DISPLAY];
+connector_info *gConnector[ATOM_MAX_SUPPORTED_DEVICE];
+gpio_info *gGPIOInfo[ATOM_MAX_SUPPORTED_DEVICE];
 
 
 class AreaCloner {
@@ -103,6 +110,7 @@ init_common(int device, bool isClone)
 
 	memset(gInfo, 0, sizeof(accelerant_info));
 
+	// malloc memory for active display information
 	for (uint32 id = 0; id < MAX_DISPLAY; id++) {
 		gDisplay[id] = (display_info *)malloc(sizeof(display_info));
 		if (gDisplay[id] == NULL)
@@ -115,8 +123,29 @@ init_common(int device, bool isClone)
 		memset(gDisplay[id]->regs, 0, sizeof(register_info));
 	}
 
+	// malloc for possible physical card connectors
+	for (uint32 id = 0; id < ATOM_MAX_SUPPORTED_DEVICE; id++) {
+		gConnector[id] = (connector_info *)malloc(sizeof(connector_info));
+
+		if (gConnector[id] == NULL)
+			return B_NO_MEMORY;
+		memset(gConnector[id], 0, sizeof(connector_info));
+	}
+
+	// malloc for card gpio pin information
+	for (uint32 id = 0; id < ATOM_MAX_SUPPORTED_DEVICE; id++) {
+		gGPIOInfo[id] = (gpio_info *)malloc(sizeof(gpio_info));
+
+		if (gGPIOInfo[id] == NULL)
+			return B_NO_MEMORY;
+		memset(gGPIOInfo[id], 0, sizeof(gpio_info));
+	}
+
 	gInfo->is_clone = isClone;
 	gInfo->device = device;
+
+	gInfo->dpms_mode = B_DPMS_ON;
+		// initial state
 
 	// get basic info from driver
 
@@ -136,8 +165,7 @@ init_common(int device, bool isClone)
 	status_t status = sharedCloner.InitCheck();
 	if (status < B_OK) {
 		free(gInfo);
-		TRACE("%s, failed shared area%i, %i\n",
-			__func__, data.shared_info_area, gInfo->shared_info_area);
+		TRACE("%s, failed to create shared area\n", __func__);
 		return status;
 	}
 
@@ -148,17 +176,24 @@ init_common(int device, bool isClone)
 	status = regsCloner.InitCheck();
 	if (status < B_OK) {
 		free(gInfo);
+		TRACE("%s, failed to create mmio area\n", __func__);
 		return status;
 	}
 
+	gInfo->rom_area = clone_area("radeon hd AtomBIOS",
+		(void **)&gInfo->rom, B_ANY_ADDRESS, B_READ_AREA | B_WRITE_AREA,
+		gInfo->shared_info->rom_area);
+
+	if (gInfo->rom_area < 0) {
+		TRACE("%s: Clone of AtomBIOS failed!\n", __func__);
+		gInfo->shared_info->has_rom = false;
+	}
+
+	if (gInfo->rom[0] != 0x55 || gInfo->rom[1] != 0xAA)
+		TRACE("%s: didn't find a VGA bios in cloned region!\n", __func__);
+
 	sharedCloner.Keep();
 	regsCloner.Keep();
-
-	// Define Radeon PLL default ranges
-	gInfo->shared_info->pll_info.reference_frequency
-		= RHD_PLL_REFERENCE_DEFAULT;
-	gInfo->shared_info->pll_info.min_frequency = RHD_PLL_MIN_DEFAULT;
-	gInfo->shared_info->pll_info.max_frequency = RHD_PLL_MAX_DEFAULT;
 
 	return B_OK;
 }
@@ -171,6 +206,7 @@ uninit_common(void)
 	if (gInfo != NULL) {
 		delete_area(gInfo->regs_area);
 		delete_area(gInfo->shared_info_area);
+		delete_area(gInfo->rom_area);
 
 		gInfo->regs_area = gInfo->shared_info_area = -1;
 
@@ -186,6 +222,11 @@ uninit_common(void)
 			free(gDisplay[id]->regs);
 			free(gDisplay[id]);
 		}
+	}
+
+	for (uint32 id = 0; id < ATOM_MAX_SUPPORTED_DEVICE; id++) {
+		free(gConnector[id]);
+		free(gGPIOInfo[id]);
 	}
 }
 
@@ -208,17 +249,37 @@ radeon_init_accelerant(int device)
 	init_lock(&info.accelerant_lock, "radeon hd accelerant");
 	init_lock(&info.engine_lock, "radeon hd engine");
 
+	radeon_init_bios(gInfo->rom);
+
+	// detect GPIO pins
+	radeon_gpu_gpio_setup();
+
+	// detect physical connectors
+	status = detect_connectors();
+	if (status != B_OK) {
+		TRACE("%s: couldn't detect supported connectors!\n", __func__);
+		return status;
+	}
+
+	// print found connectors
+	debug_connectors();
+
+	// detect attached displays
 	status = detect_displays();
 	//if (status != B_OK)
 	//	return status;
 
+	// print found displays
 	debug_displays();
 
+	// create initial list of video modes
 	status = create_mode_list();
 	//if (status != B_OK) {
 	//	radeon_uninit_accelerant();
 	//	return status;
 	//}
+
+	radeon_gpu_mc_setup();
 
 	TRACE("%s done\n", __func__);
 	return B_OK;
@@ -244,3 +305,19 @@ radeon_uninit_accelerant(void)
 	TRACE("%s done\n", __func__);
 }
 
+
+status_t
+radeon_get_accelerant_device_info(accelerant_device_info *di)
+{
+	di->version = B_ACCELERANT_VERSION;
+	strcpy(di->name, gInfo->shared_info->device_identifier);
+
+	char chipset[32];
+	sprintf(chipset, "r%X", gInfo->shared_info->device_chipset);
+	strcpy(di->chipset, chipset);
+
+	strcpy(di->serial_no, "None" );
+
+	di->memory = gInfo->shared_info->graphics_memory_size;
+	return B_OK;
+}

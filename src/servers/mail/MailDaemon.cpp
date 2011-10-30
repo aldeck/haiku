@@ -35,7 +35,25 @@
 #define B_TRANSLATE_CONTEXT "MailDaemon"
 
 
-void
+using std::map;
+using std::vector;
+
+
+struct send_mails_info {
+	send_mails_info()
+	{
+		totalSize = 0;
+	}
+
+	vector<entry_ref>	files;
+	off_t				totalSize;
+};
+
+
+// #pragma mark -
+
+
+static void
 makeIndices()
 {
 	const char* stringIndices[] = {
@@ -67,7 +85,7 @@ makeIndices()
 }
 
 
-void
+static void
 addAttribute(BMessage& msg, const char* name, const char* publicName,
 	int32 type = B_STRING_TYPE, bool viewable = true, bool editable = false,
 	int32 width = 200)
@@ -85,13 +103,9 @@ addAttribute(BMessage& msg, const char* name, const char* publicName,
 //	#pragma mark -
 
 
-using std::map;
-using std::vector;
-
-
 MailDaemonApp::MailDaemonApp()
 	:
-	BApplication("application/x-vnd.Be-POST"),
+	BApplication(B_MAIL_DAEMON_SIGNATURE),
 
 	fAutoCheckRunner(NULL)
 {
@@ -208,194 +222,6 @@ MailDaemonApp::RefsReceived(BMessage* message)
 		if (message->FindMessenger("target", &target) != B_OK)
 			messenger = NULL;
 		protocolThread->FetchBody(ref, messenger);
-	}
-}
-
-
-void
-MailDaemonApp::_InitAccounts()
-{
-	BMailAccounts accounts;
-	for (int i = 0; i < accounts.CountAccounts(); i++)
-		_InitAccount(*accounts.AccountAt(i));
-}
-
-
-void
-MailDaemonApp::_InitAccount(BMailAccountSettings& settings)
-{
-	account_protocols account;
-	// inbound
-	if (settings.IsInboundEnabled()) {
-		account.inboundProtocol = _CreateInboundProtocol(settings,
-			account.inboundImage);
-	} else {
-		account.inboundProtocol = NULL;
-	}
-	if (account.inboundProtocol) {
-		DefaultNotifier* notifier = new DefaultNotifier(settings.Name(), true,
-			fErrorLogWindow, fMailStatusWindow);
-		account.inboundProtocol->SetMailNotifier(notifier);
-
-		account.inboundThread = new InboundProtocolThread(
-			account.inboundProtocol);
-		account.inboundThread->Run();
-	}
-
-	// outbound
-	if (settings.IsOutboundEnabled()) {
-		account.outboundProtocol = _CreateOutboundProtocol(settings,
-			account.outboundImage);
-	} else {
-		account.outboundProtocol = NULL;
-	}
-	if (account.outboundProtocol) {
-		DefaultNotifier* notifier = new DefaultNotifier(settings.Name(), false,
-			fErrorLogWindow, fMailStatusWindow);
-		account.outboundProtocol->SetMailNotifier(notifier);
-
-		account.outboundThread = new OutboundProtocolThread(
-			account.outboundProtocol);
-		account.outboundThread->Run();
-	}
-
-	printf("account name %s, id %i, in %p, out %p\n", settings.Name(),
-		(int)settings.AccountID(), account.inboundProtocol,
-		account.outboundProtocol);
-	if (!account.inboundProtocol && !account.outboundProtocol)
-		return;
-	fAccounts[settings.AccountID()] = account;
-}
-
-
-
-void
-MailDaemonApp::_ReloadAccounts(BMessage* message)
-{
-	type_code typeFound;
-	int32 countFound;
-	message->GetInfo("account", &typeFound, &countFound);
-	if (typeFound != B_INT32_TYPE)
-		return;
-
-	// reload accounts
-	BMailAccounts accounts;
-
-	for (int i = 0; i < countFound; i++) {
-		int32 account = message->FindInt32("account", i);
-		AccountMap::const_iterator it = fAccounts.find(account);
-		if (it != fAccounts.end())
-			_RemoveAccount(it);
-		BMailAccountSettings* settings = accounts.AccountByID(account);
-		if (settings)
-			_InitAccount(*settings);
-	}
-}
-
-
-void
-MailDaemonApp::_RemoveAccount(AccountMap::const_iterator it)
-{
-	BMessage reply;
-	if (it->second.inboundThread) {
-		it->second.inboundThread->SetStopNow();
-		BMessenger(it->second.inboundThread).SendMessage(B_QUIT_REQUESTED,
-			&reply);
-	}
-	if (it->second.outboundThread) {
-		it->second.outboundThread->SetStopNow();
-		BMessenger(it->second.outboundThread).SendMessage(B_QUIT_REQUESTED,
-			&reply);
-	}
-	delete it->second.inboundProtocol;
-	delete it->second.outboundProtocol;
-	unload_add_on(it->second.inboundImage);
-	unload_add_on(it->second.outboundImage);
-}
-
-
-InboundProtocol*
-MailDaemonApp::_CreateInboundProtocol(BMailAccountSettings& settings,
-	image_id& image)
-{
-	const entry_ref& entry = settings.InboundPath();
-
-	InboundProtocol* (*instantiate_protocol)(BMailAccountSettings*);
-
-	BPath path(&entry);
-	image = load_add_on(path.Path());
-	if (image < 0)
-		return NULL;
-	if (get_image_symbol(image, "instantiate_inbound_protocol",
-		B_SYMBOL_TYPE_TEXT, (void **)&instantiate_protocol) != B_OK) {
-		unload_add_on(image);
-		image = -1;
-		return NULL;
-	}
-	InboundProtocol* protocol = (*instantiate_protocol)(&settings);
-	return protocol;
-}
-
-
-OutboundProtocol*
-MailDaemonApp::_CreateOutboundProtocol(BMailAccountSettings& settings,
-	image_id& image)
-{
-	const entry_ref& entry = settings.OutboundPath();
-
-	OutboundProtocol* (*instantiate_protocol)(BMailAccountSettings*);
-
-	BPath path(&entry);
-	image = load_add_on(path.Path());
-	if (image < 0)
-		return NULL;
-	if (get_image_symbol(image, "instantiate_outbound_protocol",
-		B_SYMBOL_TYPE_TEXT, (void **)&instantiate_protocol) != B_OK) {
-		unload_add_on(image);
-		image = -1;
-		return NULL;
-	}
-	OutboundProtocol* protocol = (*instantiate_protocol)(&settings);
-	return protocol;
-}
-
-
-InboundProtocolThread*
-MailDaemonApp::_FindInboundProtocol(int32 account)
-{
-	AccountMap::iterator it = fAccounts.find(account);
-	if (it == fAccounts.end())
-		return NULL;
-	return it->second.inboundThread;
-}
-
-
-OutboundProtocolThread*
-MailDaemonApp::_FindOutboundProtocol(int32 account)
-{
-	if (account < 0)
-		account = BMailSettings().DefaultOutboundAccount();
-
-	AccountMap::iterator it = fAccounts.find(account);
-	if (it == fAccounts.end())
-		return NULL;
-	return it->second.outboundThread;
-}
-
-
-void
-MailDaemonApp::_UpdateAutoCheck(bigtime_t interval)
-{
-	if (interval > 0) {
-		if (fAutoCheckRunner != NULL) {
-			fAutoCheckRunner->SetInterval(interval);
-			fAutoCheckRunner->SetCount(-1);
-		} else
-			fAutoCheckRunner = new BMessageRunner(be_app_messenger,
-				new BMessage('moto'), interval);
-	} else {
-		delete fAutoCheckRunner;
-		fAutoCheckRunner = NULL;
 	}
 }
 
@@ -521,7 +347,7 @@ MailDaemonApp::MessageReceived(BMessage* msg)
 		{
 			int32 numMessages = msg->FindInt32("num_messages");
 			BString numString;
-			
+
 			if (numMessages > 1)
 				fAlertString << B_TRANSLATE("%num new messages for %name\n");
 			else
@@ -572,6 +398,23 @@ MailDaemonApp::MessageReceived(BMessage* msg)
 
 
 void
+MailDaemonApp::Pulse()
+{
+	bigtime_t idle = idle_time();
+	if (fLEDAnimation->IsRunning() && idle < 100000)
+		fLEDAnimation->Stop();
+}
+
+
+bool
+MailDaemonApp::QuitRequested()
+{
+	RemoveDeskbarIcon();
+	return true;
+}
+
+
+void
 MailDaemonApp::InstallDeskbarIcon()
 {
 	BDeskbar deskbar;
@@ -580,7 +423,7 @@ MailDaemonApp::InstallDeskbarIcon()
 		BRoster roster;
 		entry_ref ref;
 
-		status_t status = roster.FindApp("application/x-vnd.Be-POST", &ref);
+		status_t status = roster.FindApp(B_MAIL_DAEMON_SIGNATURE, &ref);
 		if (status < B_OK) {
 			fprintf(stderr, "Can't find application to tell deskbar: %s\n",
 				strerror(status));
@@ -605,15 +448,6 @@ MailDaemonApp::RemoveDeskbarIcon()
 }
 
 
-bool
-MailDaemonApp::QuitRequested()
-{
-	RemoveDeskbarIcon();
-
-	return true;
-}
-
-
 void
 MailDaemonApp::GetNewMessages(BMessage* msg)
 {
@@ -635,73 +469,6 @@ MailDaemonApp::GetNewMessages(BMessage* msg)
 		protocol->SyncMessages();
 	}
 }
-
-
-void
-MailDaemonApp::MakeMimeTypes(bool remakeMIMETypes)
-{
-	// Add MIME database entries for the e-mail file types we handle.  Either
-	// do a full rebuild from nothing, or just add on the new attributes that
-	// we support which the regular BeOS mail daemon didn't have.
-
-	const uint8 kNTypes = 2;
-	const char* types[kNTypes] = {"text/x-email", "text/x-partial-email"};
-
-	for (size_t i = 0; i < kNTypes; i++) {
-		BMessage info;
-		BMimeType mime(types[i]);
-		if (mime.InitCheck() != B_OK) {
-			fputs("could not init mime type.\n", stderr);
-			return;
-		}
-
-		if (!mime.IsInstalled() || remakeMIMETypes) {
-			// install the full mime type
-			mime.Delete();
-			mime.Install();
-
-			// Set up the list of e-mail related attributes that Tracker will
-			// let you display in columns for e-mail messages.
-			addAttribute(info, B_MAIL_ATTR_NAME, "Name");
-			addAttribute(info, B_MAIL_ATTR_SUBJECT, "Subject");
-			addAttribute(info, B_MAIL_ATTR_TO, "To");
-			addAttribute(info, B_MAIL_ATTR_CC, "Cc");
-			addAttribute(info, B_MAIL_ATTR_FROM, "From");
-			addAttribute(info, B_MAIL_ATTR_REPLY, "Reply To");
-			addAttribute(info, B_MAIL_ATTR_STATUS, "Status");
-			addAttribute(info, B_MAIL_ATTR_PRIORITY, "Priority", B_STRING_TYPE,
-				true, true, 40);
-			addAttribute(info, B_MAIL_ATTR_WHEN, "When", B_TIME_TYPE, true,
-				false, 150);
-			addAttribute(info, B_MAIL_ATTR_THREAD, "Thread");
-			addAttribute(info, B_MAIL_ATTR_ACCOUNT, "Account", B_STRING_TYPE,
-				true, false, 100);
-			addAttribute(info, B_MAIL_ATTR_READ, "Read", B_INT32_TYPE,
-				true, false, 70);
-			mime.SetAttrInfo(&info);
-
-			if (i == 0) {
-				mime.SetShortDescription("E-mail");
-				mime.SetLongDescription("Electronic Mail Message");
-				mime.SetPreferredApp("application/x-vnd.Be-MAIL");
-			} else {
-				mime.SetShortDescription("Partial E-mail");
-				mime.SetLongDescription("A Partially Downloaded E-mail");
-				mime.SetPreferredApp("application/x-vnd.Be-MAIL");
-			}
-		}
-	}
-}
-
-
-struct send_mails_info {
-	send_mails_info()
-	{
-		totalSize = 0;
-	}
-	vector<entry_ref>	files;
-	off_t				totalSize;
-};
 
 
 void
@@ -799,24 +566,258 @@ MailDaemonApp::SendPendingMessages(BMessage* msg)
 
 		protocolThread->SendMessages(iter->second.files, info.totalSize);
 	}
-
 }
 
 
 void
-MailDaemonApp::Pulse()
+MailDaemonApp::MakeMimeTypes(bool remakeMIMETypes)
 {
-	bigtime_t idle = idle_time();
-	if (fLEDAnimation->IsRunning() && idle < 100000)
-		fLEDAnimation->Stop();
+	// Add MIME database entries for the e-mail file types we handle.  Either
+	// do a full rebuild from nothing, or just add on the new attributes that
+	// we support which the regular BeOS mail daemon didn't have.
+
+	const uint8 kNTypes = 2;
+	const char* types[kNTypes] = {"text/x-email", "text/x-partial-email"};
+
+	for (size_t i = 0; i < kNTypes; i++) {
+		BMessage info;
+		BMimeType mime(types[i]);
+		if (mime.InitCheck() != B_OK) {
+			fputs("could not init mime type.\n", stderr);
+			return;
+		}
+
+		if (!mime.IsInstalled() || remakeMIMETypes) {
+			// install the full mime type
+			mime.Delete();
+			mime.Install();
+
+			// Set up the list of e-mail related attributes that Tracker will
+			// let you display in columns for e-mail messages.
+			addAttribute(info, B_MAIL_ATTR_NAME, "Name");
+			addAttribute(info, B_MAIL_ATTR_SUBJECT, "Subject");
+			addAttribute(info, B_MAIL_ATTR_TO, "To");
+			addAttribute(info, B_MAIL_ATTR_CC, "Cc");
+			addAttribute(info, B_MAIL_ATTR_FROM, "From");
+			addAttribute(info, B_MAIL_ATTR_REPLY, "Reply To");
+			addAttribute(info, B_MAIL_ATTR_STATUS, "Status");
+			addAttribute(info, B_MAIL_ATTR_PRIORITY, "Priority", B_STRING_TYPE,
+				true, true, 40);
+			addAttribute(info, B_MAIL_ATTR_WHEN, "When", B_TIME_TYPE, true,
+				false, 150);
+			addAttribute(info, B_MAIL_ATTR_THREAD, "Thread");
+			addAttribute(info, B_MAIL_ATTR_ACCOUNT, "Account", B_STRING_TYPE,
+				true, false, 100);
+			addAttribute(info, B_MAIL_ATTR_READ, "Read", B_INT32_TYPE,
+				true, false, 70);
+			mime.SetAttrInfo(&info);
+
+			if (i == 0) {
+				mime.SetShortDescription("E-mail");
+				mime.SetLongDescription("Electronic Mail Message");
+				mime.SetPreferredApp("application/x-vnd.Be-MAIL");
+			} else {
+				mime.SetShortDescription("Partial E-mail");
+				mime.SetLongDescription("A Partially Downloaded E-mail");
+				mime.SetPreferredApp("application/x-vnd.Be-MAIL");
+			}
+		}
+	}
+}
+
+
+void
+MailDaemonApp::_InitAccounts()
+{
+	BMailAccounts accounts;
+	for (int i = 0; i < accounts.CountAccounts(); i++)
+		_InitAccount(*accounts.AccountAt(i));
+}
+
+
+void
+MailDaemonApp::_InitAccount(BMailAccountSettings& settings)
+{
+	account_protocols account;
+	// inbound
+	if (settings.IsInboundEnabled()) {
+		account.inboundProtocol = _CreateInboundProtocol(settings,
+			account.inboundImage);
+	} else {
+		account.inboundProtocol = NULL;
+	}
+	if (account.inboundProtocol) {
+		DefaultNotifier* notifier = new DefaultNotifier(settings.Name(), true,
+			fErrorLogWindow, fMailStatusWindow);
+		account.inboundProtocol->SetMailNotifier(notifier);
+
+		account.inboundThread = new InboundProtocolThread(
+			account.inboundProtocol);
+		account.inboundThread->Run();
+	}
+
+	// outbound
+	if (settings.IsOutboundEnabled()) {
+		account.outboundProtocol = _CreateOutboundProtocol(settings,
+			account.outboundImage);
+	} else {
+		account.outboundProtocol = NULL;
+	}
+	if (account.outboundProtocol) {
+		DefaultNotifier* notifier = new DefaultNotifier(settings.Name(), false,
+			fErrorLogWindow, fMailStatusWindow);
+		account.outboundProtocol->SetMailNotifier(notifier);
+
+		account.outboundThread = new OutboundProtocolThread(
+			account.outboundProtocol);
+		account.outboundThread->Run();
+	}
+
+	printf("account name %s, id %i, in %p, out %p\n", settings.Name(),
+		(int)settings.AccountID(), account.inboundProtocol,
+		account.outboundProtocol);
+	if (!account.inboundProtocol && !account.outboundProtocol)
+		return;
+	fAccounts[settings.AccountID()] = account;
+}
+
+
+
+void
+MailDaemonApp::_ReloadAccounts(BMessage* message)
+{
+	type_code typeFound;
+	int32 countFound;
+	message->GetInfo("account", &typeFound, &countFound);
+	if (typeFound != B_INT32_TYPE)
+		return;
+
+	// reload accounts
+	BMailAccounts accounts;
+
+	for (int i = 0; i < countFound; i++) {
+		int32 account = message->FindInt32("account", i);
+		AccountMap::const_iterator it = fAccounts.find(account);
+		if (it != fAccounts.end())
+			_RemoveAccount(it);
+		BMailAccountSettings* settings = accounts.AccountByID(account);
+		if (settings)
+			_InitAccount(*settings);
+	}
+}
+
+
+void
+MailDaemonApp::_RemoveAccount(AccountMap::const_iterator it)
+{
+	BMessage reply;
+	if (it->second.inboundThread) {
+		it->second.inboundThread->SetStopNow();
+		BMessenger(it->second.inboundThread).SendMessage(B_QUIT_REQUESTED,
+			&reply);
+	}
+	if (it->second.outboundThread) {
+		it->second.outboundThread->SetStopNow();
+		BMessenger(it->second.outboundThread).SendMessage(B_QUIT_REQUESTED,
+			&reply);
+	}
+	delete it->second.inboundProtocol;
+	delete it->second.outboundProtocol;
+	unload_add_on(it->second.inboundImage);
+	unload_add_on(it->second.outboundImage);
+	fAccounts.erase(it->first);
+}
+
+
+InboundProtocol*
+MailDaemonApp::_CreateInboundProtocol(BMailAccountSettings& settings,
+	image_id& image)
+{
+	const entry_ref& entry = settings.InboundPath();
+
+	InboundProtocol* (*instantiate_protocol)(BMailAccountSettings*);
+
+	BPath path(&entry);
+	image = load_add_on(path.Path());
+	if (image < 0)
+		return NULL;
+	if (get_image_symbol(image, "instantiate_inbound_protocol",
+		B_SYMBOL_TYPE_TEXT, (void **)&instantiate_protocol) != B_OK) {
+		unload_add_on(image);
+		image = -1;
+		return NULL;
+	}
+	InboundProtocol* protocol = (*instantiate_protocol)(&settings);
+	return protocol;
+}
+
+
+OutboundProtocol*
+MailDaemonApp::_CreateOutboundProtocol(BMailAccountSettings& settings,
+	image_id& image)
+{
+	const entry_ref& entry = settings.OutboundPath();
+
+	OutboundProtocol* (*instantiate_protocol)(BMailAccountSettings*);
+
+	BPath path(&entry);
+	image = load_add_on(path.Path());
+	if (image < 0)
+		return NULL;
+	if (get_image_symbol(image, "instantiate_outbound_protocol",
+		B_SYMBOL_TYPE_TEXT, (void **)&instantiate_protocol) != B_OK) {
+		unload_add_on(image);
+		image = -1;
+		return NULL;
+	}
+	OutboundProtocol* protocol = (*instantiate_protocol)(&settings);
+	return protocol;
+}
+
+
+InboundProtocolThread*
+MailDaemonApp::_FindInboundProtocol(int32 account)
+{
+	AccountMap::iterator it = fAccounts.find(account);
+	if (it == fAccounts.end())
+		return NULL;
+	return it->second.inboundThread;
+}
+
+
+OutboundProtocolThread*
+MailDaemonApp::_FindOutboundProtocol(int32 account)
+{
+	if (account < 0)
+		account = BMailSettings().DefaultOutboundAccount();
+
+	AccountMap::iterator it = fAccounts.find(account);
+	if (it == fAccounts.end())
+		return NULL;
+	return it->second.outboundThread;
+}
+
+
+void
+MailDaemonApp::_UpdateAutoCheck(bigtime_t interval)
+{
+	if (interval > 0) {
+		if (fAutoCheckRunner != NULL) {
+			fAutoCheckRunner->SetInterval(interval);
+			fAutoCheckRunner->SetCount(-1);
+		} else
+			fAutoCheckRunner = new BMessageRunner(be_app_messenger,
+				new BMessage('moto'), interval);
+	} else {
+		delete fAutoCheckRunner;
+		fAutoCheckRunner = NULL;
+	}
 }
 
 
 /*!	Work-around for a broken index that contains out-of-date information.
 */
-
-/* static */
-bool
+/*static*/ bool
 MailDaemonApp::_IsPending(BNode& node)
 {
 	int32 flags;
@@ -828,8 +829,7 @@ MailDaemonApp::_IsPending(BNode& node)
 }
 
 
-/* static */
-bool
+/*static*/ bool
 MailDaemonApp::_IsEntryInTrash(BEntry& entry)
 {
 	entry_ref ref;

@@ -34,7 +34,6 @@ public:
 	virtual 					~DateTimeView();
 
 	virtual	void			 	AttachedToWindow();
-	virtual	void 				Draw(BRect updaterect);
 	virtual	void 				MessageReceived(BMessage* message);
 
 			bool				CheckCanRevert();
@@ -46,6 +45,7 @@ private:
 			void				_WriteRTCSettings();
 			void				_UpdateGmtSettings();
 			void 				_UpdateDateTime(BMessage* message);
+			void 				_NotifyClockSettingChanged();
 			void				_Revert();
 			time_t				_PrefletUptime() const;
 
