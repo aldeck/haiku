@@ -2250,7 +2250,7 @@ idle_scan_active_pages(page_stats& pageStats)
 		if (cache == NULL)
 			continue;
 
-		if (cache == NULL || page->State() != PAGE_STATE_ACTIVE) {
+		if (page->State() != PAGE_STATE_ACTIVE) {
 			// page is no longer in the cache or in this queue
 			cache->ReleaseRefAndUnlock();
 			continue;
@@ -3651,7 +3651,8 @@ vm_page_get_stats(system_info *info)
 	page_num_t blockCachePages = block_cache_used_memory() / B_PAGE_SIZE;
 
 	info->max_pages = sNumPages - sNonExistingPages;
-	info->used_pages = gMappedPagesCount - blockCachePages;
+	info->used_pages = gMappedPagesCount + sInactivePageQueue.Count()
+		- blockCachePages;
 	info->cached_pages = info->max_pages >= free + info->used_pages
 		? info->max_pages - free - info->used_pages : 0;
 	info->page_faults = vm_num_page_faults();

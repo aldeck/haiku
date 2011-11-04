@@ -84,7 +84,7 @@ using std::max;
 const char* const kInstantiateItemCFunctionName = "instantiate_deskbar_item";
 const char* const kInstantiateEntryCFunctionName = "instantiate_deskbar_entry";
 const char* const kReplicantSettingsFile = "Deskbar_replicants";
-const char* const kReplicantRefField = "replicant";
+const char* const kReplicantPathField = "replicant_path";
 
 float sMinimumWindowWidth = kGutter + kMinimumTrayWidth + kDragRegionWidth;
 
@@ -413,20 +413,20 @@ TReplicantTray::InitAddOnSupport()
 
 		BFile file(path.Path(), B_READ_ONLY);
 		if (file.InitCheck() == B_OK) {
-			entry_ref ref;
 			status_t result;
 			BEntry entry;
 			int32 id;
+			BString path;
 			if (fAddOnSettings.Unflatten(&file) == B_OK) {
-				for (int32 i = 0; fAddOnSettings.FindRef(kReplicantRefField, 
-					i, &ref) == B_OK; i++) {
-					if (entry.SetTo(&ref) == B_OK && entry.Exists()) {
+				for (int32 i = 0; fAddOnSettings.FindString(kReplicantPathField, 
+					i, &path) == B_OK; i++) {
+					if (entry.SetTo(path.String()) == B_OK && entry.Exists()) {
 						result = LoadAddOn(&entry, &id, false);
 					} else 
 						result = B_ENTRY_NOT_FOUND;
 					
 					if (result != B_OK) {
-						fAddOnSettings.RemoveData(kReplicantRefField, i);
+						fAddOnSettings.RemoveData(kReplicantPathField, i);
 						--i;
 					}
 				}
@@ -439,14 +439,7 @@ TReplicantTray::InitAddOnSupport()
 void
 TReplicantTray::DeleteAddOnSupport()
 {
-	BPath path;
-	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path, true) == B_OK) {
-		path.Append(kReplicantSettingsFile);
-
-		BFile file(path.Path(), B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
-		if (file.InitCheck() == B_OK) 
-			fAddOnSettings.Flatten(&file);
-	}
+	_SaveSettings();
 	
 	for (int32 i = fItemList->CountItems(); i-- > 0 ;) {
 		DeskbarItemInfo* item = (DeskbarItemInfo*)fItemList->RemoveItem(i);
@@ -625,9 +618,8 @@ TReplicantTray::LoadAddOn(BEntry* entry, int32* id, bool addToSettings)
 		// add the rep; adds info to list
 
 	if (addToSettings) {
-		entry_ref ref;
-		if (entry->GetRef(&ref) == B_OK)
-			fAddOnSettings.AddRef(kReplicantRefField, &ref);
+		fAddOnSettings.AddString(kReplicantPathField, path.Path());
+		_SaveSettings();
 	}
 	
 	return B_OK;
@@ -697,6 +689,18 @@ TReplicantTray::RemoveItem(int32 id)
 
 	// attribute was added via Deskbar API (AddItem(entry_ref*, int32*)
 	if (item->isAddOn) {
+		BPath path(&item->entryRef);
+		BString storedPath;
+		for (int32 i = 0; 
+			fAddOnSettings.FindString(kReplicantPathField, i, &storedPath)
+				== B_OK; i++) {
+			if (storedPath == path.Path()) {
+				fAddOnSettings.RemoveData(kReplicantPathField, i);
+				break;
+			}
+		}
+		_SaveSettings();
+				
 		BNode node(&item->entryRef);
 		watch_node(&item->nodeRef, B_STOP_WATCHING, this, Window());
 	}
@@ -1195,6 +1199,24 @@ void
 TReplicantTray::SetMultiRow(bool state)
 {
 	fMultiRowMode = state;
+}
+
+
+status_t
+TReplicantTray::_SaveSettings()
+{
+	status_t result;
+	BPath path;
+	if ((result = find_directory(B_USER_SETTINGS_DIRECTORY, &path, true))
+		 == B_OK) {
+		path.Append(kReplicantSettingsFile);
+
+		BFile file(path.Path(), B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
+		if ((result = file.InitCheck()) == B_OK) 
+			result = fAddOnSettings.Flatten(&file);
+	}
+	
+	return result;
 }
 
 

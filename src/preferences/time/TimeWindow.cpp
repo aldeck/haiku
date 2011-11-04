@@ -93,17 +93,7 @@ TTimeWindow::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgClockSettingChanged:
-		{
-			bool useGMTTime = true;
-			message->FindBool("UseGMT", &useGMTTime);
-			if (useGMTTime) {
-				BMessage show(H_SHOW_PREVIEW);
-				fTimeZoneView->MessageReceived(&show);
-			} else {
-				BMessage hide(H_HIDE_PREVIEW);
-				fTimeZoneView->MessageReceived(&hide);
-			}
-		}
+			break;
 
 		default:
 			BWindow::MessageReceived(message);
