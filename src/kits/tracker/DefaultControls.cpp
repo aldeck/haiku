@@ -38,7 +38,7 @@ const float kMaxMenuWidth = 150; // OpenWithMenu
 
 
 //	#pragma mark - FileContextMenu
-
+namespace BPrivate {
 
 FileContextMenu::FileContextMenu(PoseViewController* controller)
 	:
@@ -633,7 +633,7 @@ AttributesMenu<MenuType>::_Init()
 	AddItem(item = new BMenuItem(B_TRANSLATE("Paste layout"),
 		new BMessage(kPasteAttributes)));
 	item->SetTarget(poseView);
-	AddSeparatorItem();
+	MenuType::AddSeparatorItem();
 
 	AddItem(_NewItem(B_TRANSLATE("Name"),
 		kAttrStatName, B_STRING_TYPE, 145, B_ALIGN_LEFT, true, true));
@@ -684,16 +684,16 @@ AttributesMenu<MenuType>::MimeTypesChanged()
 	BPoseView* poseView = fController->PoseView();
 
 	// Remove old mime type menus
-	int32 start = CountItems();
-	while (start > 0 && ItemAt(start - 1)->Submenu() != NULL) {
-		delete RemoveItem(start - 1);
+	int32 start = MenuType::CountItems();
+	while (start > 0 && MenuType::ItemAt(start - 1)->Submenu() != NULL) {
+		delete MenuType::RemoveItem(start - 1);
 		start--;
 	}
 
 	// Add a separator item if there is none yet
 	if (start > 0
-		&& dynamic_cast<BSeparatorItem *>(ItemAt(start - 1)) == NULL)
-		AddSeparatorItem();
+		&& dynamic_cast<BSeparatorItem *>(MenuType::ItemAt(start - 1)) == NULL)
+		MenuType::AddSeparatorItem();
 
 	// Add MIME type in case we're a default query type window
 	BPath path;
@@ -752,19 +752,19 @@ AttributesMenu<MenuType>::MimeTypesChanged()
 			if (menusFound != 0) {
 				// promote types to the top level
 				while (BMenuItem* item = superMenu->RemoveItem((int32)0)) {
-					AddItem(item);
+					MenuType::AddItem(item);
 				}
 			}
 
-			RemoveItem(superMenu->Superitem());
+			MenuType::RemoveItem(superMenu->Superitem());
 			delete superMenu->Superitem();
 		}
 	}
 
 	// remove separator if it's the only item in menu
-	BMenuItem *item = ItemAt(CountItems() - 1);
+	BMenuItem *item = MenuType::ItemAt(MenuType::CountItems() - 1);
 	if (dynamic_cast<BSeparatorItem *>(item) != NULL) {
-		RemoveItem(item);
+		MenuType::RemoveItem(item);
 		delete item;
 	}
 
@@ -784,9 +784,9 @@ template<class MenuType>
 void
 AttributesMenu<MenuType>::_MarkItems()
 {
-	int32 count = CountItems();
+	int32 count = MenuType::CountItems();
 	for (int32 index = 0; index < count; index++) {
-		BMenuItem *item = ItemAt(index);
+		BMenuItem *item = MenuType::ItemAt(index);
 		int32 attrHash;
 		if (item->Message()) {
 			if (item->Message()->FindInt32("attr_hash", &attrHash) == B_OK)
@@ -939,7 +939,7 @@ AttributesMenu<MenuType>::_AddMimeMenu(const BMimeType& mimeType,
 
 	BMessage* message = new BMessage(kMIMETypeItem);
 	message->AddString("mimetype", mimeType.Type());
-	AddItem(new IconMenuItem(mimeMenu, message, mimeType.Type(),
+	MenuType::AddItem(new IconMenuItem(mimeMenu, message, mimeType.Type(),
 		B_MINI_ICON));
 
 	return mimeMenu;
@@ -964,7 +964,6 @@ OpenWithMenu::OpenWithMenu(const char *label, PoseViewController* controller)
 	SetTriggersEnabled(false);
 }
 
-namespace BPrivate {
 
 int
 SortByRelationAndName(const RelationCachingModelProxy *model1,
@@ -985,8 +984,6 @@ SortByRelationAndName(const RelationCachingModelProxy *model1,
 	// if relations match, sort by app name
 	return strcmp(model1->fModel->Name(), model2->fModel->Name());
 }
-
-} // namespace BPrivate
 
 
 void
@@ -1177,3 +1174,4 @@ OpenWithMenu::ClearMenuBuildingState()
 
 
 
+};
