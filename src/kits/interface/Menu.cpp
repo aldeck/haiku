@@ -96,8 +96,12 @@ public:
 
 
 menu_info BMenu::sMenuInfo;
-bool BMenu::sAltAsCommandKey;
 
+uint32 BMenu::sShiftKey;
+uint32 BMenu::sControlKey;
+uint32 BMenu::sOptionKey;
+uint32 BMenu::sCommandKey;
+uint32 BMenu::sMenuKey;
 
 static property_info sPropList[] = {
 	{ "Enabled", { B_GET_PROPERTY, 0 },
@@ -381,8 +385,12 @@ BMenu::AttachedToWindow()
 {
 	BView::AttachedToWindow();
 
-	_GetIsAltCommandKey(sAltAsCommandKey);
-		
+	_GetShiftKey(sShiftKey);
+	_GetControlKey(sControlKey);
+	_GetCommandKey(sCommandKey);
+	_GetOptionKey(sOptionKey);
+	_GetMenuKey(sMenuKey);
+
 	fAttachAborted = _AddDynamicItems();
 
 	if (!fAttachAborted) {
@@ -515,9 +523,9 @@ BMenu::KeyDown(const char* bytes, int32 numBytes)
 			else {
 				if (fSelected && fSelected->Submenu()) {
 					fSelected->Submenu()->_SetStickyMode(true);
-						// fix me: this shouldn't be needed but dynamic menus 
-						// aren't getting it set correctly when keyboard 
-						// navigating, which aborts the attach 
+						// fix me: this shouldn't be needed but dynamic menus
+						// aren't getting it set correctly when keyboard
+						// navigating, which aborts the attach
 					fState = MENU_STATE_KEY_TO_SUBMENU;
 					_SelectItem(fSelected, true, true, true);
 				} else if (dynamic_cast<BMenuBar*>(Supermenu())) {
@@ -670,17 +678,11 @@ BMenu::FrameResized(float new_width, float new_height)
 void
 BMenu::InvalidateLayout()
 {
-	InvalidateLayout(false);
-}
-
-
-void
-BMenu::InvalidateLayout(bool descendants)
-{
 	fUseCachedMenuLayout = false;
-	fLayoutData->preferred.Set(B_SIZE_UNSET, B_SIZE_UNSET);
-
-	BView::InvalidateLayout(descendants);
+	// This method exits for backwards compatibility reasons, it is used to
+	// invalidate the menu layout, but we also use call
+	// BView::InvalidateLayout() for good measure. Don't delete this method!
+	BView::InvalidateLayout(false);
 }
 
 
@@ -1229,18 +1231,18 @@ BMenu::Perform(perform_code code, void* _data)
 			BMenu::GetHeightForWidth(data->width, &data->min, &data->max,
 				&data->preferred);
 			return B_OK;
-}
+		}
 		case PERFORM_CODE_SET_LAYOUT:
 		{
 			perform_data_set_layout* data = (perform_data_set_layout*)_data;
 			BMenu::SetLayout(data->layout);
 			return B_OK;
 		}
-		case PERFORM_CODE_INVALIDATE_LAYOUT:
+		case PERFORM_CODE_LAYOUT_INVALIDATED:
 		{
-			perform_data_invalidate_layout* data
-				= (perform_data_invalidate_layout*)_data;
-			BMenu::InvalidateLayout(data->descendants);
+			perform_data_layout_invalidated* data
+				= (perform_data_layout_invalidated*)_data;
+			BMenu::LayoutInvalidated(data->descendants);
 			return B_OK;
 		}
 		case PERFORM_CODE_DO_LAYOUT:
@@ -1464,7 +1466,7 @@ BMenu::_InitData(BMessage* archive)
 		archive->FindFloat("_maxwidth", &fMaxContentWidth);
 
 		BMessage msg;
-			for (int32 i = 0; archive->FindMessage("_items", i, &msg) == B_OK; i++) {
+		for (int32 i = 0; archive->FindMessage("_items", i, &msg) == B_OK; i++) {
 			BArchivable* object = instantiate_object(&msg);
 			if (BMenuItem* item = dynamic_cast<BMenuItem*>(object)) {
 				BRect bounds;
@@ -1506,8 +1508,8 @@ BMenu::_Show(bool selectFirstItem, bool keyDown)
 	if (window->Lock()) {
 		bool addAborted = false;
 		if (keyDown)
-			addAborted = _AddDynamicItems(keyDown);	
-		
+			addAborted = _AddDynamicItems(keyDown);
+
 		if (addAborted) {
 			if (ourWindow)
 				window->Quit();
@@ -1516,7 +1518,7 @@ BMenu::_Show(bool selectFirstItem, bool keyDown)
 			return false;
 		}
 		fAttachAborted = false;
-		
+
 		window->AttachMenu(this);
 
 		if (ItemAt(0) != NULL) {
@@ -1627,9 +1629,8 @@ BMenu::_Track(int* action, long start)
 		// first we check if mouse is inside a submenu,
 		// then if the mouse is inside this menu,
 		// then if it's over a super menu.
-		bool overSub = _OverSubmenu(fSelected, screenLocation);
-		item = _HitTestItems(location, B_ORIGIN);
-		if (overSub || fState == MENU_STATE_KEY_TO_SUBMENU) {
+		if (_OverSubmenu(fSelected, screenLocation)
+				|| fState == MENU_STATE_KEY_TO_SUBMENU) {
 			if (fState == MENU_STATE_TRACKING) {
 				// not if from R.Arrow
 				fState = MENU_STATE_TRACKING_SUBMENU;
@@ -1669,7 +1670,7 @@ BMenu::_Track(int* action, long start)
 				fState = MENU_STATE_TRACKING;
 			if (!LockLooper())
 				break;
-		} else if (item != NULL) {
+		} else if ((item = _HitTestItems(location, B_ORIGIN)) != NULL) {
 			_UpdateStateOpenSelect(item, location, navAreaRectAbove,
 				navAreaRectBelow, selectedTime, navigationAreaTime);
 			if (!releasedOnce)
@@ -1737,7 +1738,7 @@ BMenu::_Track(int* action, long start)
 
 	if (action != NULL)
 		*action = fState;
-		
+
 	// keyboard Enter will set this
 	if (fChosenItem != NULL)
 		item = fChosenItem;
@@ -1749,7 +1750,7 @@ BMenu::_Track(int* action, long start)
 		_SelectItem(NULL);
 		UnlockLooper();
 	}
-	
+
 	// delete the menu window recycled for all the child menus
 	_DeleteMenuWindow();
 
@@ -2271,6 +2272,14 @@ BMenu::_ComputeMatrixLayout(BRect &frame)
 }
 
 
+void
+BMenu::LayoutInvalidated(bool descendants)
+{
+	fUseCachedMenuLayout = false;
+	fLayoutData->preferred.Set(B_SIZE_UNSET, B_SIZE_UNSET);
+}
+
+
 // Assumes the SuperMenu to be locked (due to calling ConvertToScreen())
 BPoint
 BMenu::ScreenLocation()
@@ -2678,25 +2687,72 @@ BMenu::_IsStickyMode() const
 
 
 void
-BMenu::_GetIsAltCommandKey(bool &value) const
+BMenu::_GetShiftKey(uint32 &value) const
 {
 	// TODO: Move into init_interface_kit().
-	// Currently we can't do that, as get_key_map() blocks forever
+	// Currently we can't do that, as get_modifier_key() blocks forever
 	// when called on input_server initialization, since it tries
 	// to send a synchronous message to itself (input_server is
 	// a BApplication)
 
-	bool altAsCommand = true;
-	key_map* keys = NULL;
-	char* chars = NULL;
-	get_key_map(&keys, &chars);
-	if (keys == NULL || keys->left_command_key != 0x5d
-		|| keys->left_control_key != 0x5c)
-		altAsCommand = false;
-	free(chars);
-	free(keys);
+	if (get_modifier_key(B_LEFT_SHIFT_KEY, &value) != B_OK)
+		value = 0x4b;
+}
 
-	value = altAsCommand;
+
+void
+BMenu::_GetControlKey(uint32 &value) const
+{
+	// TODO: Move into init_interface_kit().
+	// Currently we can't do that, as get_modifier_key() blocks forever
+	// when called on input_server initialization, since it tries
+	// to send a synchronous message to itself (input_server is
+	// a BApplication)
+
+	if (get_modifier_key(B_LEFT_CONTROL_KEY, &value) != B_OK)
+		value = 0x5c;
+}
+
+
+void
+BMenu::_GetCommandKey(uint32 &value) const
+{
+	// TODO: Move into init_interface_kit().
+	// Currently we can't do that, as get_modifier_key() blocks forever
+	// when called on input_server initialization, since it tries
+	// to send a synchronous message to itself (input_server is
+	// a BApplication)
+
+	if (get_modifier_key(B_LEFT_COMMAND_KEY, &value) != B_OK)
+		value = 0x66;
+}
+
+
+void
+BMenu::_GetOptionKey(uint32 &value) const
+{
+	// TODO: Move into init_interface_kit().
+	// Currently we can't do that, as get_modifier_key() blocks forever
+	// when called on input_server initialization, since it tries
+	// to send a synchronous message to itself (input_server is
+	// a BApplication)
+
+	if (get_modifier_key(B_LEFT_OPTION_KEY, &value) != B_OK)
+		value = 0x5d;
+}
+
+
+void
+BMenu::_GetMenuKey(uint32 &value) const
+{
+	// TODO: Move into init_interface_kit().
+	// Currently we can't do that, as get_modifier_key() blocks forever
+	// when called on input_server initialization, since it tries
+	// to send a synchronous message to itself (input_server is
+	// a BApplication)
+
+	if (get_modifier_key(B_MENU_KEY, &value) != B_OK)
+		value = 0x68;
 }
 
 
@@ -2825,7 +2881,7 @@ BMenu::_AddDynamicItems(bool keyDown)
 			}
 		} while (AddDynamicItem(B_PROCESSING));
 	}
-	
+
 	return addAborted;
 }
 
@@ -2924,3 +2980,12 @@ get_menu_info(menu_info* info)
 
 	return status;
 }
+
+
+extern "C" void
+B_IF_GCC_2(InvalidateLayout__5BMenub,_ZN5BMenu16InvalidateLayoutEb)(
+	BMenu* menu, bool descendants)
+{
+	menu->InvalidateLayout();
+}
+

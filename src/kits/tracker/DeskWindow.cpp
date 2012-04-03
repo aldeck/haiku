@@ -279,10 +279,10 @@ BDeskWindow::_Init(const BMessage *message)
 
 	// watch add-on directories so that we can track the addons with
 	// corresponding shortcuts
-	WatchAddOnDir(B_BEOS_ADDONS_DIRECTORY, this);
 	WatchAddOnDir(B_USER_ADDONS_DIRECTORY, this);
 	WatchAddOnDir(B_COMMON_ADDONS_DIRECTORY, this);
-
+	WatchAddOnDir(B_SYSTEM_ADDONS_DIRECTORY, this);
+	
 	Show();
 
 	// done showing, turn the B_NO_WORKSPACE_ACTIVATION flag off;

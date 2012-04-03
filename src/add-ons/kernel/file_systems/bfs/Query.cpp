@@ -79,11 +79,6 @@ union value {
 	char	String[INODE_FILE_NAME_LENGTH];
 };
 
-// B_MIME_STRING_TYPE is defined in storage/Mime.h, but we
-// don't need the whole file here; the type can't change anyway
-#ifndef _MIME_H
-#	define B_MIME_STRING_TYPE 'MIMS'
-#endif
 
 /*!	Abstract base class for the operator/equation classes.
 */
@@ -1293,7 +1288,7 @@ Operator::Copy() const
 void
 Operator::PrintToStream()
 {
-	D(__out("( "));
+	__out("( ");
 	if (fLeft != NULL)
 		fLeft->PrintToStream();
 
@@ -1303,12 +1298,12 @@ Operator::PrintToStream()
 		case OP_AND: op = "AND"; break;
 		default: op = "?"; break;
 	}
-	D(__out(" %s ", op));
+	__out(" %s ", op);
 
 	if (fRight != NULL)
 		fRight->PrintToStream();
 
-	D(__out(" )"));
+	__out(" )");
 }
 
 
@@ -1324,7 +1319,7 @@ Equation::PrintToStream()
 		case OP_LESS_THAN: symbol = "<"; break;
 		case OP_LESS_THAN_OR_EQUAL: symbol = "<="; break;
 	}
-	D(__out("[\"%s\" %s \"%s\"]", fAttribute, symbol, fString));
+	__out("[\"%s\" %s \"%s\"]", fAttribute, symbol, fString);
 }
 
 #endif	// DEBUG

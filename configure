@@ -327,7 +327,7 @@ HOST_GCC_OBJCOPY=`gcc -print-prog-name=objcopy`
 SFDISK_BINARY=sfdisk
 HOST_SFDISK=$SFDISK_BINARY
 
-haikuRequiredLegacyGCCVersion="2.95.3-haiku-100818"
+haikuRequiredLegacyGCCVersion="2.95.3-haiku-111122"
 export haikuRequiredLegacyGCCVersion
 	# version of legacy gcc required to build haiku
 
@@ -394,7 +394,7 @@ while [ $# -gt 0 ] ; do
 				x86)	HAIKU_GCC_MACHINE=i586-pc-haiku;;
 				x86_64)	HAIKU_GCC_MACHINE=x86_64-pc-haiku; targetArch=x86_64;;
 				ppc)	HAIKU_GCC_MACHINE=powerpc-apple-haiku; targetArch=ppc;;
-				m68k)	HAIKU_GCC_MACHINE=m68k-unknown-haiku; targetArch=m86k;;
+				m68k)	HAIKU_GCC_MACHINE=m68k-unknown-haiku; targetArch=m68k;;
 				arm)	HAIKU_GCC_MACHINE=arm-unknown-haiku; targetArch=arm;;
 				mipsel)	HAIKU_GCC_MACHINE=mipsel-unknown-haiku; targetArch=mips;;
 				*)		echo "Unsupported target architecture: $2"
@@ -473,7 +473,7 @@ done
 
 # check for case-sensitive filesystem if on darwin
 if [ $HOST_PLATFORM = "darwin" ]; then
-	diskutil info $(pwd) | grep -i "case-sensitive" > /dev/null
+	diskutil info $(pwd)/.. | grep -i "case-sensitive" > /dev/null
 	if [ $? != 0 ]; then
 		echo "You need a case-sensitive file-system to build Haiku."
 		echo "Please see the following guide on how to set one up:"

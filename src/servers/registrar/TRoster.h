@@ -13,6 +13,7 @@
 
 #include <Locker.h>
 #include <MessageQueue.h>
+#include <Path.h>
 #include <Roster.h>
 #include <SupportDefs.h>
 
@@ -57,6 +58,8 @@ public:
 			void			HandleAddToRecentApps(BMessage* request);
 			void			HandleLoadRecentLists(BMessage* request);
 			void			HandleSaveRecentLists(BMessage* request);
+
+			void			HandleRestartAppServer(BMessage* request);
 
 			void			ClearRecentDocuments();
 			void			ClearRecentFolders();
@@ -123,6 +126,8 @@ private:
 			RecentEntries	fRecentFolders;
 			uint32			fLastToken;
 			bool			fShuttingDown;
+			BPath			fSystemAppPath;
+			BPath			fSystemServerPath;
 };
 
 #endif	// T_ROSTER_H

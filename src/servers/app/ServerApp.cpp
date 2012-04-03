@@ -720,10 +720,8 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 				fLink.Attach<int32>(bitmap->Token());
 				fLink.Attach<uint8>(allocationFlags);
 
-				fLink.Attach<area_id>(
-					fMemoryAllocator.Area(bitmap->AllocationCookie()));
-				fLink.Attach<int32>(
-					fMemoryAllocator.AreaOffset(bitmap->AllocationCookie()));
+				fLink.Attach<area_id>(bitmap->Area());
+				fLink.Attach<int32>(bitmap->AreaOffset());
 
 				if ((allocationFlags & kFramebuffer) != 0)
 					fLink.Attach<int32>(bitmap->BytesPerRow());
@@ -802,6 +800,49 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 
 			fLink.StartMessage(B_OK);
 			fLink.Attach<int32>(flags);
+			fLink.Flush();
+			break;
+		}
+
+		case AS_RECONNECT_BITMAP:
+		{
+			// First, let's attempt to allocate the bitmap
+			ServerBitmap* bitmap = NULL;
+
+			BRect frame;
+			color_space colorSpace;
+			uint32 flags;
+			int32 bytesPerRow;
+			int32 screenID;
+			area_id clientArea;
+			int32 areaOffset;
+
+			link.Read<BRect>(&frame);
+			link.Read<color_space>(&colorSpace);
+			link.Read<uint32>(&flags);
+			link.Read<int32>(&bytesPerRow);
+			link.Read<int32>(&screenID);
+			link.Read<int32>(&clientArea);
+			if (link.Read<int32>(&areaOffset) == B_OK) {
+				// TODO: choose the right HWInterface with regards to the
+				// screenID
+				bitmap = gBitmapManager->CloneFromClient(clientArea, areaOffset,
+					frame, colorSpace, flags, bytesPerRow);
+			}
+
+			if (bitmap != NULL && _AddBitmap(bitmap)) {
+				fLink.StartMessage(B_OK);
+				fLink.Attach<int32>(bitmap->Token());
+
+				fLink.Attach<area_id>(bitmap->Area());
+
+			} else {
+				if (bitmap != NULL)
+					bitmap->ReleaseReference();
+
+				fLink.StartMessage(B_NO_MEMORY);
+			}
+
 			fLink.Flush();
 			break;
 		}
@@ -2713,17 +2754,17 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 			link.Read<uint32>(&index);
 
 			fLink.StartMessage(B_OK);
-			fDesktop->Lock();
+			fDesktop->LockSingleWindow();
 
 			// we're nice to our children (and also take the default case
 			// into account which asks for the current workspace)
 			if (index >= (uint32)kMaxWorkspaces)
 				index = fDesktop->CurrentWorkspace();
 
-			Workspace workspace(*fDesktop, index);
+			Workspace workspace(*fDesktop, index, true);
 			fLink.Attach<rgb_color>(workspace.Color());
 
-			fDesktop->Unlock();
+			fDesktop->UnlockSingleWindow();
 			fLink.Flush();
 			break;
 		}
@@ -2741,7 +2782,7 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 			if (link.Read<bool>(&makeDefault) != B_OK)
 				break;
 
-			fDesktop->Lock();
+			fDesktop->LockAllWindows();
 
 			// we're nice to our children (and also take the default case
 			// into account which asks for the current workspace)
@@ -2751,7 +2792,7 @@ ServerApp::_DispatchMessage(int32 code, BPrivate::LinkReceiver& link)
 			Workspace workspace(*fDesktop, index);
 			workspace.SetColor(color, makeDefault);
 
-			fDesktop->Unlock();
+			fDesktop->UnlockAllWindows();
 			break;
 		}
 

@@ -574,7 +574,7 @@ BTextView::MouseDown(BPoint where)
 	_StopMouseTracking();
 
 	int32 modifiers = 0;
-	uint32 buttons;
+	uint32 buttons = 0;
 	BMessage *currentMessage = Window()->CurrentMessage();
 	if (currentMessage != NULL) {
 		currentMessage->FindInt32("modifiers", &modifiers);
@@ -858,7 +858,7 @@ BTextView::FrameResized(float width, float height)
 
 
 /*! \brief Highlight/unhighlight the selection when the view gets
-		or looses the focus.
+		or loses the focus.
 	\param focusState The focus state: true, if the view is getting the focus,
 		false otherwise.
 */
@@ -1122,11 +1122,11 @@ BTextView::Perform(perform_code code, void* _data)
 			BTextView::SetLayout(data->layout);
 			return B_OK;
 		}
-		case PERFORM_CODE_INVALIDATE_LAYOUT:
+		case PERFORM_CODE_LAYOUT_INVALIDATED:
 		{
-			perform_data_invalidate_layout* data
-				= (perform_data_invalidate_layout*)_data;
-			BTextView::InvalidateLayout(data->descendants);
+			perform_data_layout_invalidated* data
+				= (perform_data_layout_invalidated*)_data;
+			BTextView::LayoutInvalidated(data->descendants);
 			return B_OK;
 		}
 		case PERFORM_CODE_DO_LAYOUT:
@@ -2782,13 +2782,11 @@ BTextView::GetHeightForWidth(float width, float* min, float* max,
 
 
 void
-BTextView::InvalidateLayout(bool descendants)
+BTextView::LayoutInvalidated(bool descendants)
 {
 	CALLED();
 
 	fLayoutData->valid = false;
-
-	BView::InvalidateLayout(descendants);
 }
 
 
@@ -3663,12 +3661,9 @@ BTextView::_HandleAlphaKey(const char *bytes, int32 numBytes)
 		undoBuffer->InputCharacter(numBytes);
 	}
 
-	bool erase = fSelStart != fText->Length();
-
 	if (fSelStart != fSelEnd) {
 		Highlight(fSelStart, fSelEnd);
 		DeleteText(fSelStart, fSelEnd);
-		erase = true;
 	}
 
 	if (fAutoindent && numBytes == 1 && *bytes == B_ENTER) {
@@ -3708,7 +3703,6 @@ BTextView::_Refresh(int32 fromOffset, int32 toOffset, bool scroll)
 	int32 toLine = _LineAt(toOffset);
 	int32 saveFromLine = fromLine;
 	int32 saveToLine = toLine;
-	float saveLineHeight = LineHeight(fromLine);
 
 	_RecalculateLineBreaks(&fromLine, &toLine);
 
@@ -3738,12 +3732,6 @@ BTextView::_Refresh(int32 fromOffset, int32 toOffset, bool scroll)
 	int32 toVisible = _LineAt(BPoint(0.0f, bounds.bottom));
 	fromLine = max_c(fromVisible, fromLine);
 	toLine = min_c(toLine, toVisible);
-
-	int32 drawOffset = fromOffset;
-	if (LineHeight(fromLine) != saveLineHeight
-		|| newHeight < saveHeight || fromLine < saveFromLine
-		|| fAlignment != B_ALIGN_LEFT)
-		drawOffset = (*fLines)[fromLine]->offset;
 
 	_AutoResize(false);
 
@@ -4170,8 +4158,8 @@ BTextView::_StyledWidth(int32 fromOffset, int32 length, float* outAscent,
 
 	// iterate through the style runs
 	const BFont *font = NULL;
-	int32 numChars;
-	while ((numChars = fStyles->Iterate(fromOffset, length, fInline, &font,
+	int32 numBytes;
+	while ((numBytes = fStyles->Iterate(fromOffset, length, fInline, &font,
 			NULL, &ascent, &descent)) != 0) {
 		maxAscent = max_c(ascent, maxAscent);
 		maxDescent = max_c(descent, maxDescent);
@@ -4180,18 +4168,18 @@ BTextView::_StyledWidth(int32 fromOffset, int32 length, float* outAscent,
 		// Use _BWidthBuffer_ if possible
 		if (BPrivate::gWidthBuffer != NULL) {
 			result += BPrivate::gWidthBuffer->StringWidth(*fText, fromOffset,
-				numChars, font);
+				numBytes, font);
 		} else {
 #endif
-			const char* text = fText->GetString(fromOffset, &numChars);
-			result += font->StringWidth(text, numChars);
+			const char* text = fText->GetString(fromOffset, &numBytes);
+			result += font->StringWidth(text, numBytes);
 
 #if USE_WIDTHBUFFER
 		}
 #endif
 
-		fromOffset += numChars;
-		length -= numChars;
+		fromOffset += numBytes;
+		length -= numBytes;
 	}
 
 	if (outAscent != NULL)
@@ -5637,3 +5625,15 @@ BTextView::TextTrackState::SimulateMouseMovement(BTextView *textView)
 	textView->GetMouse(&where, &buttons);
 	textView->_PerformMouseMoved(where, B_INSIDE_VIEW);
 }
+
+
+extern "C" void
+B_IF_GCC_2(InvalidateLayout__9BTextViewb,  _ZN9BTextView16InvalidateLayoutEb)(
+	BTextView* view, bool descendants)
+{
+	perform_data_layout_invalidated data;
+	data.descendants = descendants;
+
+	view->Perform(PERFORM_CODE_LAYOUT_INVALIDATED, &data);
+}
+

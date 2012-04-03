@@ -399,6 +399,9 @@ UHCI::UHCI(pci_info *info, Stack *stack)
 		fRootHubAddress(0),
 		fPortResetChange(0)
 {
+	// Create a lock for the isochronous transfer list
+	mutex_init(&fIsochronousLock, "UHCI isochronous lock");
+
 	if (!fInitOK) {
 		TRACE_ERROR("bus manager failed to init\n");
 		return;
@@ -532,9 +535,6 @@ UHCI::UHCI(pci_info *info, Stack *stack)
 	fCleanupThread = spawn_kernel_thread(CleanupThread,
 		"uhci cleanup thread", B_NORMAL_PRIORITY, (void *)this);
 	resume_thread(fCleanupThread);
-
-	// Create a lock for the isochronous transfer list
-	mutex_init(&fIsochronousLock, "UHCI isochronous lock");
 
 	// Create semaphore the isochronous finisher thread will wait for
 	fFinishIsochronousTransfersSem = create_sem(0,
@@ -772,19 +772,17 @@ UHCI::CheckDebugTransfer(DebugTransfer *transfer, bool &_stillPending)
 	}
 
 	if (transferOK) {
-		size_t actualLength = 0;
 		uint8 lastDataToggle = 0;
 		if (transfer->TransferPipe()->Direction() == Pipe::In) {
 			// data to read out
 			iovec *vector = transfer->Vector();
 			size_t vectorCount = transfer->VectorCount();
 
-			actualLength = ReadDescriptorChain(transfer->firstDescriptor,
+			ReadDescriptorChain(transfer->firstDescriptor,
 				vector, vectorCount, &lastDataToggle);
 		} else {
 			// read the actual length that was sent
-			actualLength = ReadActualLength(transfer->firstDescriptor,
-				&lastDataToggle);
+			ReadActualLength(transfer->firstDescriptor, &lastDataToggle);
 		}
 
 		transfer->TransferPipe()->SetDataToggle(lastDataToggle == 0);

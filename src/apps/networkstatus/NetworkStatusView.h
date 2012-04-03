@@ -10,6 +10,7 @@
 #define NETWORK_STATUS_VIEW_H
 
 
+#include <Notification.h>
 #include <ObjectList.h>
 #include <View.h>
 
@@ -58,7 +59,8 @@ class NetworkStatusView : public BView {
 
 		BObjectList<BString> fInterfaces;
 		bool			fInDeskbar;
-		BBitmap*		fBitmaps[kStatusCount];
+		BBitmap*		fTrayIcons[kStatusCount];
+		BBitmap*		fNotifyIcons[kStatusCount];
 		int32			fStatus;
 };
 

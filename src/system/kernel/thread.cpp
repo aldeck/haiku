@@ -121,7 +121,7 @@ public:
 	void Notify(uint32 eventCode, team_id teamID, thread_id threadID,
 		Thread* thread = NULL)
 	{
-		char eventBuffer[128];
+		char eventBuffer[180];
 		KMessage event;
 		event.SetTo(eventBuffer, sizeof(eventBuffer), THREAD_MONITOR);
 		event.AddInt32("event", eventCode);
@@ -365,17 +365,17 @@ Thread::Init(bool idleThread)
 		return error;
 
 	char temp[64];
-	sprintf(temp, "thread_%ld_retcode_sem", id);
+	snprintf(temp, sizeof(temp), "thread_%ld_retcode_sem", id);
 	exit.sem = create_sem(0, temp);
 	if (exit.sem < 0)
 		return exit.sem;
 
-	sprintf(temp, "%s send", name);
+	snprintf(temp, sizeof(temp), "%s send", name);
 	msg.write_sem = create_sem(1, temp);
 	if (msg.write_sem < 0)
 		return msg.write_sem;
 
-	sprintf(temp, "%s receive", name);
+	snprintf(temp, sizeof(temp), "%s receive", name);
 	msg.read_sem = create_sem(0, temp);
 	if (msg.read_sem < 0)
 		return msg.read_sem;
@@ -793,10 +793,8 @@ create_thread_user_stack(Team* team, Thread* thread, void* _stackBase,
 		if (stackSize < MIN_USER_STACK_SIZE)
 			return B_BAD_VALUE;
 
-		stackBase -= TLS_SIZE;
-	}
-
-	if (stackBase == NULL) {
+		stackSize -= TLS_SIZE;
+	} else {
 		// No user-defined stack -- allocate one. For non-main threads the stack
 		// will be between USER_STACK_REGION and the main thread stack area. For
 		// a main thread the position is fixed.
@@ -1880,7 +1878,6 @@ thread_exit(void)
 	Thread* thread = thread_get_current_thread();
 	Team* team = thread->team;
 	Team* kernelTeam = team_get_kernel_team();
-	thread_id parentID = -1;
 	status_t status;
 	struct thread_debug_info debugInfo;
 	team_id teamID = team->id;
@@ -1999,9 +1996,6 @@ thread_exit(void)
 
 		if (deleteTeam) {
 			Team* parent = team->parent;
-
-			// remember who our parent was so we can send a signal
-			parentID = parent->id;
 
 			// Set the team job control state to "dead" and detach the job
 			// control entry from our team struct.
@@ -2465,10 +2459,7 @@ status_t
 wait_for_thread_etc(thread_id id, uint32 flags, bigtime_t timeout,
 	status_t *_returnCode)
 {
-	job_control_entry* freeDeath = NULL;
-	status_t status = B_OK;
-
-	if (id < B_OK)
+	if (id < 0)
 		return B_BAD_THREAD_ID;
 
 	// get the thread, queue our death entry, and fetch the semaphore we have to
@@ -2480,16 +2471,14 @@ wait_for_thread_etc(thread_id id, uint32 flags, bigtime_t timeout,
 	if (thread != NULL) {
 		// remember the semaphore we have to wait on and place our death entry
 		exitSem = thread->exit.sem;
-		list_add_link_to_head(&thread->exit.waiters, &death);
+		if (exitSem >= 0)
+			list_add_link_to_head(&thread->exit.waiters, &death);
 
 		thread->UnlockAndReleaseReference();
-			// Note: We mustn't dereference the pointer afterwards, only check
-			// it.
-	}
 
-	thread_death_entry* threadDeathEntry = NULL;
-
-	if (thread == NULL) {
+		if (exitSem < 0)
+			return B_BAD_THREAD_ID;
+	} else {
 		// we couldn't find this thread -- maybe it's already gone, and we'll
 		// find its death entry in our team
 		Team* team = thread_get_current_thread()->team;
@@ -2498,47 +2487,43 @@ wait_for_thread_etc(thread_id id, uint32 flags, bigtime_t timeout,
 		// check the child death entries first (i.e. main threads of child
 		// teams)
 		bool deleteEntry;
-		freeDeath = team_get_death_entry(team, id, &deleteEntry);
+		job_control_entry* freeDeath
+			= team_get_death_entry(team, id, &deleteEntry);
 		if (freeDeath != NULL) {
 			death.status = freeDeath->status;
-			if (!deleteEntry)
-				freeDeath = NULL;
+			if (deleteEntry)
+				delete freeDeath;
 		} else {
 			// check the thread death entries of the team (non-main threads)
+			thread_death_entry* threadDeathEntry = NULL;
 			while ((threadDeathEntry = (thread_death_entry*)list_get_next_item(
 					&team->dead_threads, threadDeathEntry)) != NULL) {
 				if (threadDeathEntry->thread == id) {
 					list_remove_item(&team->dead_threads, threadDeathEntry);
 					team->dead_threads_count--;
 					death.status = threadDeathEntry->status;
+					free(threadDeathEntry);
 					break;
 				}
 			}
 
 			if (threadDeathEntry == NULL)
-				status = B_BAD_THREAD_ID;
+				return B_BAD_THREAD_ID;
 		}
-	}
 
-	if (thread == NULL && status == B_OK) {
 		// we found the thread's death entry in our team
 		if (_returnCode)
 			*_returnCode = death.status;
 
-		delete freeDeath;
-		free(threadDeathEntry);
 		return B_OK;
 	}
 
 	// we need to wait for the death of the thread
 
-	if (exitSem < 0)
-		return B_BAD_THREAD_ID;
-
 	resume_thread(id);
 		// make sure we don't wait forever on a suspended thread
 
-	status = acquire_sem_etc(exitSem, 1, flags, timeout);
+	status_t status = acquire_sem_etc(exitSem, 1, flags, timeout);
 
 	if (status == B_OK) {
 		// this should never happen as the thread deletes the semaphore on exit
@@ -2546,9 +2531,6 @@ wait_for_thread_etc(thread_id id, uint32 flags, bigtime_t timeout,
 	} else if (status == B_BAD_SEM_ID) {
 		// this is the way the thread normally exits
 		status = B_OK;
-
-		if (_returnCode)
-			*_returnCode = death.status;
 	} else {
 		// We were probably interrupted or the timeout occurred; we need to
 		// remove our death entry now.
@@ -2565,6 +2547,9 @@ wait_for_thread_etc(thread_id id, uint32 flags, bigtime_t timeout,
 			status = B_OK;
 		}
 	}
+
+	if (status == B_OK && _returnCode != NULL)
+		*_returnCode = death.status;
 
 	return status;
 }

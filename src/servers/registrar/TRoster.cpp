@@ -28,6 +28,7 @@
 #include <AppMisc.h>
 #include <MessagePrivate.h>
 #include <MessengerPrivate.h>
+#include <RosterPrivate.h>
 #include <ServerProtocol.h>
 #include <storage_support.h>
 
@@ -69,11 +70,6 @@ using namespace BPrivate;
 
 //! The maximal period of time an app may be early pre-registered (60 s).
 const bigtime_t kMaximalEarlyPreRegistrationPeriod = 60000000LL;
-
-//! Applications living in these directory are considered "system apps".
-// TODO: move those into a common shared system header
-static const char* const kSystemAppPath = "/boot/system";
-static const char* const kSystemServerPath = "/boot/system/servers";
 
 
 //	#pragma mark - Private local functions
@@ -141,6 +137,8 @@ TRoster::TRoster()
 	fLastToken(0),
 	fShuttingDown(false)
 {
+	find_directory(B_SYSTEM_DIRECTORY, &fSystemAppPath);
+	find_directory(B_SYSTEM_SERVERS_DIRECTORY, &fSystemServerPath);
 }
 
 
@@ -1142,6 +1140,45 @@ TRoster::HandleSaveRecentLists(BMessage* request)
 }
 
 
+void
+TRoster::HandleRestartAppServer(BMessage* request)
+{
+	BAutolock _(fLock);
+
+	// TODO: if an app_server is still running, stop it first
+
+	const char* pathString;
+	if (request->FindString("path", &pathString) != B_OK)
+		pathString = "/boot/system/servers";
+	BPath path(pathString);
+	path.Append("app_server");
+	// NOTE: its required at some point that the binary name is "app_server"
+
+	const char **argv = new const char * [2];
+	argv[0] = strdup(path.Path());
+	argv[1] = NULL;
+
+	thread_id threadId = load_image(1, argv, (const char**)environ);
+	int i;
+	for (i = 0; i < 1; i++)
+		delete argv[i];
+	delete [] argv;
+
+	resume_thread(threadId);
+	// give the server some time to create the server port
+	snooze(100000);
+
+	// notify all apps
+	// TODO: whats about ourself?
+	AppInfoListMessagingTargetSet targetSet(fRegisteredApps);
+	if (targetSet.HasNext()) {
+		// send the messages
+		BMessage message(kMsgAppServerRestarted);
+		MessageDeliverer::Default()->DeliverMessage(&message, targetSet);
+	}
+}
+
+
 /*!	\brief Clears the current list of recent documents
 */
 void
@@ -1815,8 +1852,8 @@ TRoster::_IsSystemApp(RosterAppInfo* info) const
 	if (path.SetTo(&info->ref) != B_OK || path.GetParent(&path) != B_OK)
 		return false;
 
-	return !strcmp(path.Path(), kSystemAppPath)
-		|| !strcmp(path.Path(), kSystemServerPath);
+	return !strcmp(path.Path(), fSystemAppPath.Path())
+		|| !strcmp(path.Path(), fSystemServerPath.Path());
 }
 
 
@@ -1839,15 +1876,17 @@ TRoster::_LoadRosterSettings(const char* path)
 	char* data = NULL;
 
 	if (!error) {
-		data = new(nothrow) char[size];
+		data = new(nothrow) char[size + 1];
 		error = data ? B_OK : B_NO_MEMORY;
 	}
 	if (!error) {
 		ssize_t bytes = file.Read(data, size);
 		error = bytes < 0 ? bytes : (bytes == size ? B_OK : B_FILE_ERROR);
 	}
-	if (!error)
+	if (!error) {
+		data[size] = 0;
 		error = stream.SetTo(std::string(data));
+	}
 
 	delete[] data;
 

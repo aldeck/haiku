@@ -131,7 +131,6 @@ static const char* kPriorityAttr = "ADDON:priority";
 
 static const char* kLanguageField = "language";
 static const char* kTimezoneField = "timezone";
-static const char* kOffsetField = "offset";
 static const char* kTranslateFilesystemField = "filesys";
 
 
@@ -361,15 +360,15 @@ RosterData::_InitializeCatalogAddOns()
 	fCatalogAddOnInfos.AddItem((void*)defaultCatalogAddOnInfo);
 
 	directory_which folders[] = {
+		B_USER_ADDONS_DIRECTORY,
 		B_COMMON_ADDONS_DIRECTORY,
 		B_SYSTEM_ADDONS_DIRECTORY,
-		static_cast<directory_which>(-1)
 	};
 	BPath addOnPath;
 	BDirectory addOnFolder;
 	char buf[4096];
 	status_t err;
-	for (int f = 0; folders[f]>=0; ++f) {
+	for (uint32 f = 0; f < sizeof(folders) / sizeof(directory_which); ++f) {
 		find_directory(folders[f], &addOnPath);
 		BString addOnFolderName(addOnPath.Path());
 		addOnFolderName << "/locale/catalogs";
@@ -502,7 +501,7 @@ RosterData::_LoadLocaleSettings()
 		fDefaultLocale.SetFormattingConventions(conventions);
 
 		_SetPreferredLanguages(&settings);
-		
+
 		bool preferred;
 		if (settings.FindBool(kTranslateFilesystemField, &preferred) == B_OK)
 			_SetFilesystemTranslationPreferred(preferred);
@@ -687,16 +686,7 @@ RosterData::_AddDefaultFormattingConventionsToMessage(BMessage* message) const
 status_t
 RosterData::_AddDefaultTimeZoneToMessage(BMessage* message) const
 {
-	status_t status = message->AddString(kTimezoneField, fDefaultTimeZone.ID());
-
-	// add the offset, too, since that is used by clockconfig when setting
-	// up timezone state during boot
-	if (status == B_OK) {
-		status = message->AddInt32(kOffsetField,
-			fDefaultTimeZone.OffsetFromGMT());
-	}
-
-	return status;
+	return message->AddString(kTimezoneField, fDefaultTimeZone.ID());
 }
 
 

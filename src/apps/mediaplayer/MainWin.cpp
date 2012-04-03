@@ -156,6 +156,10 @@ static property_info sPropertyInfo[] = {
 		B_TRANSLATE("Gets the URI of the currently playing item."), 0,
 		{ B_STRING_TYPE }
 	},
+	{ B_TRANSLATE("ToggleFullscreen"), { B_EXECUTE_PROPERTY },
+		{ B_DIRECT_SPECIFIER, 0 },
+		B_TRANSLATE("Toggle fullscreen."), 0
+	},
 	{ 0, { 0 }, { 0 }, 0, 0 }
 };
 
@@ -532,6 +536,10 @@ MainWin::MessageReceived(BMessage* msg)
 					break;
 				}
 
+				case 9:
+					PostMessage(M_TOGGLE_FULLSCREEN);
+					break;
+
 				default:
 					return BWindow::MessageReceived(msg);
 			}
@@ -605,6 +613,10 @@ MainWin::MessageReceived(BMessage* msg)
 			BAutolock _(fPlaylist);
 
 			int32 index;
+			// if false, the message was meant to only update the GUI
+			bool play;
+			if (msg->FindBool("play", &play) < B_OK || !play)
+				break;
 			if (msg->FindInt32("index", &index) < B_OK
 				|| index != fPlaylist->CurrentItemIndex())
 				break;
@@ -971,7 +983,8 @@ MainWin::MessageReceived(BMessage* msg)
 			if (fIsFullscreen) {
 				BPoint videoViewWhere;
 				if (msg->FindPoint("where", &videoViewWhere) == B_OK) {
-					if (!fControls->Frame().Contains(videoViewWhere)) {
+					if (msg->FindBool("force")
+						|| !fControls->Frame().Contains(videoViewWhere)) {
 						_ShowFullscreenControls(false);
 						// hide the mouse cursor until the user moves it
 						be_app->ObscureCursor();
@@ -1238,6 +1251,7 @@ MainWin::ResolveSpecifier(BMessage* message, int32 index, BMessage* specifier,
 		case 6:
 		case 7:
 		case 8:
+		case 9:
 			return this;
 	}
 
@@ -2329,6 +2343,7 @@ MainWin::_ShowFullscreenControls(bool show, bool animate)
 		return;
 
 	fShowsFullscreenControls = show;
+	fVideoView->SetFullscreenControlsVisible(show);
 
 	if (show) {
 		fControls->RemoveSelf();
@@ -2337,6 +2352,7 @@ MainWin::_ShowFullscreenControls(bool show, bool animate)
 		fVideoView->AddChild(fControls);
 		if (fScaleFullscreenControls)
 			fControls->SetSymbolScale(1.5f);
+
 		while (fControls->IsHidden())
 			fControls->Show();
 	}
@@ -2360,16 +2376,15 @@ MainWin::_ShowFullscreenControls(bool show, bool animate)
 		finalMessage.AddFloat("offset", originalY + moveDist);
 		finalMessage.AddBool("show", show);
 		PostMessage(&finalMessage, this);
-	} else {
-		if (!show) {
-			fControls->RemoveSelf();
-			fControls->MoveTo(fVideoView->Frame().left,
-				fVideoView->Frame().bottom + 1);
-			fBackground->AddChild(fControls);
-			fControls->SetSymbolScale(1.0f);
-			while (!fControls->IsHidden())
-				fControls->Hide();
-		}
+	} else if (!show) {
+		fControls->RemoveSelf();
+		fControls->MoveTo(fVideoView->Frame().left,
+			fVideoView->Frame().bottom + 1);
+		fBackground->AddChild(fControls);
+		fControls->SetSymbolScale(1.0f);
+
+		while (!fControls->IsHidden())
+			fControls->Hide();
 	}
 }
 

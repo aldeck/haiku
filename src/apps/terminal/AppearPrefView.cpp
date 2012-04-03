@@ -380,12 +380,10 @@ AppearancePrefView::_SetCurrentColorSchema(BMenuField* field)
 		schemas++;
 	}
 
-	bool found = false;
 	for (int32 i = 0; i < fColorSchemaField->Menu()->CountItems(); i++) {
 		BMenuItem* item = fColorSchemaField->Menu()->ItemAt(i);
 		if (!strcmp(item->Label(), currentSchemaName)) {
 			item->SetMarked(true);
-			found = true;
 			break;
 		}
 	}
@@ -492,7 +490,9 @@ AppearancePrefView::_MakeMenu(uint32 msg, const char** items,
 		i++;
 	}
 
-	menu->FindItem(defaultItemName)->SetMarked(true);
+	BMenuItem* defaultItem = menu->FindItem(defaultItemName);
+	if (defaultItem)
+		defaultItem->SetMarked(true);
 
 	return menu;
 }

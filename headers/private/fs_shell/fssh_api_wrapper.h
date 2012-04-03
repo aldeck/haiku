@@ -1013,6 +1013,7 @@
 #define recursive_lock_trylock		fssh_recursive_lock_trylock
 #define recursive_lock_unlock		fssh_recursive_lock_unlock
 #define recursive_lock_get_recursion fssh_recursive_lock_get_recursion
+#define recursive_lock_transfer_lock fssh_recursive_lock_transfer_lock
 
 #define rw_lock_init				fssh_rw_lock_init
 #define rw_lock_init_etc			fssh_rw_lock_init_etc
@@ -1471,6 +1472,9 @@
 #define B_UINT8_TYPE					FSSH_B_UINT8_TYPE
 #define B_VECTOR_ICON_TYPE				FSSH_B_VECTOR_ICON_TYPE
 #define B_ASCII_TYPE					FSSH_B_ASCII_TYPE
+#define B_XATTR_TYPE					FSSH_B_XATTR_TYPE
+#define B_NETWORK_ADDRESS_TYPE			FSSH_B_NETWORK_ADDRESS_TYPE
+#define B_MIME_STRING_TYPE				FSSH_B_MIME_STRING_TYPE
 
 //----- System-wide MIME types for handling URL's ------------------------------
 

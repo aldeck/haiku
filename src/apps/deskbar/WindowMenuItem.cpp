@@ -39,6 +39,7 @@ All rights reserved.
 
 #include <Bitmap.h>
 #include <Debug.h>
+#include <NaturalCompare.h>
 
 #include "BarApp.h"
 #include "BarMenuBar.h"
@@ -151,8 +152,8 @@ TWindowMenuItem::InsertIndexFor(BMenu* menu, int32 startIndex,
 	for (int32 index = startIndex;; index++) {
 		TWindowMenuItem* item
 			= dynamic_cast<TWindowMenuItem*>(menu->ItemAt(index));
-		if (item == NULL
-			|| strcasecmp(item->FullTitle(), newItem->FullTitle()) > 0)
+		if (item == NULL || NaturalCompare(item->FullTitle(),
+				newItem->FullTitle()) > 0)
 			return index;
 	}
 }

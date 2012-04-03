@@ -487,11 +487,11 @@ BBox::Perform(perform_code code, void* _data)
 			BBox::SetLayout(data->layout);
 			return B_OK;
 		}
-		case PERFORM_CODE_INVALIDATE_LAYOUT:
+		case PERFORM_CODE_LAYOUT_INVALIDATED:
 		{
-			perform_data_invalidate_layout* data
-				= (perform_data_invalidate_layout*)_data;
-			BBox::InvalidateLayout(data->descendants);
+			perform_data_layout_invalidated* data
+				= (perform_data_layout_invalidated*)_data;
+			BBox::LayoutInvalidated(data->descendants);
 			return B_OK;
 		}
 		case PERFORM_CODE_DO_LAYOUT:
@@ -537,10 +537,9 @@ BBox::PreferredSize()
 
 
 void
-BBox::InvalidateLayout(bool descendants)
+BBox::LayoutInvalidated(bool descendants)
 {
 	fLayoutData->valid = false;
-	BView::InvalidateLayout(descendants);
 }
 
 
@@ -872,5 +871,16 @@ BBox::_ValidateLayoutData()
 
 	fLayoutData->valid = true;
 	ResetLayoutInvalidation();
+}
+
+
+extern "C" void
+B_IF_GCC_2(InvalidateLayout__4BBoxb, _ZN4BBox16InvalidateLayoutEb)(
+	BBox* box, bool descendants)
+{
+	perform_data_layout_invalidated data;
+	data.descendants = descendants;
+
+	box->Perform(PERFORM_CODE_LAYOUT_INVALIDATED, &data);
 }
 

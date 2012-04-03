@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2010, Axel Dörfler, axeld@pinc-software.de.
+ * Copyright 2001-2012, Axel Dörfler, axeld@pinc-software.de.
  * This file may be used under the terms of the MIT License.
  */
 
@@ -176,6 +176,9 @@ InodeAllocator::~InodeAllocator()
 			fInode->Node().flags &= ~HOST_ENDIAN_TO_BFS_INT32(INODE_IN_USE);
 				// this unblocks any pending bfs_read_vnode() calls
 			fInode->Free(*fTransaction);
+
+			if (fInode->fTree != NULL)
+				fTransaction->RemoveListener(fInode->fTree);
 			fTransaction->RemoveListener(fInode);
 
 			remove_vnode(volume->FSVolume(), fInode->ID());
@@ -400,6 +403,7 @@ Inode::~Inode()
 	delete fTree;
 
 	rw_lock_destroy(&fLock);
+	recursive_lock_destroy(&fSmallDataLock);
 }
 
 

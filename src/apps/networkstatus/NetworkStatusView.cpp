@@ -145,7 +145,8 @@ void
 NetworkStatusView::_Init()
 {
 	for (int i = 0; i < kStatusCount; i++) {
-		fBitmaps[i] = NULL;
+		fTrayIcons[i] = NULL;
+		fNotifyIcons[i] = NULL;
 	}
 
 	_UpdateBitmaps();
@@ -156,8 +157,10 @@ void
 NetworkStatusView::_UpdateBitmaps()
 {
 	for (int i = 0; i < kStatusCount; i++) {
-		delete fBitmaps[i];
-		fBitmaps[i] = NULL;
+		delete fTrayIcons[i];
+		delete fNotifyIcons[i];
+		fTrayIcons[i] = NULL;
+		fNotifyIcons[i] = NULL;
 	}
 
 	image_info info;
@@ -180,13 +183,23 @@ NetworkStatusView::_UpdateBitmaps()
 		data = resources.LoadResource(B_VECTOR_ICON_TYPE,
 			kNetworkStatusNoDevice + i, &size);
 		if (data != NULL) {
-			BBitmap* icon = new BBitmap(Bounds(), B_RGBA32);
-			if (icon->InitCheck() == B_OK
+			// Scale main tray icon
+			BBitmap* trayIcon = new BBitmap(Bounds(), B_RGBA32);
+			if (trayIcon->InitCheck() == B_OK
 				&& BIconUtils::GetVectorIcon((const uint8 *)data,
-					size, icon) == B_OK) {
-				fBitmaps[i] = icon;
+					size, trayIcon) == B_OK) {
+				fTrayIcons[i] = trayIcon;
 			} else
-				delete icon;
+				delete trayIcon;
+
+			// Scale notification icon
+			BBitmap* notifyIcon = new BBitmap(BRect(0, 0, 31, 31), B_RGBA32);
+			if (notifyIcon->InitCheck() == B_OK
+				&& BIconUtils::GetVectorIcon((const uint8 *)data,
+					size, notifyIcon) == B_OK) {
+				fNotifyIcons[i] = notifyIcon;
+			} else
+				delete notifyIcon;
 		}
 	}
 }
@@ -313,11 +326,11 @@ NetworkStatusView::FrameResized(float width, float height)
 void
 NetworkStatusView::Draw(BRect updateRect)
 {
-	if (fBitmaps[fStatus] == NULL)
+	if (fTrayIcons[fStatus] == NULL)
 		return;
 
 	SetDrawingMode(B_OP_ALPHA);
-	DrawBitmap(fBitmaps[fStatus]);
+	DrawBitmap(fTrayIcons[fStatus]);
 	SetDrawingMode(B_OP_COPY);
 }
 
@@ -546,8 +559,29 @@ NetworkStatusView::_Update(bool force)
 		}
 	}
 
-	if (fStatus != oldStatus)
+	if (fStatus != oldStatus) {
+		// A little notification on major status changes for primary interface
+		BNotification notification(B_INFORMATION_NOTIFICATION);
+		notification.SetGroup(B_TRANSLATE("Network Status"));
+		notification.SetTitle(interface.Name());
+		notification.SetMessageID(interface.Name());
+		notification.SetIcon(fNotifyIcons[fStatus]);
+		if (fStatus == kStatusConnecting) {
+			notification.SetContent(B_TRANSLATE("Connecting..."));
+			notification.Send();
+		} else if (fStatus == kStatusReady && oldStatus == kStatusConnecting) {
+			notification.SetContent(B_TRANSLATE("Connection Established"));
+			notification.Send();
+		} else if (fStatus == kStatusNoLink && oldStatus == kStatusConnecting) {
+			notification.SetContent(B_TRANSLATE("Connection Failed"));
+			notification.Send();
+		} else if (fStatus == kStatusNoLink && oldStatus == kStatusReady) {
+			notification.SetContent(B_TRANSLATE("Disconnected"));
+			notification.Send();
+		}
+
 		Invalidate();
+	}
 }
 
 

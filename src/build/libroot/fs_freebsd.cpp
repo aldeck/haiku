@@ -1,5 +1,6 @@
 /*
  * Copyright 2008, Samuel Rodriguez Perez, samuelgaliza@gmail.com.
+ * Copyright 2011, Ingo Weinhold, ingo_weinhold@gmx.de.
  * Distributed under the terms of the MIT License.
  */
 
@@ -7,12 +8,13 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/disk.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 

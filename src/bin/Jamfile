@@ -23,6 +23,7 @@ AddResources hey : hey.rdef ;
 AddResources mimeset : mimeset.rdef ;
 AddResources mountvolume : mountvolume.rdef ;
 AddResources notify : notify.rdef ;
+AddResources setmime : setmime.rdef ;
 AddResources urlwrapper : urlwrapper.rdef ;
 
 # standard commands that don't need any additional library
@@ -31,9 +32,7 @@ StdBinCommands
 	cal.c
 	chop.c
 	clear.c
-#	csplit.c
 	driveinfo.c
-#	echo.c
 	error.c
 	fortune.c
 	finddir.c
@@ -54,7 +53,6 @@ StdBinCommands
 	unchop.c
 	uptime.cpp
 	vmstat.cpp
-#	whoami.c
 	: : $(haiku-utils_rsrc) ;
 
 # Commands which don't need another library that depend on
@@ -83,12 +81,10 @@ StdBinCommands
 	catattr.cpp
 	checkfs.cpp
 	clipboard.cpp
-	clockconfig.cpp
 	df.cpp
 	diskimage.cpp
 	dpms.cpp
 	draggers.cpp
-#	factor.cpp
 	ffm.cpp
 	iroster.cpp
 	listattr.cpp
@@ -107,7 +103,6 @@ StdBinCommands
 	version.cpp
 	waitfor.cpp
 	WindowShade.cpp
-#	yes.cpp
 	: be : $(haiku-utils_rsrc) ;
 
 if $(TARGET_PLATFORM) = libbe_test {
@@ -130,6 +125,7 @@ StdBinCommands
 
 # commands that need libbe.so and liblocale.so
 StdBinCommands
+	clockconfig.cpp
 	query.cpp
 	: be $(HAIKU_LOCALE_LIBS) : $(haiku-utils_rsrc) ;
 
@@ -149,6 +145,7 @@ StdBinCommands
 # standard commands that need libbe.so, libstdc++.so
 StdBinCommands
 	copyattr.cpp
+	setmime.cpp
 	xres.cpp
 	: be $(TARGET_LIBSTDC++) : $(haiku-utils_rsrc) ;
 
@@ -196,7 +193,9 @@ StdBinCommands
 	: be libdevice.so : $(haiku-utils_rsrc) ;
 
 ObjectHdrs [ FGristFiles listusb$(SUFOBJ) ]
-	: [ FDirName $(SUBDIR) $(DOTDOT) add-ons kernel bus_managers usb ] ;
+	: [ FDirName $(SUBDIR) $(DOTDOT) add-ons kernel bus_managers usb ] 
+		[ FDirName $(TARGET_COMMON_DEBUG_OBJECT_DIR) apps devices ] ;
+Includes [ FGristFiles listusb.cpp ] : <src!apps!devices>usbhdr.h ;
 
 # standard commands that need libbluetooth.so, due the Bluetooth Kit
 StdBinCommands
@@ -237,11 +236,10 @@ DoCatalogs filepanel
 SubInclude HAIKU_TOP src bin addattr ;
 SubInclude HAIKU_TOP src bin bash ;
 SubInclude HAIKU_TOP src bin bc ;
-SubInclude HAIKU_TOP src bin mail_utils ;
+SubInclude HAIKU_TOP src bin bfs_tools ;
 SubInclude HAIKU_TOP src bin compress ;
 SubInclude HAIKU_TOP src bin consoled ;
 SubInclude HAIKU_TOP src bin coreutils ;
-SubInclude HAIKU_TOP src bin ctags ;
 SubInclude HAIKU_TOP src bin desklink ;
 SubInclude HAIKU_TOP src bin diffutils ;
 SubInclude HAIKU_TOP src bin findutils ;
@@ -258,6 +256,7 @@ SubInclude HAIKU_TOP src bin listdev ;
 SubInclude HAIKU_TOP src bin locale ;
 SubInclude HAIKU_TOP src bin makebootable ;
 #SubInclude HAIKU_TOP src bin makeudfimage ;
+SubInclude HAIKU_TOP src bin mail_utils ;
 SubInclude HAIKU_TOP src bin mkdos ;
 SubInclude HAIKU_TOP src bin mkfs ;
 SubInclude HAIKU_TOP src bin multiuser ;
@@ -274,6 +273,7 @@ SubInclude HAIKU_TOP src bin screen_blanker ;
 SubInclude HAIKU_TOP src bin screenmode ;
 SubInclude HAIKU_TOP src bin sharutils ;
 SubInclude HAIKU_TOP src bin unrar ;
+SubInclude HAIKU_TOP src bin writembr ;
 SubInclude HAIKU_TOP src bin zic ;
 
 # RCS commands
@@ -289,4 +289,4 @@ SubInclude HAIKU_TOP src bin network ;
 SubInclude HAIKU_TOP src bin unzip ;
 SubInclude HAIKU_TOP src bin zip ;
 SubInclude HAIKU_TOP src bin gzip ;
-SubInclude HAIKU_TOP src bin bzip2 ;
+

@@ -1,6 +1,6 @@
 /*
  * Copyright 2009, Ingo Weinhold, ingo_weinhold@gmx.de.
- * Copyright 2010, Rene Gollent, rene@gollent.com.
+ * Copyright 2010-2011, Rene Gollent, rene@gollent.com.
  * Distributed under the terms of the MIT License.
  */
 #ifndef TEAM_WINDOW_H
@@ -24,6 +24,7 @@
 
 
 class BButton;
+class BFilePanel;
 class BMenuBar;
 class BSplitView;
 class BStringView;
@@ -143,13 +144,6 @@ private:
 			void				_HandleResolveMissingSourceFile(entry_ref&
 									locatedPath);
 
-			void				_LoadSplitSettings(BSplitView* view,
-									const char* name,
-									const GUITeamUISettings* settings);
-			status_t			_SaveSplitSettings(BSplitView* view,
-									const char* name,
-									GUITeamUISettings* settings);
-
 			status_t			_SaveInspectorSettings(
 									const BMessage* settings);
 private:
@@ -185,6 +179,7 @@ private:
 			BSplitView*			fThreadSplitView;
 			InspectorWindow*	fInspectorWindow;
 			GUITeamUISettings	fUISettings;
+			BFilePanel*			fSourceLocatePanel;
 };
 
 

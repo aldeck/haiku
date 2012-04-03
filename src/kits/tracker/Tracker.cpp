@@ -599,9 +599,8 @@ TTracker::MoveRefsToTrash(const BMessage *message)
 			srcList->AddItem(new entry_ref(ref));
 	}
 
-	if (srcList->CountItems())
-		// async move to trash
-		FSMoveToTrash(srcList);
+	// async move to trash
+	FSMoveToTrash(srcList);
 }
 
 
@@ -717,6 +716,8 @@ TTracker::OpenRef(const entry_ref *ref, const node_ref *nodeToClose,
 	} else if (model->IsQueryTemplate()) {
 		// query template - open new find window
 		(new FindWindow(model->EntryRef()))->Show();
+
+		delete model;
 		if (nodeToClose)
 			CloseParentWaitingForChildSoon(ref, nodeToClose);
 	} else {

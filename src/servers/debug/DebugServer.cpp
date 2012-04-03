@@ -1,4 +1,5 @@
 /*
+ * Copyright 2011, Rene Gollent, rene@gollent.com.
  * Copyright 2005-2009, Ingo Weinhold, bonefish@users.sf.net.
  * Distributed under the terms of the MIT License.
  */
@@ -19,12 +20,16 @@
 #include <Catalog.h>
 #include <debug_support.h>
 #include <Entry.h>
+#include <FindDirectory.h>
 #include <Invoker.h>
 #include <Locale.h>
+#include <Path.h>
 
+#include <MessengerPrivate.h>
 #include <RegistrarDefs.h>
 #include <RosterPrivate.h>
 #include <Server.h>
+#include <StringList.h>
 
 #include <util/DoublyLinkedList.h>
 
@@ -51,14 +56,6 @@ using std::nothrow;
 
 
 static const char *kSignature = "application/x-vnd.Haiku-debug_server";
-
-// paths to the apps used for debugging
-static const char *kConsoledPath	= "/bin/consoled";
-static const char *kTerminalPath	= "/boot/system/apps/Terminal";
-static const char *kGDBPath			= "/bin/gdb";
-#ifdef HANDOVER_USE_DEBUGGER
-static const char *kDebuggerPath	= "/boot/system/apps/Debugger";
-#endif
 
 
 static void
@@ -121,8 +118,7 @@ private:
 	status_t _PopMessage(DebugMessage *&message);
 
 	thread_id _EnterDebugger();
-	void _SetupGDBArguments(const char **argv, int &argc, char *teamString,
-		size_t teamStringSize, bool usingConsoled);
+	status_t _SetupGDBArguments(BStringList &arguments, bool usingConsoled);
 	void _KillTeam();
 
 	bool _HandleMessage(DebugMessage *message);
@@ -441,30 +437,75 @@ TeamDebugHandler::_PopMessage(DebugMessage *&message)
 }
 
 
-void
-TeamDebugHandler::_SetupGDBArguments(const char **argv, int &argc,
-	char *teamString, size_t teamStringSize, bool usingConsoled)
+status_t
+TeamDebugHandler::_SetupGDBArguments(BStringList &arguments, bool usingConsoled)
 {
 	// prepare the argument vector
-	snprintf(teamString, teamStringSize, "--pid=%ld", fTeam);
+	BString teamString;
+	teamString.SetToFormat("--pid=%ld", fTeam);
 
-	const char *terminal = (usingConsoled ? kConsoledPath : kTerminalPath);
-
-	argv[argc++] = terminal;
-
-	if (!usingConsoled) {
-		char windowTitle[64];
-		snprintf(windowTitle, sizeof(windowTitle), "Debug of Team %ld: %s",
-			fTeam, _LastPathComponent(fExecutablePath));
-		argv[argc++] = "-t";
-		argv[argc++] = windowTitle;
+	status_t error;
+	BPath terminalPath;
+	if (usingConsoled) {
+		error = find_directory(B_SYSTEM_BIN_DIRECTORY, &terminalPath);
+		if (error != B_OK) {
+			debug_printf("debug_server: can't find system-bin directory: %s\n",
+				strerror(error));
+			return error;
+		}
+		error = terminalPath.Append("consoled");
+		if (error != B_OK) {
+			debug_printf("debug_server: can't append to system-bin path: %s\n",
+				strerror(error));
+			return error;
+		}
+	} else {
+		error = find_directory(B_SYSTEM_APPS_DIRECTORY, &terminalPath);
+		if (error != B_OK) {
+			debug_printf("debug_server: can't find system-apps directory: %s\n",
+				strerror(error));
+			return error;
+		}
+		error = terminalPath.Append("Terminal");
+		if (error != B_OK) {
+			debug_printf("debug_server: can't append to system-apps path: %s\n",
+				strerror(error));
+			return error;
+		}
 	}
 
-	argv[argc++] = kGDBPath;
-	argv[argc++] = teamString;
-	if (strlen(fExecutablePath) > 0)
-		argv[argc++] = fExecutablePath;
-	argv[argc] = NULL;
+	arguments.MakeEmpty();
+	if (!arguments.Add(terminalPath.Path()))
+		return B_NO_MEMORY;
+
+	if (!usingConsoled) {
+		BString windowTitle;
+		windowTitle.SetToFormat("Debug of Team %ld: %s", fTeam,
+			_LastPathComponent(fExecutablePath));
+		if (!arguments.Add("-t") || !arguments.Add(windowTitle))
+			return B_NO_MEMORY;
+	}
+
+	BPath gdbPath;
+	error = find_directory(B_SYSTEM_BIN_DIRECTORY, &gdbPath);
+	if (error != B_OK) {
+		debug_printf("debug_server: can't find system-bin directory: %s\n",
+			strerror(error));
+		return error;
+	}
+	error = gdbPath.Append("gdb");
+	if (error != B_OK) {
+		debug_printf("debug_server: can't append to system-bin path: %s\n",
+			strerror(error));
+		return error;
+	}
+	if (!arguments.Add(gdbPath.Path()) || !arguments.Add(teamString))
+		return B_NO_MEMORY;
+
+	if (strlen(fExecutablePath) > 0 && !arguments.Add(fExecutablePath))
+		return B_NO_MEMORY;
+
+	return B_OK;
 }
 
 
@@ -486,14 +527,19 @@ TeamDebugHandler::_EnterDebugger()
 		return error;
 	}
 
+	BStringList arguments;
 	const char *argv[16];
 	int argc = 0;
-	char teamString[32];
+
 	bool debugInConsoled = _IsGUIServer() || !_AreGUIServersAlive();
 #ifdef HANDOVER_USE_GDB
 
-	_SetupGDBArguments(argv, argc, teamString, sizeof(teamString),
-		debugInConsoled);
+	error = _SetupGDBArguments(arguments, debugInConsoled);
+	if (error != B_OK) {
+		debug_printf("debug_server: Failed to set up gdb arguments: %s\n",
+			strerror(error));
+		return error;
+	}
 
 	// start the terminal
 	TRACE(("debug_server: TeamDebugHandler::_EnterDebugger(): starting  "
@@ -501,22 +547,44 @@ TeamDebugHandler::_EnterDebugger()
 
 #elif defined(HANDOVER_USE_DEBUGGER)
 	if (debugInConsoled) {
-		_SetupGDBArguments(argv, argc, teamString, sizeof(teamString),
-			debugInConsoled);
+		error = _SetupGDBArguments(arguments, debugInConsoled);
+		if (error != B_OK) {
+			debug_printf("debug_server: Failed to set up gdb arguments: %s\n",
+				strerror(error));
+			return error;
+		}
 	} else {
 		// prepare the argument vector
-		snprintf(teamString, sizeof(teamString), "%ld", fTeam);
+		BPath debuggerPath;
+		error = find_directory(B_SYSTEM_APPS_DIRECTORY, &debuggerPath);
+		if (error != B_OK) {
+			debug_printf("debug_server: can't find system-apps directory: %s\n",
+				strerror(error));
+			return error;
+		}
+		error = debuggerPath.Append("Debugger");
+		if (error != B_OK) {
+			debug_printf("debug_server: can't append to system-apps path: %s\n",
+				strerror(error));
+			return error;
+		}
+		if (!arguments.Add(debuggerPath.Path()))
+			return B_NO_MEMORY;
 
-		argv[argc++] = kDebuggerPath;
-		argv[argc++] = "--team";
-		argv[argc++] = teamString;
-		argv[argc] = NULL;
+		BString debuggerParam;
+		debuggerParam.SetToFormat("%ld", fTeam);
+		if (!arguments.Add("--team") || !arguments.Add(debuggerParam))
+			return B_NO_MEMORY;
 
 		// start the debugger
 		TRACE(("debug_server: TeamDebugHandler::_EnterDebugger(): starting  "
 			"graphical debugger for team %ld...\n", fTeam));
 	}
 #endif
+
+	for (int32 i = 0; i < arguments.CountStrings(); i++)
+		argv[argc++] = arguments.StringAt(i).String();
+	argv[argc] = NULL;
 
 	thread_id thread = load_image(argc, argv, (const char**)environ);
 	if (thread < 0) {
@@ -798,8 +866,10 @@ TeamDebugHandler::_HandlerThread()
 		kill = true;
 	}
 
+	bool isGuiServer = _IsGUIServer();
+
 	// kill the team or hand it over to the debugger
-	thread_id debuggerThread;
+	thread_id debuggerThread = -1;
 	if (kill) {
 		// The team shall be killed. Since that is also the handling in case
 		// an error occurs while handing over the team to the debugger, we do
@@ -851,6 +921,22 @@ TeamDebugHandler::_HandlerThread()
 
 	// remove this handler from the roster and delete it
 	TeamDebugHandlerRoster::Default()->RemoveHandler(fTeam);
+
+	if (isGuiServer) {
+		// wait till debugging is done
+		status_t dummy;
+		wait_for_thread(debuggerThread, &dummy);
+
+		// find the registrar port
+		port_id rosterPort = find_port(BPrivate::get_roster_port_name());
+		port_info info;
+		BMessenger messenger;
+		if (rosterPort >= 0 && get_port_info(rosterPort, &info) == B_OK) {
+			BMessenger::Private(messenger).SetTo(info.team, rosterPort,
+				B_PREFERRED_TOKEN);
+		}
+		messenger.SendMessage(kMsgRestartAppServer);
+	}
 
 	delete this;
 

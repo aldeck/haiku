@@ -89,7 +89,8 @@ typedef struct
 static const Translation gTranslations[] =
 {
 	{ "ar",
-		"Khaled Berraoui (khallebal)\n"
+		"Khaled Berraoui - khallebal\n"
+		"Kendhia\n"
 	},
 	{ "be",
 		"Michael Bulash\n"
@@ -102,22 +103,6 @@ static const Translation gTranslations[] =
 		"Pavel Drotár\n"
 		"Matěj Kocián\n"
 	},
-	{ "nl",
-		"Floris Kint\n"
-		"Meanwhile\n"
-	},
-	{ "eo",
-		"Travis D. Reed (Dancxjo)\n"
-	},
-	{ "fi",
-		"Jorma Karvonen (Karvjorm)\n"
-		"Jaakko Leikas (Garjala)\n"
-	},
-	{ "fr",
-		"Jean-Loïc Charroud\n"
-		"Adrien Destugues (PulkoMandy)\n"
-		"Florent Revest\n"
-	},
 	{ "da",
 		"Brian Matzon\n"
 	},
@@ -126,21 +111,57 @@ static const Translation gTranslations[] =
 		"Mirko Israel\n"
 		"leszek\n"
 		"Christian Morgenroth\n"
-		"Joachim Seemer (Humdinger)\n"
+		"Aleksas Pantechovskis\n"
+		"Joachim Seemer - Humdinger\n"
 		"Matthias Spreiter\n"
+		"Ivaylo Tsenkov\n"
 		"svend\n"
+	},
+	{ "el",
+		"Γιάννης Κωνσταντινίδης (Giannis Konstantinidis) - giannisk\n"
+		"Βαγγέλης Μαμαλάκης (Vaggelis Mamalakis)\n"
+		"Άλεξ-Π. Νάτσιος (Alex-P. Natsios) - Drakevr\n"
+	},
+	{ "eo",
+		"Travis D. Reed - Dancxjo\n"
+	},
+	{ "es",
+		"Pedro Arregui\n"
+		"Zola Bridges\n"
+		"Nicolás C - CapitanPico\n"
+		"Oscar Carballal - oscarcp\n"
+		"Miguel Zúñiga González - miguel~1.mx\n"
+		"Luis Gustavo Lira\n"
+		"Victor Madariaga\n"
+		"César Ortiz Pantoja - ccortiz\n"
+	},
+	{ "fi",
+		"Jorma Karvonen - Karvjorm\n"
+		"Jaakko Leikas - Garjala\n"
+		"Slavi Stefanov Sotirov\n"
+	},
+	{ "fr",
+		"Jean-Loïc Charroud\n"
+		"Adrien Destugues - PulkoMandy\n"
+		"Florent Revest\n"
+		"Harsh Vardhan\n"
 	},
 	{ "hi",
 		"Abhishek Arora\n"
+		"Dhruwat Bhagat\n"
 		"Jayneil Dalal\n"
 		"Atharva Lath\n"
 	},
 	{ "hr",
+		"Ivica Koli\n"
+		"Zlatko Sehanović\n"
 		"zvacet\n"
 	},
 	{ "hu",
-		"Zoltán Mizsei (miqlas)\n"
-		"Zoltán Szabó (Bird)\n"
+		"Kálmán Kéménczy\n"
+		"Zoltán Mizsei - miqlas\n"
+		"Bence Nagy\n"
+		"Zoltán Szabó - Bird\n"
 	},
 	{ "it",
 		"Andrea Bernardi\n"
@@ -153,16 +174,25 @@ static const Translation gTranslations[] =
 	{ "ja",
 		"Satoshi Eguchi\n"
 		"Shota Fukumori\n"
+		"hiromu1996\n"
 		"Hironori Ichimiya\n"
-		"Jorge G. Mare (Koki)\n"
+		"Jorge G. Mare - Koki\n"
 		"Takashi Murai\n"
+		"nolze\n"
 		"SHINTA\n"
+		"thebowseat\n"
 		"Hiroyuki Tsutsumi\n"
 		"Hiromu Yakura\n"
 		"The JPBE.net user group\n"
 	},
 	{ "lt",
 		"Algirdas Buckus\n"
+		"Simonas Kazlauskas\n"
+		"Rimas Kudelis\n"
+	},
+	{ "nl",
+		"Floris Kint\n"
+		"Meanwhile\n"
 	},
 	{ "pl",
 		"Szymon Barczak\n"
@@ -172,49 +202,57 @@ static const Translation gTranslations[] =
 		"Artur Wyszyński\n"
 	},
 	{ "pt",
-		"Marcos Alves (Xeon3D)\n"
-		"Vasco Costa (gluon)\n"
-		"Michael Vinícius de Oliveira (michaelvo)\n"
+		"Marcos Alves - Xeon3D\n"
+		"Vasco Costa - gluon\n"
+		"Michael Vinícius de Oliveira - michaelvo\n"
 	},
 	{ "ro",
 		"Victor Carbune\n"
+		"Silviu Dureanu\n"
+		"Alexsander Krustev\n"
+		"Danca Monica\n"
 		"Florentina Mușat\n"
+		"Dragos Serban\n"
+		"Hedeș Cristian Teodor\n"
+		"Ivaylo Tsenkov\n"
+		"Călinescu Valentin\n"
 	},
 	{ "ru",
-		"Tatyana Fursic (iceid)\n"
+		"Tatyana Fursic - iceid\n"
 		"StoroZ Gneva\n"
-		"Rodastahm Islamov (RISC)\n"
-		"Eugene Katashov (mrNoisy)\n"
-		"Reznikov Sergei (Diver)\n"
+		"Rodastahm Islamov - RISC\n"
+		"Eugene Katashov - mrNoisy\n"
+		"Reznikov Sergei - Diver\n"
 		"Michael Smirnov\n"
 		"Vladimir Vasilenko\n"
 	},
-	{ "es",
-		"Pedro Arregui\n"
-		"Zola Bridges\n"
-		"Nicolás C (CapitanPico)\n"
-		"Oscar Carballal (oscarcp)\n"
-		"Miguel Zúñiga González (miguel~1.mx)\n"
-		"Luis Gustavo Lira\n"
-		"Victor Madariaga\n"
-		"César Ortiz Pantoja (ccortiz)\n"
+	{ "sk",
+		"Ivan Masár\n"
+	},
+	{ "sr",
+		"Nikola Miljković\n"
 	},
 	{ "sv",
 		"Patrik Gissberg\n"
 		"Johan Holmberg\n"
-		"Jimmy Olsson (phalax)\n"
+		"Jimmy Olsson - phalax\n"
 		"Jonas Sundström\n"
 		"Victor Widell\n"
 	},
 	{ "tr",
+		"Hüseyin Aksu\n"
+		"Halil İbrahim Azak\n"
 		"Aras Ergus\n"
+		"Enes Burhan Kuran\n"
+		"Ali Rıza Nazlı\n"
 	},
 	{ "uk",
-		"Alex Rudyk (totish)\n"
+		"Mariya Pilipchuk\n"
+		"Alex Rudyk - totish\n"
 		"Oleg Varunok\n"
 	},
 	{ "zh",
-		"Pengfei Han (kurain)\n"
+		"Pengfei Han - kurain\n"
 	}
 };
 
@@ -1038,7 +1076,7 @@ AboutView::_CreateCreditsView()
 		"Gavin James\n"
 		"Urias McCullough\n"
 		"Niels Sascha Reedijk\n"
-		"Joachim Seemer (Humdinger)\n"
+		"Joachim Seemer - Humdinger\n"
 		"Jonathan Yoder\n"
 		"\n");
 
@@ -1049,6 +1087,7 @@ AboutView::_CreateCreditsView()
 	fCreditsView->Insert(
 		"Andrea Anzani\n"
 		"Sean Bartell\n"
+		"Hannah Boneß\n"
 		"Andre Braga\n"
 		"Michael Bulash\n"
 		"Bruce Cameron\n"
@@ -1069,7 +1108,7 @@ AboutView::_CreateCreditsView()
 		"Janito Ferreira Filho\n"
 		"Pier Luigi Fiorini\n"
 		"Marc Flerackers\n"
-		"Michele Frau (zuMi)\n"
+		"Michele Frau - zuMi\n"
 		"Deyan Genovski\n"
 		"Pete Goodeve\n"
 		"Lucian Adrian Grijincu\n"
@@ -1097,7 +1136,7 @@ AboutView::_CreateCreditsView()
 		"Brian Luft\n"
 		"Christof Lutteroth\n"
 		"Graham MacDonald\n"
-		"Jorge G. Mare (Koki)\n"
+		"Jorge G. Mare - Koki\n"
 		"Jan Matějek\n"
 		"Brian Matzon\n"
 		"Christopher ML Zumwalt May\n"
@@ -1112,12 +1151,14 @@ AboutView::_CreateCreditsView()
 		"Alan Murta\n"
 		"Raghuram Nagireddy\n"
 		"Kazuho Okui\n"
-		"Jeroen Oortwijn (idefix)\n"
+		"Jeroen Oortwijn - idefix\n"
 		"Pahtz\n"
 		"Michael Paine\n"
 		"Adrian Panasiuk\n"
+		"Aleksas Pantechovskis\n"
 		"Romain Picard\n"
 		"Francesco Piccinno\n"
+		"Peter Poláčik\n"
 		"David Powell\n"
 		"Jeremy Rand\n"
 		"Hartmut Reh\n"
@@ -1336,7 +1377,8 @@ AboutView::_CreateCreditsView()
 
 	// FreeType copyrights
 	_AddPackageCredit(PackageCredit("FreeType2")
-		.SetCopyright(B_TRANSLATE("Portions of this software are copyright. "
+		.SetCopyright(B_TRANSLATE("Portions of this software are under "
+			"copyright.\n"
 			COPYRIGHT_STRING "1996-2006 "
 			"The FreeType Project. All rights reserved."))
 		.SetLicense("FTL")
@@ -1352,8 +1394,7 @@ AboutView::_CreateCreditsView()
 	// SGI's GLU implementation copyrights
 	_AddPackageCredit(PackageCredit("GLU")
 		.SetCopyright(B_TRANSLATE(COPYRIGHT_STRING "1991-2000 "
-			"Silicon Graphics, Inc. SGI's Software FreeB license. "
-			"All rights reserved."))
+			"Silicon Graphics, Inc. All rights reserved."))
 		.SetLicense("SGI Free B")
 		.SetURL("http://www.sgi.com/products/software/opengl"));
 
@@ -1382,9 +1423,9 @@ AboutView::_CreateCreditsView()
 		.SetCopyrights(B_TRANSLATE(COPYRIGHT_STRING "1990-2003 Wada Laboratory,"
 			" the University of Tokyo."), COPYRIGHT_STRING
 			"2003-2004 Electronic Font Open Laboratory (/efont/).",
-			COPYRIGHT_STRING "2003-2008 M+ FONTS PROJECT.",
-			COPYRIGHT_STRING "2006-2009 Daisuke SUZUKI.",
-			COPYRIGHT_STRING "2006-2009 Project Vine.",
+			COPYRIGHT_STRING "2003-2012 M+ FONTS PROJECT.",
+			COPYRIGHT_STRING "2006-2012 Daisuke SUZUKI.",
+			COPYRIGHT_STRING "2006-2012 Project Vine.",
 			B_TRANSLATE("MIT license. All rights reserved."),
 			NULL)
 		.SetLicense("BSD (3-clause)")

@@ -94,7 +94,6 @@ OpenWithUtils::AddOneRefSignatures(const entry_ref* ref, void* castToIterator)
 		// if model is of unknown type, try mimeseting it first
 		model.Mimeset(true);
 
-	bool preferredAppFromNode = false;
 	entry_ref preferredRef;
 
 	// add preferred app for file, if any
@@ -102,7 +101,6 @@ OpenWithUtils::AddOneRefSignatures(const entry_ref* ref, void* castToIterator)
 		// got one, mark it as preferred for this node
 		if (be_roster->FindApp(model.PreferredAppSignature(), &preferredRef) == B_OK) {
 			queryIterator->PushUniqueSignature(model.PreferredAppSignature());
-			preferredAppFromNode = true;
 			queryIterator->TrySettingPreferredAppForFile(&preferredRef);
 		}
 	}

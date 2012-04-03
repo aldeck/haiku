@@ -33,6 +33,7 @@
 extern int gUTF8GroundTable[];		/* UTF8 Ground table */
 extern int gCS96GroundTable[];		/* CS96 Ground table */
 extern int gISO8859GroundTable[];	/* ISO8859 & EUC Ground table */
+extern int gWinCPGroundTable[];		/* Windows cp1252, cp1251, koi-8r */
 extern int gSJISGroundTable[];		/* Shift-JIS Ground table */
 
 extern int gEscTable[];				/* ESC */
@@ -82,6 +83,8 @@ TermParse::TermParse(int fd)
 	fBuffer(NULL),
 	fQuitting(true)
 {
+	memset(fReadBuffer, 0, READ_BUF_SIZE);
+	memset(fParserBuffer, 0, ESC_PARSER_BUFFER_SIZE);
 }
 
 
@@ -282,6 +285,7 @@ TermParse::DumpState(int *groundtable, int *parsestate, uchar c)
 		T(gUTF8GroundTable),
 		T(gCS96GroundTable),
 		T(gISO8859GroundTable),
+		T(gWinCPGroundTable),
 		T(gSJISGroundTable),
 		T(gEscTable),
 		T(gCsiTable),
@@ -308,16 +312,60 @@ TermParse::DumpState(int *groundtable, int *parsestate, uchar c)
 }
 
 
+int *
+TermParse::_GuessGroundTable(int encoding)
+{
+	switch (encoding) {
+		case B_ISO1_CONVERSION:
+		case B_ISO2_CONVERSION:
+		case B_ISO3_CONVERSION:
+		case B_ISO4_CONVERSION:
+		case B_ISO5_CONVERSION:
+		case B_ISO6_CONVERSION:
+		case B_ISO7_CONVERSION:
+		case B_ISO8_CONVERSION:
+		case B_ISO9_CONVERSION:
+		case B_ISO10_CONVERSION:
+		case B_ISO13_CONVERSION:
+		case B_ISO14_CONVERSION:
+		case B_ISO15_CONVERSION:
+		case B_EUC_CONVERSION:
+		case B_EUC_KR_CONVERSION:
+		case B_JIS_CONVERSION:
+		case B_GBK_CONVERSION:
+		case B_BIG5_CONVERSION:
+			return gISO8859GroundTable;
+
+		case B_KOI8R_CONVERSION:
+		case B_MS_WINDOWS_1251_CONVERSION:
+		case B_MS_WINDOWS_CONVERSION:
+		case B_MAC_ROMAN_CONVERSION:
+		case B_MS_DOS_866_CONVERSION:
+		case B_MS_DOS_CONVERSION:
+			return gWinCPGroundTable;
+
+		case B_SJIS_CONVERSION:
+			return gSJISGroundTable;
+
+		case M_UTF8:
+		default:
+			break;
+	}
+
+	return gUTF8GroundTable;
+}
+
+
 int32
 TermParse::EscParse()
 {
 	int top;
 	int bottom;
-	int cs96 = 0;
+//	int cs96 = 0;
 	uchar curess = 0;
 
-	char cbuf[4];
-	char dstbuf[4];
+	char cbuf[4] = { 0 };
+	char dstbuf[4] = { 0 };
 	char *ptr;
 
 	int currentEncoding = -1;
@@ -336,8 +384,8 @@ TermParse::EscParse()
 	int *alternateParseTable = gUTF8GroundTable;
 	bool shifted_in = false;
 
-	int32 srcLen;
-	int32 dstLen;
+	int32 srcLen = sizeof(cbuf);
+	int32 dstLen = sizeof(dstbuf);
 	long dummyState = 0;
 
 	int width = 1;
@@ -353,34 +401,7 @@ TermParse::EscParse()
 
 			if (currentEncoding != fBuffer->Encoding()) {
 				// Change coding, change parse table.
-				switch (fBuffer->Encoding()) {
-					case B_ISO1_CONVERSION:
-					case B_ISO2_CONVERSION:
-					case B_ISO3_CONVERSION:
-					case B_ISO4_CONVERSION:
-					case B_ISO5_CONVERSION:
-					case B_ISO6_CONVERSION:
-					case B_ISO7_CONVERSION:
-					case B_ISO8_CONVERSION:
-					case B_ISO9_CONVERSION:
-					case B_ISO10_CONVERSION:
-						groundtable = gISO8859GroundTable;
-						break;
-					case B_SJIS_CONVERSION:
-						groundtable = gSJISGroundTable;
-						break;
-					case B_EUC_CONVERSION:
-					case B_EUC_KR_CONVERSION:
-					case B_JIS_CONVERSION:
-					case B_GBK_CONVERSION:
-					case B_BIG5_CONVERSION:
-						groundtable = gISO8859GroundTable;
-						break;
-					case M_UTF8:
-					default:
-						groundtable = gUTF8GroundTable;
-						break;
-				}
+				groundtable = _GuessGroundTable(fBuffer->Encoding());
 				parsestate = groundtable;
 				currentEncoding = fBuffer->Encoding();
 			}
@@ -433,6 +454,7 @@ TermParse::EscParse()
 					}
 
 					srcLen = strlen(cbuf);
+					dstLen = sizeof(dstbuf);
 					if (currentEncoding != B_JIS_CONVERSION) {
 						convert_to_utf8(currentEncoding, cbuf, &srcLen,
 								dstbuf, &dstLen, &dummyState, '?');
@@ -450,7 +472,7 @@ TermParse::EscParse()
 					cbuf[1] = c | 0x80;
 					cbuf[2] = 0;
 					srcLen = 2;
-					dstLen = 0;
+					dstLen = sizeof(dstbuf);
 					convert_to_utf8(B_EUC_CONVERSION, cbuf, &srcLen,
 							dstbuf, &dstLen, &dummyState, '?');
 					fBuffer->InsertChar(dstbuf, dstLen, fAttr);
@@ -512,7 +534,7 @@ TermParse::EscParse()
 					cbuf[0] = c;
 					cbuf[1] = '\0';
 					srcLen = 1;
-					dstLen = 0;
+					dstLen = sizeof(dstbuf);
 					convert_to_utf8(currentEncoding, cbuf, &srcLen,
 							dstbuf, &dstLen, &dummyState, '?');
 					fBuffer->InsertChar(dstbuf, dstLen, fAttr);
@@ -524,7 +546,7 @@ TermParse::EscParse()
 					cbuf[1] = c;
 					cbuf[2] = '\0';
 					srcLen = 2;
-					dstLen = 0;
+					dstLen = sizeof(dstbuf);
 					convert_to_utf8(currentEncoding, cbuf, &srcLen,
 							dstbuf, &dstLen, &dummyState, '?');
 					fBuffer->InsertChar(dstbuf, dstLen, fAttr);
@@ -564,14 +586,14 @@ TermParse::EscParse()
 				case CASE_GSETS:
 					/* ESC $ ? */
 					parsestate = gCS96GroundTable;
-					cs96 = 1;
+					//		cs96 = 1;
 					break;
 
 				case CASE_SCS_STATE:
 				{
 					char page = _NextParseChar();
 
-					int* newTable = gUTF8GroundTable;
+					int* newTable = _GuessGroundTable(currentEncoding);
 					if (page == '0')
 						newTable = gLineDrawTable;
 

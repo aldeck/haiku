@@ -487,6 +487,11 @@ WindowArea::_UnsetNeighbourCorner(Corner* neighbour, Corner* opponent)
 void
 WindowArea::_MoveToSAT(SATWindow* triggerWindow)
 {
+	SATWindow* topWindow = TopWindow();
+	// if there is no window in the group we are done
+	if (topWindow == NULL)
+		return;
+
 	int32 workspace = triggerWindow->GetWindow()->CurrentWorkspace();
 	Desktop* desktop = triggerWindow->GetWindow()->Desktop();
 
@@ -495,7 +500,6 @@ WindowArea::_MoveToSAT(SATWindow* triggerWindow)
 		RightVar()->Value() - kMakePositiveOffset,
 		BottomVar()->Value() - kMakePositiveOffset);
 
-	SATWindow* topWindow = TopWindow();
 	topWindow->AdjustSizeLimits(frameSAT);
 
 	BRect frame = topWindow->CompleteWindowFrame();
@@ -883,19 +887,17 @@ SATGroup::RemoveWindow(SATWindow* window, bool stayBelowMouse)
 	if (!fSATWindowList.RemoveItem(window))
 		return false;
 
-	WindowArea* area = window->GetWindowArea();
-	if (area)
+	// We need the area a little bit longer because the area could hold the
+	// last reference to the group.
+	BReference<WindowArea> area = window->GetWindowArea();
+	if (area.Get() != NULL)
 		area->_RemoveWindow(window);
-
-	int32 windowCount = CountItems();
 
 	window->RemovedFromGroup(this, stayBelowMouse);
 
-	if (windowCount >= 2)
+	if (CountItems() >= 2)
 		WindowAt(0)->DoGroupLayout();
 
-	// Do nothing after removing the window from the group because this
-	// could have released the last reference and destroyed ourself.
 	return true;
 }
 

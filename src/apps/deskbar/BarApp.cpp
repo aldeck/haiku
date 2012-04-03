@@ -34,6 +34,7 @@ All rights reserved.
 */
 
 #include <Debug.h>
+#include <locale.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -56,7 +57,7 @@ All rights reserved.
 #include "BarApp.h"
 #include "BarView.h"
 #include "BarWindow.h"
-#include "DeskBarUtils.h"
+#include "DeskbarUtils.h"
 #include "FSUtils.h"
 #include "PublicCommands.h"
 #include "ResourceSet.h"
@@ -69,7 +70,7 @@ BList TBarApp::sBarTeamInfoList;
 BList TBarApp::sSubscribers;
 
 
-const uint32 kShowBeMenu = 'BeMn';
+const uint32 kShowDeskbarMenu = 'BeMn';
 const uint32 kShowTeamMenu = 'TmMn';
 
 
@@ -80,6 +81,7 @@ static const color_space kIconFormat = B_RGBA32;
 int
 main()
 {
+	setlocale(LC_ALL, "");
 	TBarApp app;
 	app.Run();
 
@@ -340,9 +342,9 @@ TBarApp::MessageReceived(BMessage* message)
 			fPreferencesWindow->PostMessage(kStateChanged);
 			break;
 
-		case kShowBeMenu:
+		case kShowDeskbarMenu:
 			if (fBarWindow->Lock()) {
-				fBarWindow->ShowBeMenu();
+				fBarWindow->ShowDeskbarMenu();
 				fBarWindow->Unlock();
 			}
 			break;
@@ -441,7 +443,7 @@ TBarApp::MessageReceived(BMessage* message)
 			BarView()->HideDeskbar(fSettings.autoHide);
 			fBarWindow->Unlock();
 			break;
-			
+
 		case kTrackerFirst:
 			fSettings.trackerAlwaysFirst = !fSettings.trackerAlwaysFirst;
 

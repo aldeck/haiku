@@ -186,16 +186,6 @@ BStringView::PreferredSize()
 
 
 void
-BStringView::InvalidateLayout(bool descendants)
-{
-	// invalidate cached preferred size
-	fPreferredSize.Set(-1, -1);
-
-	BView::InvalidateLayout(descendants);
-}
-
-
-void
 BStringView::ResizeToPreferred()
 {
 	float width, height;
@@ -359,6 +349,14 @@ BStringView::SetFont(const BFont* font, uint32 mask)
 }
 
 
+void
+BStringView::LayoutInvalidated(bool descendants)
+{
+	// invalidate cached preferred size
+	fPreferredSize.Set(-1, -1);
+}
+
+
 // #pragma mark -
 
 
@@ -400,11 +398,11 @@ BStringView::Perform(perform_code code, void* _data)
 			BStringView::SetLayout(data->layout);
 			return B_OK;
 		}
-		case PERFORM_CODE_INVALIDATE_LAYOUT:
+		case PERFORM_CODE_LAYOUT_INVALIDATED:
 		{
-			perform_data_invalidate_layout* data
-				= (perform_data_invalidate_layout*)_data;
-			BStringView::InvalidateLayout(data->descendants);
+			perform_data_layout_invalidated* data
+				= (perform_data_layout_invalidated*)_data;
+			BStringView::LayoutInvalidated(data->descendants);
 			return B_OK;
 		}
 		case PERFORM_CODE_DO_LAYOUT:
@@ -453,5 +451,16 @@ BStringView::_ValidatePreferredSize()
 	}
 
 	return fPreferredSize;
+}
+
+
+extern "C" void
+B_IF_GCC_2(InvalidateLayout__11BStringViewb,
+	_ZN11BStringView16InvalidateLayoutEb)(BView* view, bool descendants)
+{
+	perform_data_layout_invalidated data;
+	data.descendants = descendants;
+
+	view->Perform(PERFORM_CODE_LAYOUT_INVALIDATED, &data);
 }
 

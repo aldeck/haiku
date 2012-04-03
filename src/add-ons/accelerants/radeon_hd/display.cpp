@@ -12,18 +12,21 @@
  */
 
 
-#include "accelerant_protos.h"
-#include "accelerant.h"
-#include "bios.h"
 #include "display.h"
 
 #include <stdlib.h>
 #include <string.h>
 
+#include "accelerant.h"
+#include "accelerant_protos.h"
+#include "bios.h"
+#include "connector.h"
+#include "encoder.h"
+
 
 #define TRACE_DISPLAY
 #ifdef TRACE_DISPLAY
-extern "C" void _sPrintf(const char *format, ...);
+extern "C" void _sPrintf(const char* format, ...);
 #   define TRACE(x...) _sPrintf("radeon_hd: " x)
 #else
 #   define TRACE(x...) ;
@@ -40,10 +43,11 @@ init_registers(register_info* regs, uint8 crtcID)
 
 	radeon_shared_info &info = *gInfo->shared_info;
 
-	if (info.device_chipset >= RADEON_R1000) {
+	if (info.chipsetID >= RADEON_CEDAR) {
+		// Evergreen
 		uint32 offset = 0;
 
-		switch(crtcID) {
+		switch (crtcID) {
 			case 0:
 				offset = EVERGREEN_CRTC0_REGISTER_OFFSET;
 				regs->vgaControl = AVIVO_D1VGA_CONTROL;
@@ -103,10 +107,11 @@ init_registers(register_info* regs, uint8 crtcID)
 		regs->viewportStart = EVERGREEN_VIEWPORT_START + offset;
 		regs->viewportSize = EVERGREEN_VIEWPORT_SIZE + offset;
 
-	} else if (info.device_chipset >= RADEON_R700) {
+	} else if (info.chipsetID >= RADEON_RV770) {
+		// R700 series
 		uint32 offset = 0;
 
-		switch(crtcID) {
+		switch (crtcID) {
 			case 0:
 				offset = R600_CRTC0_REGISTER_OFFSET;
 				regs->vgaControl = AVIVO_D1VGA_CONTROL;
@@ -149,10 +154,11 @@ init_registers(register_info* regs, uint8 crtcID)
 		regs->viewportStart = AVIVO_D1MODE_VIEWPORT_START + offset;
 		regs->viewportSize = AVIVO_D1MODE_VIEWPORT_SIZE + offset;
 
-	} else if (info.device_chipset >= RADEON_R600) {
+	} else if (info.chipsetID >= RADEON_RS600) {
+		// Avivo+
 		uint32 offset = 0;
 
-		switch(crtcID) {
+		switch (crtcID) {
 			case 0:
 				offset = R600_CRTC0_REGISTER_OFFSET;
 				regs->vgaControl = AVIVO_D1VGA_CONTROL;
@@ -196,13 +202,13 @@ init_registers(register_info* regs, uint8 crtcID)
 		regs->viewportSize = AVIVO_D1MODE_VIEWPORT_SIZE + offset;
 	} else {
 		// this really shouldn't happen unless a driver PCIID chipset is wrong
-		TRACE("%s, unknown Radeon chipset: r%X\n", __func__,
-			info.device_chipset);
+		TRACE("%s, unknown Radeon chipset: %s\n", __func__,
+			info.chipsetName);
 		return B_ERROR;
 	}
 
-	TRACE("%s, registers for ATI chipset r%X crt #%d loaded\n", __func__,
-		info.device_chipset, crtcID);
+	TRACE("%s, registers for ATI chipset %s crt #%d loaded\n", __func__,
+		info.chipsetName, crtcID);
 
 	return B_OK;
 }
@@ -211,12 +217,12 @@ init_registers(register_info* regs, uint8 crtcID)
 status_t
 detect_crt_ranges(uint32 crtid)
 {
-	edid1_info *edid = &gDisplay[crtid]->edid_info;
+	edid1_info* edid = &gDisplay[crtid]->edid_info;
 
 	// Scan each display EDID description for monitor ranges
 	for (uint32 index = 0; index < EDID1_NUM_DETAILED_MONITOR_DESC; index++) {
 
-		edid1_detailed_monitor *monitor
+		edid1_detailed_monitor* monitor
 			= &edid->detailed_monitor[index];
 
 		if (monitor->monitor_desc_type
@@ -234,435 +240,13 @@ detect_crt_ranges(uint32 crtid)
 }
 
 
-// TODO: only used on r4xx, r5xx, and rs600/rs690/rs740
-#if 0
-union atom_supported_devices {
-	struct _ATOM_SUPPORTED_DEVICES_INFO info;
-	struct _ATOM_SUPPORTED_DEVICES_INFO_2 info_2;
-	struct _ATOM_SUPPORTED_DEVICES_INFO_2d1 info_2d1;
-};
-
-
-status_t
-detect_connectors_legacy()
-{
-	int index = GetIndexIntoMasterTable(DATA, SupportedDevicesInfo);
-	uint8 tableMajor;
-	uint8 tableMinor;
-	uint16 tableSize;
-	uint16 tableOffset;
-
-	if (atom_parse_data_header(gAtomContext, index, &tableSize,
-		&tableMajor, &tableMinor, &tableOffset) != B_OK) {
-		ERROR("%s: unable to parse data header!\n", __func__);
-		return B_ERROR;
-	}
-
-	union atom_supported_devices *supported_devices;
-	supported_devices
-		= (union atom_supported_devices *)
-		(gAtomContext->bios + tableOffset);
-
-	uint16 device_support
-		= B_LENDIAN_TO_HOST_INT16(supported_devices->info.usDeviceSupport);
-
-	int32 i;
-	for (i = 0; i < ATOM_MAX_SUPPORTED_DEVICE; i++) {
-
-		gConnector[i]->valid = false;
-
-		// check if this connector is used
-		if ((device_support & (1 << i)) == 0)
-			continue;
-
-		if (i == ATOM_DEVICE_CV_INDEX) {
-			TRACE("%s: skipping component video\n",
-				__func__);
-			continue;
-		}
-
-		ATOM_CONNECTOR_INFO_I2C ci
-			= supported_devices->info.asConnInfo[i];
-
-		gConnector[i]->type
-			= connector_convert_legacy[
-				ci.sucConnectorInfo.sbfAccess.bfConnectorType];
-
-		if (gConnector[i]->type == VIDEO_CONNECTOR_UNKNOWN) {
-			TRACE("%s: skipping unknown connector at %" B_PRId32
-				" of 0x%" B_PRIX8 "\n", __func__, i,
-				ci.sucConnectorInfo.sbfAccess.bfConnectorType);
-			continue;
-		}
-
-		// uint8 dac = ci.sucConnectorInfo.sbfAccess.bfAssociatedDAC;
-		// gConnector[i]->line_mux = ci.sucI2cId.ucAccess;
-
-		// TODO: give tv unique connector ids
-
-		// Always set CRT1 and CRT2 as VGA, some cards incorrectly set
-		// VGA ports as DVI
-		if (i == ATOM_DEVICE_CRT1_INDEX || i == ATOM_DEVICE_CRT2_INDEX)
-			gConnector[i]->type = VIDEO_CONNECTOR_VGA;
-
-		gConnector[i]->valid = true;
-		gConnector[i]->encoder.flags = (1 << i);
-
-		// TODO: add the encoder
-		#if 0
-		radeon_add_atom_encoder(dev,
-			radeon_get_encoder_enum(dev,
-				(1 << i),
-				dac),
-			(1 << i),
-			0);
-		#endif
-	}
-
-	// TODO: combine shared connectors
-
-	// TODO: add connectors
-
-	for (i = 0; i < ATOM_MAX_SUPPORTED_DEVICE_INFO; i++) {
-		if (gConnector[i]->valid == true) {
-			TRACE("%s: connector #%" B_PRId32 " is %s\n", __func__, i,
-				get_connector_name(gConnector[i]->type));
-		}
-	}
-
-	return B_OK;
-}
-#endif
-
-
-// r600+
-status_t
-detect_connectors()
-{
-	int index = GetIndexIntoMasterTable(DATA, Object_Header);
-	uint8 tableMajor;
-	uint8 tableMinor;
-	uint16 tableSize;
-	uint16 tableOffset;
-
-	if (atom_parse_data_header(gAtomContext, index, &tableSize,
-		&tableMajor, &tableMinor, &tableOffset) != B_OK) {
-		ERROR("%s: ERROR: parsing data header failed!\n", __func__);
-		return B_ERROR;
-	}
-
-	if (tableMinor < 2) {
-		ERROR("%s: ERROR: table minor version unknown! "
-			"(%" B_PRIu8 ".%" B_PRIu8 ")\n", __func__, tableMajor, tableMinor);
-		return B_ERROR;
-	}
-
-	ATOM_CONNECTOR_OBJECT_TABLE *con_obj;
-	ATOM_ENCODER_OBJECT_TABLE *enc_obj;
-	ATOM_OBJECT_TABLE *router_obj;
-	ATOM_DISPLAY_OBJECT_PATH_TABLE *path_obj;
-	ATOM_OBJECT_HEADER *obj_header;
-
-	obj_header = (ATOM_OBJECT_HEADER *)(gAtomContext->bios + tableOffset);
-	path_obj = (ATOM_DISPLAY_OBJECT_PATH_TABLE *)
-		(gAtomContext->bios + tableOffset
-		+ B_LENDIAN_TO_HOST_INT16(obj_header->usDisplayPathTableOffset));
-	con_obj = (ATOM_CONNECTOR_OBJECT_TABLE *)
-		(gAtomContext->bios + tableOffset
-		+ B_LENDIAN_TO_HOST_INT16(obj_header->usConnectorObjectTableOffset));
-	enc_obj = (ATOM_ENCODER_OBJECT_TABLE *)
-		(gAtomContext->bios + tableOffset
-		+ B_LENDIAN_TO_HOST_INT16(obj_header->usEncoderObjectTableOffset));
-	router_obj = (ATOM_OBJECT_TABLE *)
-		(gAtomContext->bios + tableOffset
-		+ B_LENDIAN_TO_HOST_INT16(obj_header->usRouterObjectTableOffset));
-	int deviceSupport = B_LENDIAN_TO_HOST_INT16(obj_header->usDeviceSupport);
-
-	int pathSize = 0;
-	int32 i = 0;
-
-	TRACE("%s: found %" B_PRIu8 " potential display paths.\n", __func__,
-		path_obj->ucNumOfDispPath);
-
-	uint32 connectorIndex = 0;
-	for (i = 0; i < path_obj->ucNumOfDispPath; i++) {
-
-		if (connectorIndex >= ATOM_MAX_SUPPORTED_DEVICE)
-			continue;
-
-		uint8 *addr = (uint8*)path_obj->asDispPath;
-		ATOM_DISPLAY_OBJECT_PATH *path;
-		addr += pathSize;
-		path = (ATOM_DISPLAY_OBJECT_PATH *)addr;
-		pathSize += B_LENDIAN_TO_HOST_INT16(path->usSize);
-
-		uint32 connectorType;
-		uint16 connectorObjectID;
-		uint16 connectorFlags = B_LENDIAN_TO_HOST_INT16(path->usDeviceTag);
-
-		if ((deviceSupport & connectorFlags) != 0) {
-			uint8 con_obj_id = (B_LENDIAN_TO_HOST_INT16(path->usConnObjectId)
-				& OBJECT_ID_MASK) >> OBJECT_ID_SHIFT;
-
-			//uint8 con_obj_num
-			//	= (B_LENDIAN_TO_HOST_INT16(path->usConnObjectId)
-			//	& ENUM_ID_MASK) >> ENUM_ID_SHIFT;
-			//uint8 con_obj_type
-			//	= (B_LENDIAN_TO_HOST_INT16(path->usConnObjectId)
-			//	& OBJECT_TYPE_MASK) >> OBJECT_TYPE_SHIFT;
-
-			if (connectorFlags == ATOM_DEVICE_CV_SUPPORT) {
-				TRACE("%s: Path #%" B_PRId32 ": skipping component video.\n",
-					__func__, i);
-				continue;
-			}
-
-			uint16 igp_lane_info;
-			if (0)
-				ERROR("%s: TODO: IGP chip connector detection\n", __func__);
-			else {
-				igp_lane_info = 0;
-				connectorType = connector_convert[con_obj_id];
-				connectorObjectID = con_obj_id;
-			}
-
-			if (connectorType == VIDEO_CONNECTOR_UNKNOWN) {
-				ERROR("%s: Path #%" B_PRId32 ": skipping unknown connector.\n",
-					__func__, i);
-				continue;
-			}
-
-			int32 j;
-			for (j = 0; j < ((B_LENDIAN_TO_HOST_INT16(path->usSize) - 8) / 2);
-				j++) {
-				//uint16 grph_obj_id
-				//	= (B_LENDIAN_TO_HOST_INT16(path->usGraphicObjIds[j])
-				//	& OBJECT_ID_MASK) >> OBJECT_ID_SHIFT;
-				//uint8 grph_obj_num
-				//	= (B_LENDIAN_TO_HOST_INT16(path->usGraphicObjIds[j]) &
-				//	ENUM_ID_MASK) >> ENUM_ID_SHIFT;
-				uint8 grph_obj_type
-					= (B_LENDIAN_TO_HOST_INT16(path->usGraphicObjIds[j]) &
-					OBJECT_TYPE_MASK) >> OBJECT_TYPE_SHIFT;
-
-				if (grph_obj_type == GRAPH_OBJECT_TYPE_ENCODER) {
-					// Found an encoder
-					// TODO: it may be possible to have more then one encoder
-					int32 k;
-					for (k = 0; k < enc_obj->ucNumberOfObjects; k++) {
-						uint16 encoder_obj
-							= B_LENDIAN_TO_HOST_INT16(
-							enc_obj->asObjects[k].usObjectID);
-						if (B_LENDIAN_TO_HOST_INT16(path->usGraphicObjIds[j])
-							== encoder_obj) {
-							ATOM_COMMON_RECORD_HEADER *record
-								= (ATOM_COMMON_RECORD_HEADER *)
-								((uint16 *)gAtomContext->bios + tableOffset
-								+ B_LENDIAN_TO_HOST_INT16(
-								enc_obj->asObjects[k].usRecordOffset));
-							ATOM_ENCODER_CAP_RECORD *cap_record;
-							uint16 caps = 0;
-							while (record->ucRecordSize > 0
-								&& record->ucRecordType > 0
-								&& record->ucRecordType
-								<= ATOM_MAX_OBJECT_RECORD_NUMBER) {
-								switch (record->ucRecordType) {
-									case ATOM_ENCODER_CAP_RECORD_TYPE:
-										cap_record = (ATOM_ENCODER_CAP_RECORD *)
-											record;
-										caps = B_LENDIAN_TO_HOST_INT16(
-											cap_record->usEncoderCap);
-										break;
-								}
-								record = (ATOM_COMMON_RECORD_HEADER *)
-									((char *)record + record->ucRecordSize);
-							}
-							uint32 encoderID = (encoder_obj & OBJECT_ID_MASK)
-								>> OBJECT_ID_SHIFT;
-
-							uint32 encoderType = VIDEO_ENCODER_NONE;
-							bool encoderExternal = false;
-
-							switch(encoderID) {
-								case ENCODER_OBJECT_ID_INTERNAL_LVDS:
-								case ENCODER_OBJECT_ID_INTERNAL_TMDS1:
-								case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_TMDS1:
-								case ENCODER_OBJECT_ID_INTERNAL_LVTM1:
-									if ((connectorFlags
-										& ATOM_DEVICE_LCD_SUPPORT) != 0) {
-										encoderType = VIDEO_ENCODER_LVDS;
-										// radeon_atombios_get_lvds_info
-									} else {
-										encoderType = VIDEO_ENCODER_TMDS;
-										// radeon_atombios_set_dig_info
-									}
-									break;
-								case ENCODER_OBJECT_ID_INTERNAL_DAC1:
-									encoderType = VIDEO_ENCODER_DAC;
-									break;
-								case ENCODER_OBJECT_ID_INTERNAL_DAC2:
-								case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DAC1:
-								case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DAC2:
-									encoderType = VIDEO_ENCODER_TVDAC;
-									break;
-								case ENCODER_OBJECT_ID_INTERNAL_DVO1:
-								case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DVO1:
-								case ENCODER_OBJECT_ID_INTERNAL_DDI:
-								case ENCODER_OBJECT_ID_INTERNAL_UNIPHY:
-								case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_LVTMA:
-								case ENCODER_OBJECT_ID_INTERNAL_UNIPHY1:
-								case ENCODER_OBJECT_ID_INTERNAL_UNIPHY2:
-									if ((connectorFlags
-										& ATOM_DEVICE_LCD_SUPPORT) != 0) {
-										encoderType = VIDEO_ENCODER_LVDS;
-									} else if ((connectorFlags
-										& ATOM_DEVICE_CRT_SUPPORT) != 0) {
-										encoderType = VIDEO_ENCODER_DAC;
-									} else {
-										encoderType = VIDEO_ENCODER_TMDS;
-									}
-									// drm_encoder_helper_add
-									break;
-								case ENCODER_OBJECT_ID_SI170B:
-								case ENCODER_OBJECT_ID_CH7303:
-								case ENCODER_OBJECT_ID_EXTERNAL_SDVOA:
-								case ENCODER_OBJECT_ID_EXTERNAL_SDVOB:
-								case ENCODER_OBJECT_ID_TITFP513:
-								case ENCODER_OBJECT_ID_VT1623:
-								case ENCODER_OBJECT_ID_HDMI_SI1930:
-								case ENCODER_OBJECT_ID_TRAVIS:
-								case ENCODER_OBJECT_ID_NUTMEG:
-									encoderExternal = true;
-									if ((connectorFlags
-										& ATOM_DEVICE_LCD_SUPPORT) != 0) {
-										encoderType = VIDEO_ENCODER_LVDS;
-									} else if ((connectorFlags
-										& ATOM_DEVICE_CRT_SUPPORT) != 0) {
-										encoderType = VIDEO_ENCODER_DAC;
-									} else {
-										encoderType = VIDEO_ENCODER_TMDS;
-									}
-									// drm_encoder_helper_add
-									break;
-							}
-
-							if (encoderType == VIDEO_ENCODER_NONE) {
-								ERROR("%s: Path #%" B_PRId32 ":"
-									"skipping unknown encoder.\n",
-									__func__, i);
-									continue;
-							}
-
-							// Set up encoder on connector if valid
-							TRACE("%s: Path #%" B_PRId32 ": Found encoder "
-								"%s\n", __func__, i,
-								get_encoder_name(encoderType));
-
-							gConnector[connectorIndex]->encoder.flags
-								= connectorFlags;
-							gConnector[connectorIndex]->encoder.valid
-								= true;
-							gConnector[connectorIndex]->encoder.objectID
-								= encoderID;
-							gConnector[connectorIndex]->encoder.type
-								= encoderType;
-							gConnector[connectorIndex]->encoder.isExternal
-								= encoderExternal;
-
-							pll_limit_probe(
-								&gConnector[connectorIndex]->encoder.pll);
-						}
-					}
-					// END if object is encoder
-				} else if (grph_obj_type == GRAPH_OBJECT_TYPE_ROUTER) {
-					ERROR("%s: TODO: Found router object?\n", __func__);
-				} // END if object is router
-			}
-
-			// Set up information buses such as ddc
-			if ((connectorFlags
-				& (ATOM_DEVICE_TV_SUPPORT | ATOM_DEVICE_CV_SUPPORT)) == 0) {
-				for (j = 0; j < con_obj->ucNumberOfObjects; j++) {
-					if (B_LENDIAN_TO_HOST_INT16(path->usConnObjectId)
-						== B_LENDIAN_TO_HOST_INT16(
-						con_obj->asObjects[j].usObjectID)) {
-						ATOM_COMMON_RECORD_HEADER *record
-							= (ATOM_COMMON_RECORD_HEADER*)(gAtomContext->bios
-							+ tableOffset + B_LENDIAN_TO_HOST_INT16(
-							con_obj->asObjects[j].usRecordOffset));
-						while (record->ucRecordSize > 0
-							&& record->ucRecordType > 0
-							&& record->ucRecordType
-								<= ATOM_MAX_OBJECT_RECORD_NUMBER) {
-							ATOM_I2C_RECORD *i2c_record;
-							ATOM_I2C_ID_CONFIG_ACCESS *i2c_config;
-							//ATOM_HPD_INT_RECORD *hpd_record;
-
-							switch (record->ucRecordType) {
-								case ATOM_I2C_RECORD_TYPE:
-									i2c_record
-										= (ATOM_I2C_RECORD *)record;
-									i2c_config
-										= (ATOM_I2C_ID_CONFIG_ACCESS *)
-										&i2c_record->sucI2cId;
-									// attach i2c gpio information for connector
-									radeon_gpu_i2c_attach(connectorIndex,
-										i2c_config->ucAccess);
-									break;
-								case ATOM_HPD_INT_RECORD_TYPE:
-									// TODO: HPD (Hot Plug)
-									break;
-							}
-
-							// move to next record
-							record = (ATOM_COMMON_RECORD_HEADER *)
-								((char *)record + record->ucRecordSize);
-						}
-					}
-				}
-			}
-
-			// TODO: aux chan transactions
-
-			// record connector information
-			TRACE("%s: Path #%" B_PRId32 ": Found %s (0x%" B_PRIX32 ")\n",
-				__func__, i, get_connector_name(connectorType),
-				connectorType);
-
-			gConnector[connectorIndex]->valid = true;
-			gConnector[connectorIndex]->flags = connectorFlags;
-			gConnector[connectorIndex]->type = connectorType;
-			gConnector[connectorIndex]->objectID = connectorObjectID;
-
-			gConnector[connectorIndex]->encoder.isTV = false;
-			gConnector[connectorIndex]->encoder.isHDMI = false;
-
-			switch(connectorType) {
-				case VIDEO_CONNECTOR_COMPOSITE:
-				case VIDEO_CONNECTOR_SVIDEO:
-				case VIDEO_CONNECTOR_9DIN:
-					gConnector[connectorIndex]->encoder.isTV = true;
-					break;
-				case VIDEO_CONNECTOR_HDMIA:
-				case VIDEO_CONNECTOR_HDMIB:
-					gConnector[connectorIndex]->encoder.isHDMI = true;
-					break;
-			}
-
-			connectorIndex++;
-		} // END for each valid connector
-	} // end for each display path
-
-	return B_OK;
-}
-
-
 status_t
 detect_displays()
 {
 	// reset known displays
 	for (uint32 id = 0; id < MAX_DISPLAY; id++) {
-		gDisplay[id]->active = false;
+		gDisplay[id]->attached = false;
+		gDisplay[id]->powered = false;
 		gDisplay[id]->found_ranges = false;
 	}
 
@@ -673,7 +257,30 @@ detect_displays()
 		if (displayIndex >= MAX_DISPLAY)
 			continue;
 
-		if (radeon_gpu_read_edid(id, &gDisplay[displayIndex]->edid_info)) {
+		// TODO: As DP aux transactions don't work yet, just use LVDS as a hack
+		#if 0
+		if (gConnector[id]->encoderExternal.isDPBridge == true) {
+			// If this is a DisplayPort Bridge, setup ddc on bus
+			// TRAVIS (LVDS) or NUTMEG (VGA)
+			TRACE("%s: is bridge, performing bridge DDC setup\n", __func__);
+			encoder_external_setup(id, 23860,
+				EXTERNAL_ENCODER_ACTION_V3_DDC_SETUP);
+		} else if (gConnector[id]->type == VIDEO_CONNECTOR_LVDS) {
+		#endif
+		if (gConnector[id]->type == VIDEO_CONNECTOR_LVDS) {
+			// If plain (non-DP) laptop LVDS, read mode info from AtomBIOS
+			//TRACE("%s: non-DP laptop LVDS detected\n", __func__);
+			gDisplay[displayIndex]->attached
+				= connector_read_mode_lvds(id,
+					&gDisplay[displayIndex]->preferredMode);
+		}
+
+		if (gDisplay[displayIndex]->attached == false) {
+			TRACE("%s: bit-banging ddc for edid on connector %" B_PRIu32 "\n",
+				__func__, id);
+			// Lets try bit-banging edid from connector
+			gDisplay[displayIndex]->attached =
+				connector_read_edid(id, &gDisplay[displayIndex]->edid_info);
 
 			if (gConnector[id]->encoder.type == VIDEO_ENCODER_TVDAC
 				|| gConnector[id]->encoder.type == VIDEO_ENCODER_DAC) {
@@ -682,23 +289,36 @@ detect_displays()
 				if (encoder_analog_load_detect(id) != true) {
 					TRACE("%s: no analog load on EDID valid connector "
 						"#%" B_PRIu32 "\n", __func__, id);
-					continue;
+					gDisplay[displayIndex]->attached = false;
 				}
 			}
+		}
 
-			gDisplay[displayIndex]->active = true;
-			gDisplay[displayIndex]->connectorIndex = id;
-				// set physical connector index from gConnector
+		if (gDisplay[displayIndex]->attached != true) {
+			// Nothing interesting here, move along
+			continue;
+		}
 
-			init_registers(gDisplay[displayIndex]->regs, displayIndex);
+		// We found a valid / attached display
 
+		gDisplay[displayIndex]->connectorIndex = id;
+			// Populate physical connector index from gConnector
+
+		init_registers(gDisplay[displayIndex]->regs, displayIndex);
+
+		if (gDisplay[displayIndex]->preferredMode.virtual_width > 0) {
+			// Found a single preferred mode
+			gDisplay[displayIndex]->found_ranges = false;
+		} else {
+			// Use edid data and pull ranges
 			if (detect_crt_ranges(displayIndex) == B_OK)
 				gDisplay[displayIndex]->found_ranges = true;
-			displayIndex++;
 		}
+
+		displayIndex++;
 	}
 
-	// fallback if no edid monitors were found
+	// fallback if no attached monitors were found
 	if (displayIndex == 0) {
 		ERROR("%s: ERROR: 0 attached monitors were found on display connectors."
 			" Injecting first connector as a last resort.\n", __func__);
@@ -706,7 +326,7 @@ detect_displays()
 			// skip TV DAC connectors as likely fallback isn't for TV
 			if (gConnector[id]->encoder.type == VIDEO_ENCODER_TVDAC)
 				continue;
-			gDisplay[0]->active = true;
+			gDisplay[0]->attached = true;
 			gDisplay[0]->connectorIndex = id;
 			init_registers(gDisplay[0]->regs, 0);
 			if (detect_crt_ranges(0) == B_OK)
@@ -714,6 +334,12 @@ detect_displays()
 			break;
 		}
 	}
+
+	// Initial boot state is the first two crtc's powered
+	if (gDisplay[0]->attached == true)
+		gDisplay[0]->powered = true;
+	if (gDisplay[1]->attached == true)
+		gDisplay[1]->powered = true;
 
 	return B_OK;
 }
@@ -724,17 +350,17 @@ debug_displays()
 {
 	TRACE("Currently detected monitors===============\n");
 	for (uint32 id = 0; id < MAX_DISPLAY; id++) {
-		ERROR("Display #%" B_PRIu32 " active = %s\n",
-			id, gDisplay[id]->active ? "true" : "false");
+		ERROR("Display #%" B_PRIu32 " attached = %s\n",
+			id, gDisplay[id]->attached ? "true" : "false");
 
 		uint32 connectorIndex = gDisplay[id]->connectorIndex;
 
-		if (gDisplay[id]->active) {
+		if (gDisplay[id]->attached) {
 			uint32 connectorType = gConnector[connectorIndex]->type;
 			uint32 encoderType = gConnector[connectorIndex]->encoder.type;
-			ERROR(" + connector: %s\n", get_connector_name(connectorType));
-			ERROR(" + encoder:   %s\n", get_encoder_name(encoderType));
-
+			ERROR(" + connector ID:   %" B_PRIu32 "\n", connectorIndex);
+			ERROR(" + connector type: %s\n", get_connector_name(connectorType));
+			ERROR(" + encoder type:   %s\n", get_encoder_name(encoderType));
 			ERROR(" + limits: Vert Min/Max: %" B_PRIu32 "/%" B_PRIu32"\n",
 				gDisplay[id]->vfreq_min, gDisplay[id]->vfreq_max);
 			ERROR(" + limits: Horz Min/Max: %" B_PRIu32 "/%" B_PRIu32"\n",
@@ -745,34 +371,24 @@ debug_displays()
 }
 
 
-void
-debug_connectors()
-{
-	ERROR("Currently detected connectors=============\n");
-	for (uint32 id = 0; id < ATOM_MAX_SUPPORTED_DEVICE; id++) {
-		if (gConnector[id]->valid == true) {
-			uint32 connectorType = gConnector[id]->type;
-			uint32 encoderType = gConnector[id]->encoder.type;
-			uint16 encoderID = gConnector[id]->encoder.objectID;
-			uint16 gpioID = gConnector[id]->gpioID;
-			ERROR("Connector #%" B_PRIu32 ")\n", id);
-			ERROR(" + connector:  %s\n", get_connector_name(connectorType));
-			ERROR(" + encoder:    %s\n", get_encoder_name(encoderType));
-			ERROR(" + encoder id: %" B_PRIu16 "\n", encoderID);
-			ERROR(" + gpio id:    %" B_PRIu16 "\n", gpioID);
-			ERROR(" + gpio valid: %s\n",
-				gGPIOInfo[gpioID]->valid ? "true" : "false");
-			ERROR(" + hw line:    0x%" B_PRIX32 "\n",
-				gGPIOInfo[gpioID]->hw_line);
-		}
-	}
-	ERROR("==========================================\n");
-}
-
-
 uint32
 display_get_encoder_mode(uint32 connectorIndex)
 {
+	// Is external DisplayPort Bridge?
+	if (gConnector[connectorIndex]->encoderExternal.valid == true
+		&& gConnector[connectorIndex]->encoderExternal.isDPBridge == true) {
+		return ATOM_ENCODER_MODE_DP;
+	}
+
+	// DVO Encoders (should be bridges)
+	switch (gConnector[connectorIndex]->encoder.objectID) {
+		case ENCODER_OBJECT_ID_INTERNAL_DVO1:
+		case ENCODER_OBJECT_ID_INTERNAL_DDI:
+		case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DVO1:
+			return ATOM_ENCODER_MODE_DVO;
+	}
+
+	// Normal encoder situations
 	switch (gConnector[connectorIndex]->type) {
 		case VIDEO_CONNECTOR_DVII:
 		case VIDEO_CONNECTOR_HDMIB: /* HDMI-B is DL-DVI; analog works fine */
@@ -800,7 +416,7 @@ display_get_encoder_mode(uint32 connectorIndex)
 			// }
 			// TODO: if audio detected on edid and DCE4, ATOM_ENCODER_MODE_DVI
 			//        if audio detected on edid not DCE4, ATOM_ENCODER_MODE_HDMI
-			return ATOM_ENCODER_MODE_DVI;
+			return ATOM_ENCODER_MODE_DP;
 		case VIDEO_CONNECTOR_EDP:
 			return ATOM_ENCODER_MODE_DP;
 		case VIDEO_CONNECTOR_DVIA:
@@ -818,6 +434,7 @@ void
 display_crtc_lock(uint8 crtcID, int command)
 {
 	TRACE("%s\n", __func__);
+
 	ENABLE_CRTC_PS_ALLOCATION args;
 	int index
 		= GetIndexIntoMasterTable(COMMAND, UpdateCRTC_DoubleBufferRegisters);
@@ -835,6 +452,7 @@ void
 display_crtc_blank(uint8 crtcID, int command)
 {
 	TRACE("%s\n", __func__);
+
 	BLANK_CRTC_PS_ALLOCATION args;
 	int index = GetIndexIntoMasterTable(COMMAND, BlankCRTC);
 
@@ -843,8 +461,7 @@ display_crtc_blank(uint8 crtcID, int command)
 	args.ucCRTC = crtcID;
 	args.ucBlanking = command;
 
-	// DEBUG: Radeon red to know when we are blanked :)
-	args.usBlackColorRCr = 255;
+	args.usBlackColorRCr = 0;
 	args.usBlackColorGY = 0;
 	args.usBlackColorBCb = 0;
 
@@ -853,7 +470,7 @@ display_crtc_blank(uint8 crtcID, int command)
 
 
 void
-display_crtc_scale(uint8 crtcID, display_mode *mode)
+display_crtc_scale(uint8 crtcID, display_mode* mode)
 {
 	TRACE("%s\n", __func__);
 	ENABLE_SCALER_PS_ALLOCATION args;
@@ -869,7 +486,40 @@ display_crtc_scale(uint8 crtcID, display_mode *mode)
 
 
 void
-display_crtc_fb_set(uint8 crtcID, display_mode *mode)
+display_crtc_dpms(uint8 crtcID, int mode)
+{
+
+	radeon_shared_info &info = *gInfo->shared_info;
+
+	switch (mode) {
+		case B_DPMS_ON:
+			TRACE("%s: crtc %" B_PRIu8 " dpms powerup\n", __func__, crtcID);
+			if (gDisplay[crtcID]->attached == false)
+				return;
+			gDisplay[crtcID]->powered = true;
+			display_crtc_power(crtcID, ATOM_ENABLE);
+			if (info.dceMajor >= 3)
+				display_crtc_memreq(crtcID, ATOM_ENABLE);
+			display_crtc_blank(crtcID, ATOM_BLANKING_OFF);
+			break;
+		case B_DPMS_STAND_BY:
+		case B_DPMS_SUSPEND:
+		case B_DPMS_OFF:
+			TRACE("%s: crtc %" B_PRIu8 " dpms powerdown\n", __func__, crtcID);
+			if (gDisplay[crtcID]->attached == false)
+				return;
+			if (gDisplay[crtcID]->powered == true)
+				display_crtc_blank(crtcID, ATOM_BLANKING);
+			if (info.dceMajor >= 3)
+				display_crtc_memreq(crtcID, ATOM_DISABLE);
+			display_crtc_power(crtcID, ATOM_DISABLE);
+			gDisplay[crtcID]->powered = false;
+	}
+}
+
+
+void
+display_crtc_fb_set(uint8 crtcID, display_mode* mode)
 {
 	radeon_shared_info &info = *gInfo->shared_info;
 	register_info* regs = gDisplay[crtcID]->regs;
@@ -949,15 +599,13 @@ display_crtc_fb_set(uint8 crtcID, display_mode *mode)
 			break;
 	}
 
-	uint32 bytesPerRow = mode->virtual_width * bytesPerPixel;
-
 	Write32(OUT, regs->vgaControl, 0);
 
-	uint64 fbAddress = gInfo->mc.vramStart;
+	uint64 fbAddress = gInfo->fb.vramStart;
 
 	TRACE("%s: Framebuffer at: 0x%" B_PRIX64 "\n", __func__, fbAddress);
 
-	if (info.device_chipset >= RADEON_R700) {
+	if (info.chipsetID >= RADEON_RV770) {
 		TRACE("%s: Set SurfaceAddress High: 0x%" B_PRIX32 "\n",
 			__func__, (fbAddress >> 32) & 0xf);
 
@@ -973,10 +621,36 @@ display_crtc_fb_set(uint8 crtcID, display_mode *mode)
 	Write32(OUT, regs->grphPrimarySurfaceAddr, (fbAddress & 0xFFFFFFFF));
 	Write32(OUT, regs->grphSecondarySurfaceAddr, (fbAddress & 0xFFFFFFFF));
 
-	if (info.device_chipset >= RADEON_R600) {
+	if (info.chipsetID >= RADEON_R600) {
 		Write32(CRT, regs->grphControl, fbFormat);
 		Write32(CRT, regs->grphSwapControl, fbSwap);
 	}
+
+	// Align our framebuffer width
+	uint32 widthAligned = mode->virtual_width;
+	uint32 pitchMask = 0;
+
+	switch (bytesPerPixel) {
+		case 1:
+			pitchMask = 255;
+			break;
+		case 2:
+			pitchMask = 127;
+			break;
+		case 3:
+		case 4:
+			pitchMask = 63;
+			break;
+	}
+	widthAligned += pitchMask;
+	widthAligned &= ~pitchMask;
+
+	TRACE("%s: fb: %" B_PRIu32 "x%" B_PRIu32 " (%" B_PRIu32 " bpp)\n", __func__,
+		mode->virtual_width, mode->virtual_height, bitsPerPixel);
+	TRACE("%s: fb pitch: %" B_PRIu32 " \n", __func__,
+		widthAligned * bytesPerPixel / 4);
+	TRACE("%s: fb width aligned: %" B_PRIu32 "\n", __func__,
+		widthAligned);
 
 	Write32(CRT, regs->grphSurfaceOffsetX, 0);
 	Write32(CRT, regs->grphSurfaceOffsetY, 0);
@@ -984,19 +658,19 @@ display_crtc_fb_set(uint8 crtcID, display_mode *mode)
 	Write32(CRT, regs->grphYStart, 0);
 	Write32(CRT, regs->grphXEnd, mode->virtual_width);
 	Write32(CRT, regs->grphYEnd, mode->virtual_height);
-	Write32(CRT, regs->grphPitch, (bytesPerRow / 4));
+	Write32(CRT, regs->grphPitch, widthAligned * bytesPerPixel / 4);
 
 	Write32(CRT, regs->grphEnable, 1);
 		// Enable Frame buffer
 
 	Write32(CRT, regs->modeDesktopHeight, mode->virtual_height);
 
-	uint32 viewport_w = mode->timing.h_display;
-	uint32 viewport_h = (mode->timing.v_display + 1) & ~1;
+	uint32 viewportWidth = mode->timing.h_display;
+	uint32 viewportHeight = (mode->timing.v_display + 1) & ~1;
 
 	Write32(CRT, regs->viewportStart, 0);
 	Write32(CRT, regs->viewportSize,
-		(viewport_w << 16) | viewport_h);
+		(viewportWidth << 16) | viewportHeight);
 
 	// Pageflip setup
 	if (info.dceMajor >= 4) {
@@ -1018,14 +692,14 @@ display_crtc_fb_set(uint8 crtcID, display_mode *mode)
 	}
 
 	// update shared info
-	gInfo->shared_info->bytes_per_row = bytesPerRow;
+	gInfo->shared_info->bytes_per_row = widthAligned * bytesPerPixel;
 	gInfo->shared_info->current_mode = *mode;
 	gInfo->shared_info->bits_per_pixel = bitsPerPixel;
 }
 
 
 void
-display_crtc_set(uint8 crtcID, display_mode *mode)
+display_crtc_set(uint8 crtcID, display_mode* mode)
 {
 	display_timing& displayTiming = mode->timing;
 
@@ -1063,12 +737,12 @@ display_crtc_set(uint8 crtcID, display_mode *mode)
 	args.susModeMiscInfo.usAccess = B_HOST_TO_LENDIAN_INT16(misc);
 	args.ucCRTC = crtcID;
 
-	atom_execute_table(gAtomContext, index, (uint32 *)&args);
+	atom_execute_table(gAtomContext, index, (uint32*)&args);
 }
 
 
 void
-display_crtc_set_dtd(uint8 crtcID, display_mode *mode)
+display_crtc_set_dtd(uint8 crtcID, display_mode* mode)
 {
 	display_timing& displayTiming = mode->timing;
 
@@ -1113,6 +787,136 @@ display_crtc_set_dtd(uint8 crtcID, display_mode *mode)
 
 	args.susModeMiscInfo.usAccess = B_HOST_TO_LENDIAN_INT16(misc);
 	args.ucCRTC = crtcID;
+
+	atom_execute_table(gAtomContext, index, (uint32*)&args);
+}
+
+
+void
+display_crtc_ss(uint8 crtcID, int command)
+{
+	TRACE("%s\n", __func__);
+	radeon_shared_info &info = *gInfo->shared_info;
+
+	int index = GetIndexIntoMasterTable(COMMAND, EnableSpreadSpectrumOnPPLL);
+
+	if (command != ATOM_DISABLE) {
+		ERROR("%s: TODO: SS was enabled, however functionality incomplete\n",
+			__func__);
+		command = ATOM_DISABLE;
+	}
+
+	union enableSS {
+		ENABLE_LVDS_SS_PARAMETERS lvds_ss;
+		ENABLE_LVDS_SS_PARAMETERS_V2 lvds_ss_2;
+		ENABLE_SPREAD_SPECTRUM_ON_PPLL_PS_ALLOCATION v1;
+		ENABLE_SPREAD_SPECTRUM_ON_PPLL_V2 v2;
+		ENABLE_SPREAD_SPECTRUM_ON_PPLL_V3 v3;
+	};
+
+	union enableSS args;
+	memset(&args, 0, sizeof(args));
+
+	uint32 connectorIndex = gDisplay[crtcID]->connectorIndex;
+	pll_info* pll = &gConnector[connectorIndex]->encoder.pll;
+
+	if (info.dceMajor >= 5) {
+		args.v3.usSpreadSpectrumAmountFrac = B_HOST_TO_LENDIAN_INT16(0);
+		args.v3.ucSpreadSpectrumType
+			= pll->ssType & ATOM_SS_CENTRE_SPREAD_MODE_MASK;
+		switch (pll->id) {
+			case ATOM_PPLL1:
+				args.v3.ucSpreadSpectrumType |= ATOM_PPLL_SS_TYPE_V3_P1PLL;
+				args.v3.usSpreadSpectrumAmount
+					= B_HOST_TO_LENDIAN_INT16(pll->ssAmount);
+				args.v3.usSpreadSpectrumStep
+					= B_HOST_TO_LENDIAN_INT16(pll->ssStep);
+				break;
+			case ATOM_PPLL2:
+				args.v3.ucSpreadSpectrumType |= ATOM_PPLL_SS_TYPE_V3_P2PLL;
+				args.v3.usSpreadSpectrumAmount
+					= B_HOST_TO_LENDIAN_INT16(pll->ssAmount);
+				args.v3.usSpreadSpectrumStep
+					= B_HOST_TO_LENDIAN_INT16(pll->ssStep);
+				break;
+			case ATOM_DCPLL:
+				args.v3.ucSpreadSpectrumType |= ATOM_PPLL_SS_TYPE_V3_DCPLL;
+				args.v3.usSpreadSpectrumAmount = B_HOST_TO_LENDIAN_INT16(0);
+				args.v3.usSpreadSpectrumStep = B_HOST_TO_LENDIAN_INT16(0);
+				break;
+			default:
+				ERROR("%s: BUG: Invalid PLL ID!\n", __func__);
+				return;
+		}
+		if (pll->ssPercentage == 0
+			|| ((pll->ssType & ATOM_EXTERNAL_SS_MASK) != 0)) {
+			command = ATOM_DISABLE;
+		}
+		args.v3.ucEnable = command;
+	} else if (info.dceMajor >= 4) {
+		args.v2.usSpreadSpectrumPercentage
+			= B_HOST_TO_LENDIAN_INT16(pll->ssPercentage);
+		args.v2.ucSpreadSpectrumType
+			= pll->ssType & ATOM_SS_CENTRE_SPREAD_MODE_MASK;
+		switch (pll->id) {
+			case ATOM_PPLL1:
+				args.v2.ucSpreadSpectrumType |= ATOM_PPLL_SS_TYPE_V2_P1PLL;
+				args.v2.usSpreadSpectrumAmount
+					= B_HOST_TO_LENDIAN_INT16(pll->ssAmount);
+				args.v2.usSpreadSpectrumStep
+					= B_HOST_TO_LENDIAN_INT16(pll->ssStep);
+				break;
+			case ATOM_PPLL2:
+				args.v2.ucSpreadSpectrumType |= ATOM_PPLL_SS_TYPE_V3_P2PLL;
+				args.v2.usSpreadSpectrumAmount
+					= B_HOST_TO_LENDIAN_INT16(pll->ssAmount);
+				args.v2.usSpreadSpectrumStep
+					= B_HOST_TO_LENDIAN_INT16(pll->ssStep);
+				break;
+			case ATOM_DCPLL:
+				args.v2.ucSpreadSpectrumType |= ATOM_PPLL_SS_TYPE_V3_DCPLL;
+				args.v2.usSpreadSpectrumAmount = B_HOST_TO_LENDIAN_INT16(0);
+				args.v2.usSpreadSpectrumStep = B_HOST_TO_LENDIAN_INT16(0);
+				break;
+			default:
+				ERROR("%s: BUG: Invalid PLL ID!\n", __func__);
+				return;
+		}
+		if (pll->ssPercentage == 0
+			|| ((pll->ssType & ATOM_EXTERNAL_SS_MASK) != 0)
+			|| (info.chipsetFlags & CHIP_APU) != 0 ) {
+			command = ATOM_DISABLE;
+		}
+		args.v2.ucEnable = command;
+	} else if (info.dceMajor >= 3) {
+		args.v1.usSpreadSpectrumPercentage
+			= B_HOST_TO_LENDIAN_INT16(pll->ssPercentage);
+		args.v1.ucSpreadSpectrumType
+			= pll->ssType & ATOM_SS_CENTRE_SPREAD_MODE_MASK;
+		args.v1.ucSpreadSpectrumStep = pll->ssStep;
+		args.v1.ucSpreadSpectrumDelay = pll->ssDelay;
+		args.v1.ucSpreadSpectrumRange = pll->ssRange;
+		args.v1.ucPpll = pll->id;
+		args.v1.ucEnable = command;
+	} else if (info.dceMajor >= 2) {
+		if ((command == ATOM_DISABLE) || (pll->ssPercentage == 0)
+			|| (pll->ssType & ATOM_EXTERNAL_SS_MASK)) {
+			// TODO: gpu_ss_disable needs pll id
+			radeon_gpu_ss_disable();
+			return;
+		}
+		args.lvds_ss_2.usSpreadSpectrumPercentage
+			= B_HOST_TO_LENDIAN_INT16(pll->ssPercentage);
+		args.lvds_ss_2.ucSpreadSpectrumType
+			= pll->ssType & ATOM_SS_CENTRE_SPREAD_MODE_MASK;
+		args.lvds_ss_2.ucSpreadSpectrumStep = pll->ssStep;
+		args.lvds_ss_2.ucSpreadSpectrumDelay = pll->ssDelay;
+		args.lvds_ss_2.ucSpreadSpectrumRange = pll->ssRange;
+		args.lvds_ss_2.ucEnable = command;
+	} else {
+		ERROR("%s: TODO: Old card SS control\n", __func__);
+		return;
+	}
 
 	atom_execute_table(gAtomContext, index, (uint32*)&args);
 }
