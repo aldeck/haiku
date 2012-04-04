@@ -516,6 +516,7 @@ BPoseView::RestoreState(AttributeStreamNode *node)
 		}
 	}
 
+	// TODO: enhance this, validate restore data for real, possibly in a hook
 	if (IsDesktopWindow() && ViewMode() == kListMode)
 		// recover if desktop window view state set wrong
 		fViewState->SetViewMode(kIconMode);
@@ -534,7 +535,7 @@ BPoseView::RestoreState(const BMessage &message)
 		fViewState = viewstate;
 	}
 
-	// What about fixing it?
+	// TODO: remove duplication see comment above
 	if (IsDesktopWindow() && ViewMode() == kListMode) {
 		// recover if desktop window view state set wrong
 		fViewState->SetViewMode(kIconMode);

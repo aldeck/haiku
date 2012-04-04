@@ -858,11 +858,17 @@ TTracker::OpenContainerWindow(Model *model, BMessage *originalRefsList,
 {
 	AutoLock<WindowList> lock(&fWindowList);
 	BContainerWindow *window = NULL;
-	// TODO: windows might not have their poseview yet, since they are created after
-	// the restorestate message has been received by the window
-	/*if (checkAlreadyOpen && openSelector != kRunOpenWithWindow)
+	// TODO: windows might not have their poseview yet (needed by
+	// FindContainerWindow), since they are created in the window thread when
+	// the restorestate message has been received by the window.
+	// Make it poseview-independent. The window could send the message to
+	// itself in its constructor, so that the poseview init is still done in
+	// the window thread although we only call a simple constructor here. See
+	// below
+	if (checkAlreadyOpen && openSelector != kRunOpenWithWindow) {
 		// find out if window already open
-		window = FindContainerWindow(model->NodeRef());*/
+		window = FindContainerWindow(model->NodeRef());
+	}
 
 	bool someWindowActivated = false;
 
