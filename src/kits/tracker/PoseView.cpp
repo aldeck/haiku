@@ -320,7 +320,8 @@ BPoseView::RemoveListener(PoseViewListener* listener)
 void
 BPoseView::_InitCommon()
 {
-	printf("(%p) BPoseView::_InitCommon() model=%p '%s'\n", this, TargetModel(), TargetModel()->Name());
+	printf("(%p) BPoseView::_InitCommon() model=%p '%s'\n", this,
+		TargetModel(), TargetModel() != NULL ? TargetModel()->Name() : "null");
 	BPoint origin;
 	if (ViewMode() == kListMode)
 		origin = fViewState->ListOrigin();
@@ -1130,7 +1131,8 @@ BPoseView::IsValidAddPosesThread(thread_id currentThread) const
 void
 BPoseView::AddPoses(Model *model)
 {
-	printf("BPoseView::AddPoses model = %p (%s)\n", model, model->Name());
+	printf("BPoseView::AddPoses model = %p (%s)\n", model,
+		model != NULL ? model->Name() : "null");
 	// if model is zero, PoseView has other means of iterating through all
 	// the entries that it adds
 	// TODO: move up in Init()
