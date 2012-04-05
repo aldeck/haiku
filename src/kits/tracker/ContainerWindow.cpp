@@ -1642,6 +1642,10 @@ BContainerWindow::SetCloseItem(BMenu *menu)
 bool
 BContainerWindow::IsShowing(const node_ref *node) const
 {
+	if (PoseView() == NULL) {
+		printf("(%p) BContainerWindow::IsShowing(node_ref*) PoseView() is NULL \n", this);
+		return true;
+	}
 	return PoseView()->Represents(node);
 }
 
@@ -1649,6 +1653,10 @@ BContainerWindow::IsShowing(const node_ref *node) const
 bool
 BContainerWindow::IsShowing(const entry_ref *entry) const
 {
+	if (PoseView() == NULL) {
+		printf("(%p) BContainerWindow::IsShowing(entry_ref*) PoseView() is NULL \n", this);
+		return true;
+	}
 	return PoseView()->Represents(entry);
 }
 
